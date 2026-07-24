@@ -1,6 +1,7 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
   "include": [
+    "src/shared/**/*",
     "src/renderer/types/**/*.d.ts",
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
@@ -10,7 +11,11 @@
   "compilerOptions": {
     "composite": true,
     "paths": {
-      "@renderer/*": ["./src/renderer/src/*"]
-    }
+      "@renderer/*": [
+        "./src/renderer/src/*"
+      ]
+    },
+    "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.web.tsbuildinfo"
   }
 }

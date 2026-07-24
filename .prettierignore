@@ -4,6 +4,7 @@ pnpm-lock.yaml
 LICENSE.md
 tsconfig.json
 tsconfig.*.json
+src/main/db/migrations/meta
 src/renderer/types/auto-imports.d.ts
 src/renderer/types/components.d.ts
 src/renderer/types/.eslintrc-auto-import.json

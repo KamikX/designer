@@ -5,12 +5,14 @@ directories:
 files:
   - '!**/.vscode/*'
   - '!src/*'
-  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!electron.vite.config.{js,ts,mjs,cjs,mts,cts}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # 原生模块的 .node 必须解包到 asar 外，打包在 asar 里 dlopen 加载不了
+  - '**/node_modules/better-sqlite3/**'
 win:
   executableName: designer
 nsis:

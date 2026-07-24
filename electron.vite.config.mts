@@ -12,6 +12,9 @@ import dayjs from 'vite-plugin-dayjs'
 const rendererTypes = (file: string): string => resolve('src/renderer/types', file)
 
 export default defineConfig({
+  // better-sqlite3 是原生模块，.node 二进制打不进 bundle，必须让它保持
+  // 外部依赖在运行时 require。electron-vite 的 build.externalizeDeps
+  // 默认就是 true，所以这里不用显式配（旧的 externalizeDepsPlugin 已废弃）。
   main: {},
   preload: {},
   renderer: {

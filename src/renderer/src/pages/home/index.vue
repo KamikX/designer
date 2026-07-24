@@ -1,19 +1,19 @@
 <script setup lang="ts">
-import { useAppConfig } from '@renderer/components/config/config'
+import { theme } from 'antdv-next'
 
-const { lang, dark, langOptions } = useAppConfig()
+const { token } = theme.useToken()
 </script>
 
 <template>
-  <a-space vertical :size="16" style="padding: 16px">
-    <a-space>
-      <a-segmented v-model:value="lang" :options="langOptions" />
-      <a-switch v-model:checked="dark" checked-children="暗" un-checked-children="亮" />
-    </a-space>
-    <a-space wrap>
-      <a-date-picker />
-      <a-range-picker />
-    </a-space>
-    <a-pagination :default-current="1" :total="50" show-size-changer />
+  <a-space vertical :size="16" style="width: 100%">
+    <a-card title="日期" :style="{ background: token.colorBgContainer }">
+      <a-space wrap>
+        <a-date-picker />
+        <a-range-picker />
+      </a-space>
+    </a-card>
+    <a-card title="分页" :style="{ background: token.colorBgContainer }">
+      <a-pagination :default-current="1" :total="50" show-size-changer />
+    </a-card>
   </a-space>
 </template>

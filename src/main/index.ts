@@ -1,15 +1,45 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { patchConfig, readConfig } from './config'
+import { closeDb } from './db'
+import { registerIpc } from './ipc'
+
+const isMac = process.platform === 'darwin'
+const isWindows = process.platform === 'win32'
 
 function createWindow(): void {
+  // 配置在主进程同步读得到，所以窗口尺寸和明暗在创建前就能定好，
+  // 不会出现先按默认值画一帧再被渲染进程纠正的闪烁
+  const config = readConfig()
+  nativeTheme.themeSource = config.dark ? 'dark' : 'light'
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: config.window.width,
+    height: config.window.height,
     show: false,
     autoHideMenuBar: true,
+    // 毛玻璃。macOS 用 vibrancy，Windows 11 用 acrylic。
+    // macOS 上窗口底色必须是全透明，否则不透明背景会把 vibrancy 整个盖住。
+    ...(isMac
+      ? {
+          backgroundColor: '#00000000',
+          vibrancy: 'under-window' as const,
+          // 默认只在窗口激活时才有效果，失焦会变灰
+          visualEffectState: 'active' as const
+        }
+      : {}),
+    ...(isWindows ? { backgroundMaterial: 'acrylic' as const } : {}),
+    // 去掉原生标题栏。macOS 保留左上角红绿灯，让它直接落在侧栏导轨上；
+    // Windows / Linux 用系统自带的窗口控件覆盖层，两边都不用自己画按钮。
+    titleBarStyle: 'hidden',
+    ...(process.platform !== 'darwin'
+      ? { titleBarOverlay: { color: '#00000000', symbolColor: '#8c8c8c', height: 28 } }
+      : // 三个按钮整体跨度约 58px（尺寸和间距由系统决定，改不了），
+        // x=6 时右边缘到 64px，落在 68px 宽的导轨里还剩 4px 余量
+        { trafficLightPosition: { x: 6, y: 12 } }),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -19,6 +49,12 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  // 记住窗口尺寸。resize 触发很密，等窗口关闭时写一次就够
+  mainWindow.on('close', () => {
+    const [width, height] = mainWindow.getSize()
+    patchConfig({ window: { width, height } })
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -49,8 +85,7 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
+  registerIpc()
 
   createWindow()
 
@@ -68,6 +103,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// WAL 模式下干净地关闭连接，才会把 -wal 文件合并回主库
+app.on('before-quit', () => {
+  closeDb()
 })
 
 // In this file you can include the rest of your app's specific main process

@@ -11,12 +11,23 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AButton: typeof import('antdv-next')['Button']
+    ACard: typeof import('antdv-next')['Card']
+    AColorPicker: typeof import('antdv-next')['ColorPicker']
     ADatePicker: typeof import('antdv-next')['DatePicker']
+    ADescriptions: typeof import('antdv-next')['Descriptions']
+    ADescriptionsItem: typeof import('antdv-next')['DescriptionsItem']
+    ALayout: typeof import('antdv-next')['Layout']
+    ALayoutContent: typeof import('antdv-next')['LayoutContent']
+    ALayoutSider: typeof import('antdv-next')['LayoutSider']
+    AMenu: typeof import('antdv-next')['Menu']
     APagination: typeof import('antdv-next')['Pagination']
     ARangePicker: typeof import('antdv-next')['DateRangePicker']
+    AResult: typeof import('antdv-next')['Result']
     ASegmented: typeof import('antdv-next')['Segmented']
     ASpace: typeof import('antdv-next')['Space']
     ASwitch: typeof import('antdv-next')['Switch']
+    ATag: typeof import('antdv-next')['Tag']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }

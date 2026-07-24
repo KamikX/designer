@@ -18,14 +18,17 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@vueuse/core": "^14.3.0",
     "@vueuse/electron": "^14.3.0",
+    "better-sqlite3": "^13.0.1",
     "dayjs": "^1.11.21",
+    "drizzle-orm": "^0.45.2",
     "electron-updater": "^6.8.9",
     "pinia": "^4.0.2",
     "vue-router": "^5.2.0"
@@ -38,9 +41,11 @@
     "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.20.1",
     "@vitejs/plugin-vue": "^6.0.8",
     "antdv-next": "^1.4.5",
+    "drizzle-kit": "^0.31.10",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "electron-vite": "npm:@antdv-next/electron-vite@^0.1.0",
@@ -59,7 +64,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron"
+      "electron",
+      "better-sqlite3"
     ]
   }
 }
