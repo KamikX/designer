@@ -78,6 +78,10 @@ app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
+  // 打包后 Dock 图标来自 .app 包，但 dev 下跑的是 Electron 自己的壳，
+  // 不显式设一下就一直是默认的 Electron 图标
+  if (isMac && is.dev) app.dock?.setIcon(icon)
+
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
