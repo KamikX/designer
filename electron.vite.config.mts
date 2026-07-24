@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { AntdvNextResolver } from '@antdv-next/auto-import-resolver'
 import Components from 'unplugin-vue-components/vite'
 import AutoImport from 'unplugin-auto-import/vite'
+import dayjs from 'vite-plugin-dayjs'
 
 // 自动生成的类型声明统一放在 src/renderer/types 下，只有 tsconfig.web.json 会引用它，
 // 所以 antdv-next / vue / pinia / vue-router 这些全局声明只在渲染进程里生效。
@@ -22,37 +23,16 @@ export default defineConfig({
     plugins: [
       vue(),
       tailwindcss(),
+      dayjs(),
       Components({
-        dirs: ['src/renderer/src/components'],
-        extensions: ['vue'],
+        // 只自动解析 antdv-next 的组件；项目自己的组件一律手动 import
+        dirs: [],
         resolvers: [AntdvNextResolver({ resolveIcons: true })],
         dts: rendererTypes('components.d.ts')
       }),
       AutoImport({
-        imports: [
-          'vue',
-          'vue-router',
-          'pinia',
-          '@vueuse/core',
-          {
-            'antdv-next': [
-              'message',
-              'notification',
-              'Modal',
-              'theme',
-              'useMessage',
-              'useNotification',
-              'useModal',
-              'useForm',
-              'useFormInstance',
-              'useConfig',
-              'useBreakpoint',
-              'useResponsive',
-              'useLayoutSider'
-            ]
-          }
-        ],
-        dirs: ['src/renderer/src/composables', 'src/renderer/src/stores'],
+        // 只自动导入第三方库的 API；项目自己的模块一律手动 import
+        imports: ['vue', 'vue-router', 'pinia', '@vueuse/core'],
         vueTemplate: true,
         dts: rendererTypes('auto-imports.d.ts'),
         eslintrc: {

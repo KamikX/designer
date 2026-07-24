@@ -11,6 +11,12 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    ADatePicker: typeof import('antdv-next')['DatePicker']
+    APagination: typeof import('antdv-next')['Pagination']
+    ARangePicker: typeof import('antdv-next')['DateRangePicker']
+    ASegmented: typeof import('antdv-next')['Segmented']
+    ASpace: typeof import('antdv-next')['Space']
+    ASwitch: typeof import('antdv-next')['Switch']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
   }
