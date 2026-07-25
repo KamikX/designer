@@ -106,23 +106,28 @@ async function runChain(
     const source = membersById.get(current)
     if (!source) break
     const sourceMember = source.kind === 'configured' ? source.member : source.role
-    const modelRowId =
-      source.kind === 'configured' ? source.member.modelRowId : input.fallbackModelRowId
+    let agent: ResolvedGroupAgent | null = null
+    let resolutionError: unknown = null
+    try {
+      agent = resolveGroupAgent(source, {
+        fallbackModelRowId: input.fallbackModelRowId,
+        getModel
+      })
+    } catch (err) {
+      resolutionError = err
+    }
     const message = createMessage({
       conversationId,
       role: 'assistant',
       parts: [],
       status: 'streaming',
-      ...(modelRowId ? { modelId: modelRowId } : {}),
+      ...(agent ? { modelId: agent.model.modelId } : {}),
       author: sourceMember.id
     })
 
     let text = ''
     try {
-      const agent = resolveGroupAgent(source, {
-        fallbackModelRowId: input.fallbackModelRowId,
-        getModel
-      })
+      if (!agent) throw resolutionError ?? new Error(`成员“${sourceMember.name}”解析失败`)
       const installedSkills = scanSkills()
       const wantedSkills = new Set(agent.skillIds)
       const selectedSkills = installedSkills.filter(

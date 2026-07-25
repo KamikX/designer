@@ -353,8 +353,8 @@ describe('configured 群组成员级编排', () => {
       .map(([draft]) => draft)
       .filter((draft) => draft.role === 'assistant')
     expect(assistantCreates).toMatchObject([
-      { author: first.id, modelId: 'model-research' },
-      { author: second.id, modelId: 'model-writing' }
+      { author: first.id, modelId: 'research-chat' },
+      { author: second.id, modelId: 'writing-chat' }
     ])
   })
 
@@ -389,7 +389,7 @@ describe('legacy 群组兼容', () => {
     expect(mocks.streamOptions[0].system).toContain('你是资深产品经理')
     expect(mocks.createMessage.mock.calls[1][0]).toMatchObject({
       author: 'pm',
-      modelId: 'fallback-row'
+      modelId: 'old-chat'
     })
   })
 
