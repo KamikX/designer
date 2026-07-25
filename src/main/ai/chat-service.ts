@@ -22,6 +22,9 @@ import { buildHistory } from './context'
 import { buildSystemPrompt } from './prompts'
 import { buildChatPrompt } from './prompts/chat'
 import { buildTimeTools } from './time-tools'
+import { scanSkills, skillRoots } from '../skills/scan'
+import { skillCatalog } from '../skills/catalog'
+import { buildSkillTools } from '../skills/tools'
 import { buildWebTools } from '../web/tools'
 import { closeBrowserSession } from '../web/session'
 import { FileStreamParser } from './file-stream-parser'
@@ -119,7 +122,19 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const detected = detectPaths(input.text)
   const grantedRoots = autoGrant(scope, detected.resolved)
   // 用户授权过的本地目录。一个都没有时,本地文件工具整组不注册
-  const roots = listRoots(scope)
+  const userRoots = listRoots(scope)
+
+  /*
+   * 文件系统里的技能。
+   *
+   * 技能目录要**并进授权范围**,否则渐进披露的第三层直接断掉:模型激活了技能、
+   * 看到正文写着"详见 references/xxx.md",然后 read_local_file 拒绝——因为用户
+   * 从没授权过 ~/.agents/skills。
+   *
+   * 这不算扩大权限:这些目录本来就是用户放技能的地方,而技能的全部意义就是被读。
+   */
+  const fileSkills = scanSkills()
+  const roots = [...userRoots, ...skillRoots(fileSkills)]
   // 上一版预览跑挂了的话,这一轮先让模型知道。纯聊天没有预览
   const previewError = project
     ? previewErrorPrompt(pendingPreviewError(project.id, base?.id ?? null))
@@ -216,6 +231,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             // 无条件内置:模型对"今天是几号"只有训练截止时的印象,而且它
             // 意识不到这一点——不给它这个,涉及日期的输出会自信地错
             ...buildTimeTools(),
+            ...buildSkillTools(fileSkills),
             ...buildWebTools(input.webSearch === true, streamId),
             ...buildAskUserTool({
               streamId,
@@ -233,17 +249,21 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           }
         : undefined
 
+      // 技能目录两种模式都给:它只是"有什么可用",不预设任何行为
+      const catalog = useTools ? skillCatalog(fileSkills, model!.contextWindow) : ''
       const system = project
         ? buildSystemPrompt(project, currentFiles, {
             mode: useTools ? 'tools' : 'markers',
             skills: enabledSkills,
-            localScope: localScopePrompt(roots, detected.missing),
-            previewError
+            localScope: localScopePrompt(userRoots, detected.missing),
+            previewError,
+            skillCatalog: catalog
           })
         : buildChatPrompt({
             skills: enabledSkills,
-            localScope: localScopePrompt(roots, detected.missing),
-            webSearch: input.webSearch === true
+            localScope: localScopePrompt(userRoots, detected.missing),
+            webSearch: input.webSearch === true,
+            skillCatalog: catalog
           })
 
       // 图片字节到这里才读:sendChat 本身是同步的,不能 await

@@ -25,6 +25,8 @@ export interface ChatPromptOptions {
   localScope?: string
   /** 是否开了联网搜索 */
   webSearch?: boolean
+  /** 文件系统技能的目录(渐进披露的 L1),由 skills/catalog 生成 */
+  skillCatalog?: string
 }
 
 const WEB_SEARCH = `
@@ -57,6 +59,7 @@ export function buildChatPrompt(options: ChatPromptOptions = {}): string {
     // 技能是用户自己勾的,内容由他掌握;这里原样注入,不加任何我们的框架
     options.skills?.length ? skillsPrompt(options.skills, { builtin: false }) : '',
     options.localScope,
+    options.skillCatalog,
     options.webSearch ? WEB_SEARCH : ''
   ].filter((section): section is string => !!section?.trim())
 

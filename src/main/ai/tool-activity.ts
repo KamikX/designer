@@ -39,6 +39,7 @@ const VERB: Record<string, string> = {
   view_image: '查看参考图',
   note_image: '记录参考图要点',
   get_current_time: '查看当前时间',
+  activate_skill: '加载技能',
   // 本地文件
   list_local_dir: '浏览目录',
   check_local_path: '检查路径',
@@ -92,6 +93,10 @@ export function labelFor(toolName: string, input: PartialInput): string {
   const path = str(input, 'path')
 
   switch (toolName) {
+    case 'activate_skill': {
+      const name = str(input, 'name')
+      return name ? `${verb} ${name}` : verb
+    }
     case 'web_search': {
       const query = str(input, 'query')
       return query ? `${verb} ${query}` : verb

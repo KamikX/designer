@@ -31,6 +31,8 @@ export function buildSystemPrompt(
     localScope?: string
     /** 上一版预览的运行时错误。跑不起来比任何设计意见都优先,所以排在最前 */
     previewError?: string
+    /** 文件系统技能的目录(渐进披露的 L1),由 skills/catalog 生成 */
+    skillCatalog?: string
   } = {}
 ): string {
   const mode = options.mode ?? 'markers'
@@ -48,6 +50,7 @@ export function buildSystemPrompt(
     mode === 'tools' ? TOOL_PROTOCOL : FILE_PROTOCOL,
     stackPrompt(project.stack),
     options.localScope ?? '',
+    options.skillCatalog ?? '',
     mode === 'tools' ? renderFileTree(currentFiles) : renderCurrentFiles(currentFiles),
     CLOSING
   ]
