@@ -192,6 +192,8 @@ provider/project 的显示 ID 和名称另存快照，不对业务表建外键�
 
 - `ai_runs`、`ai_run_steps`、`tool_runs`、`model_usage_run_days` 只保留 7 天。
 - `model_usage_daily` 长期保留，用户可单独清除。
+- 用户手动清除长期用量时，必须在同一事务中删除 `model_usage_daily` 和
+  `model_usage_run_days`；仍在运行的 run 后续 step 可以据此重新建立正确的当日 run_count。
 - 诊断清理每日启动后执行一次，每轮结束后可异步触发一次幂等清理。
 - 五张表都是本机数据，不进入 `change_log`，不参与项目同步或 artifact 导出。
 - 删除项目时诊断明细级联删除；长期用量没有业务外键，保留调用时的 project/provider
