@@ -95,4 +95,22 @@ describe('StyleBrief 不被通用审美护栏覆盖', () => {
       /一屏最多出现 2 处|抬起来的表面和文字走暖|凹下去的填充和所有描边走冷|没有纯黑纯白/
     )
   })
+
+  it('anti-slop 只在 StyleBrief 缺省时用模板化特征做 fallback 检查', () => {
+    const antiSlop = readSkill('craft-anti-slop')
+
+    expect(antiSlop).toMatch(/StyleBrief/)
+    expect(antiSlop).toMatch(/fallback/)
+    expect(antiSlop).not.toMatch(/七宗罪\(出现任何一条都要重做\)/)
+    expect(antiSlop).not.toMatch(/一个平面加上有意图的字排,任何时候都赢它/)
+  })
+
+  it('motion 由 StyleBrief 决定手感，固定数值只可作为范围示意', () => {
+    const motion = readSkill('craft-motion')
+
+    expect(motion).toMatch(/StyleBrief/)
+    expect(motion).toMatch(/prefers-reduced-motion/)
+    expect(motion).not.toMatch(/\*\*120ms\*\*|\*\*200ms\*\*|\*\*140ms\*\*/)
+    expect(motion).not.toMatch(/scale\(0\.97\)|translateY\(-1px\)|\* 80ms/)
+  })
 })

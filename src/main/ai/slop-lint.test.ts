@@ -9,17 +9,6 @@ import { lintArtifact, renderLint } from './slop-lint'
  */
 
 describe('抓得住的', () => {
-  it('Tailwind 默认靛蓝', () => {
-    const f = lintArtifact('a.html', '<div style="color:#6366f1">x</div>')
-    expect(f.map((x) => x.rule)).toContain('ai-indigo')
-    expect(f[0].severity).toBe('P0')
-  })
-
-  it('双色信任渐变', () => {
-    const f = lintArtifact('a.css', '.hero{background:linear-gradient(90deg,#8b5cf6,#06b6d4)}')
-    expect(f.map((x) => x.rule)).toContain('trust-gradient')
-  })
-
   it.each(['快 10 倍', '效率提升 3 倍', '99.9% uptime', '10× faster'])('编造的数字:%s', (text) => {
     expect(lintArtifact('a.html', `<p>${text}</p>`).map((x) => x.rule)).toContain('invented-metric')
   })
@@ -39,11 +28,6 @@ describe('抓得住的', () => {
       lintArtifact('a.html', '<img src="https://images.unsplash.com/x">').map((x) => x.rule)
     ).toContain('remote-placeholder')
   })
-
-  it('全大写没加字距', () => {
-    const f = lintArtifact('a.css', '.k{text-transform:uppercase;font-size:11px}')
-    expect(f.map((x) => x.rule)).toContain('caps-no-tracking')
-  })
 })
 
 describe('不该报的', () => {
@@ -62,8 +46,12 @@ describe('不该报的', () => {
     expect(lintArtifact('theme.css', theme)).toEqual([])
   })
 
-  it('全大写加够了字距就不报', () => {
-    expect(lintArtifact('a.css', '.k{text-transform:uppercase;letter-spacing:0.08em}')).toEqual([])
+  it.each([
+    ['用户明确的靛蓝', '.brand { color: #6366f1; }'],
+    ['用户明确的双色渐变', '.hero { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }'],
+    ['紧排全大写', '.k { text-transform: uppercase; letter-spacing: 0; }']
+  ])('%s 不因纯审美特征告警', (_label, source) => {
+    expect(lintArtifact('app.css', source)).toEqual([])
   })
 
   it('emoji 出现在正文里不算——只有当图标用才算', () => {
@@ -130,7 +118,7 @@ describe('给模型的措辞', () => {
    * 是"我觉得现在挺好"。
    */
   it('措辞是确定的退步,不是风格建议', () => {
-    const out = renderLint(lintArtifact('a.html', '<div style="color:#6366f1">x</div>'))
+    const out = renderLint(lintArtifact('a.html', '<p>快 10 倍</p>'))
     expect(out).toContain('退步')
     expect(out).not.toContain('建议')
   })
@@ -141,7 +129,7 @@ describe('给模型的措辞', () => {
   })
 
   it('分开统计必须修和应该修', () => {
-    const out = renderLint(lintArtifact('a.css', '.k{text-transform:uppercase}'))
+    const out = renderLint(lintArtifact('a.html', '<p>快 10 倍</p>'))
     expect(out).toMatch(/\d+ 条必须修/)
   })
 })

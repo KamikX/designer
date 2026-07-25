@@ -9,8 +9,8 @@
  *
  * ## 为什么要把结果喂回给模型
  *
- * 提示词里写"不要用靛蓝"只是**倾向**,模型仍然会用。而一条具体的
- * "第 12 行有 #6366f1" 是**事实**,它没法绕过去。
+ * 提示词里的审美偏好无法由检查器判断是否符合 StyleBrief；这里仅检查可客观判定的
+ * 内容真实性、资源可靠性、组件主题与整套旧种子指纹。
  *
  * 这条回流链路是"写完就结束"和"写完会被检查"的区别,也是我们相对纯提示词
  * 方案唯一的结构性优势。
@@ -29,9 +29,6 @@ export interface Finding {
   snippet?: string
 }
 
-/** Tailwind 默认靛蓝一族。最可靠的 AI 标记 */
-const AI_INDIGO = /#(6366f1|4f46e5|4338ca|3730a3|8b5cf6|7c3aed|a855f7|818cf8|c084fc)\b/gi
-
 /** 当图标用的 emoji。只查出现在标题/按钮/列表项里的 */
 const SLOP_EMOJI = /[✨🚀🎯⚡🔥💡📈🎨🛡🌟💪🎉👋🙌✅⭐🏆🔮🌈]/u
 
@@ -41,10 +38,6 @@ const INVENTED_METRIC =
 
 /** 填充文案 */
 const FILLER = /(lorem ipsum|placeholder text|sample content|功能[一二三四]|这里是描述|标题文字)/i
-
-/** 首屏的双色渐变 */
-const TRUST_GRADIENT =
-  /linear-gradient\([^)]*(?:#(?:6366f1|8b5cf6|a855f7|7c3aed)|purple|violet|indigo)[^)]*(?:blue|cyan|pink|#3b82f6|#06b6d4|#ec4899)/i
 
 /** 外部占位图服务 */
 const REMOTE_PLACEHOLDER =
@@ -61,20 +54,6 @@ export function lintArtifact(path: string, source: string): Finding[] {
     const m = re.exec(source)
     if (m) findings.push({ ...f, snippet: clip(m[0]) })
   }
-
-  hit(new RegExp(AI_INDIGO.source, 'i'), {
-    rule: 'ai-indigo',
-    severity: 'P0',
-    message: '用了 Tailwind 默认靛蓝。这是最可靠的"AI 生成"标记,一眼可辨。',
-    fix: '换成本项目 theme.css 里定义的品牌色 token。'
-  })
-
-  hit(TRUST_GRADIENT, {
-    rule: 'trust-gradient',
-    severity: 'P0',
-    message: '出现了紫/靛 → 蓝/粉的双色渐变。',
-    fix: '删掉渐变。一个平面配上有层次的字排,任何时候都比它强。'
-  })
 
   hit(INVENTED_METRIC, {
     rule: 'invented-metric',
@@ -142,28 +121,6 @@ export function lintArtifact(path: string, source: string): Finding[] {
       fix: '回到 StyleBrief，重新生成本项目的字体、表面、尺度和组件几何；保留语义 token 接口，不复制旧视觉取值。',
       snippet: clip(legacySeedFeatures.map((feature) => feature.snippet).join(' ; '))
     })
-  }
-
-  /*
-   * 全大写没加字距。
-   *
-   * 要把 letter-spacing 和 text-transform 放在同一条规则里看——分开查的话,
-   * 一个定义在基类、一个定义在修饰类的正常写法会被误报。
-   */
-  for (const block of source.matchAll(/\{[^{}]*\}/g)) {
-    const text = block[0]
-    if (!/text-transform\s*:\s*uppercase/i.test(text)) continue
-    const spacing = /letter-spacing\s*:\s*([\d.]+)em/i.exec(text)
-    if (!spacing || Number(spacing[1]) < 0.06) {
-      findings.push({
-        rule: 'caps-no-tracking',
-        severity: 'P1',
-        message: '全大写没有加足够的字距(需要 ≥0.06em)。',
-        fix: '加 letter-spacing: 0.08em。不加会挤成一团,是最可靠的业余标记。',
-        snippet: clip(text)
-      })
-      break
-    }
   }
 
   // theme.css 本来就是放色值的地方,不查
