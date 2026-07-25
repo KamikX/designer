@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   createMessage: vi.fn(),
   updateMessage: vi.fn(),
   getModel: vi.fn(),
+  getProviderRowById: vi.fn(),
   getLanguageModel: vi.fn(),
   scanSkills: vi.fn(),
   skillCatalog: vi.fn(),
@@ -50,6 +51,10 @@ vi.mock('../db/repo/message', () => ({
 
 vi.mock('../db/repo/model', () => ({
   getModel: mocks.getModel
+}))
+
+vi.mock('../db/repo/provider', () => ({
+  getProviderRowById: mocks.getProviderRowById
 }))
 
 vi.mock('./registry', () => ({
@@ -199,13 +204,17 @@ beforeEach(() => {
   vi.clearAllMocks()
 
   mocks.createMessage.mockImplementation(
-    (draft: Omit<Message, 'id' | 'createdAt' | 'usage' | 'providerSlug' | 'artifactId'>) => {
+    (
+      draft: Omit<Message, 'id' | 'createdAt' | 'usage' | 'providerSlug' | 'artifactId'> & {
+        providerSlug?: string
+      }
+    ) => {
       const created: Message = {
         ...draft,
         id: `message-${mocks.messages.length + 1}`,
         status: draft.status ?? 'complete',
         usage: null,
-        providerSlug: null,
+        providerSlug: draft.providerSlug ?? null,
         modelId: draft.modelId ?? null,
         artifactId: null,
         createdAt: `2026-07-26T00:00:0${mocks.messages.length}.000Z`
@@ -220,6 +229,10 @@ beforeEach(() => {
     return stored ?? null
   })
   mocks.getModel.mockImplementation((id: string) => mocks.models.get(id) ?? null)
+  mocks.getProviderRowById.mockImplementation((id: string) => ({
+    id,
+    slug: `slug-${id}`
+  }))
   mocks.getLanguageModel.mockImplementation(
     (providerId: string, modelId: string) => `language:${providerId}/${modelId}`
   )
@@ -269,8 +282,8 @@ describe('configured 群组成员级编排', () => {
       skillIds: ['writing', 'missing']
     })
     mocks.conversation = configuredConversation([first, second])
-    mocks.models.set('model-research', model('model-research', 'provider-a', 'research-chat'))
-    mocks.models.set('model-writing', model('model-writing', 'provider-b', 'writing-chat'))
+    mocks.models.set('model-research', model('model-research', 'provider-a', 'shared-chat'))
+    mocks.models.set('model-writing', model('model-writing', 'provider-b', 'shared-chat'))
     mocks.skills.push(
       {
         name: 'research',
@@ -303,12 +316,12 @@ describe('configured 群组成员级编排', () => {
     expect((await waitForTerminal()).type).toBe('chain-done')
 
     expect(mocks.getLanguageModel.mock.calls).toEqual([
-      ['provider-a', 'research-chat'],
-      ['provider-b', 'writing-chat']
+      ['provider-a', 'shared-chat'],
+      ['provider-b', 'shared-chat']
     ])
     expect(mocks.streamOptions.map((options) => options.model)).toEqual([
-      'language:provider-a/research-chat',
-      'language:provider-b/writing-chat'
+      'language:provider-a/shared-chat',
+      'language:provider-b/shared-chat'
     ])
     expect(
       mocks.skillCatalog.mock.calls.map(([skills]) => skills.map((skill) => skill.name))
@@ -352,9 +365,18 @@ describe('configured 群组成员级编排', () => {
     const assistantCreates = mocks.createMessage.mock.calls
       .map(([draft]) => draft)
       .filter((draft) => draft.role === 'assistant')
+    expect(mocks.scanSkills).toHaveBeenCalledTimes(1)
     expect(assistantCreates).toMatchObject([
-      { author: first.id, modelId: 'research-chat' },
-      { author: second.id, modelId: 'writing-chat' }
+      {
+        author: first.id,
+        providerSlug: 'slug-provider-a',
+        modelId: 'shared-chat'
+      },
+      {
+        author: second.id,
+        providerSlug: 'slug-provider-b',
+        modelId: 'shared-chat'
+      }
     ])
   })
 
@@ -389,6 +411,7 @@ describe('legacy 群组兼容', () => {
     expect(mocks.streamOptions[0].system).toContain('你是资深产品经理')
     expect(mocks.createMessage.mock.calls[1][0]).toMatchObject({
       author: 'pm',
+      providerSlug: 'slug-provider-old',
       modelId: 'old-chat'
     })
   })
@@ -413,6 +436,28 @@ describe('legacy 群组兼容', () => {
       modelId: null
     })
     expect((await waitForTerminal()).type).toBe('chain-done')
+  })
+
+  it('成员模型的供应商不存在时标错当前成员并报告成员名称', async () => {
+    const configured = member(0, { name: '研究员', modelRowId: 'orphan-model' })
+    mocks.conversation = configuredConversation([configured])
+    mocks.models.set('orphan-model', model('orphan-model', 'missing-provider', 'orphan-chat'))
+    mocks.getProviderRowById.mockReturnValueOnce(null)
+
+    sendGroupMessage(sender() as never, input(mention(configured)))
+    await vi.waitFor(() => {
+      expect(mocks.events.some((event) => event.type === 'error')).toBe(true)
+    })
+
+    expect(mocks.events.find((event) => event.type === 'error')).toMatchObject({
+      type: 'error',
+      message: expect.stringMatching(/研究员.*供应商.*不存在/)
+    })
+    expect(mocks.messages.find((message) => message.author === configured.id)).toMatchObject({
+      status: 'error',
+      providerSlug: null,
+      modelId: 'orphan-chat'
+    })
   })
 })
 

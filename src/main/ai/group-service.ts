@@ -6,6 +6,7 @@ import { firstMention, mentionsToModelText, nextMention } from '../../shared/gro
 import { getConversation, touchConversation } from '../db/repo/conversation'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { getModel } from '../db/repo/model'
+import { getProviderRowById } from '../db/repo/provider'
 import { getLanguageModel, errorMessage } from './registry'
 import { buildTimeTools } from './time-tools'
 import { buildLocalTools } from './local-tools'
@@ -88,6 +89,7 @@ async function runChain(
   const conversationId = input.conversationId
   const membersById = new Map(members.map((member) => [memberId(member), member]))
   const mentionMembers = members.map(memberMention)
+  const installedSkills = scanSkills()
   const guard = new GroupChainGuard()
   let current: string | null = firstMemberId
 
@@ -107,12 +109,18 @@ async function runChain(
     if (!source) break
     const sourceMember = source.kind === 'configured' ? source.member : source.role
     let agent: ResolvedGroupAgent | null = null
+    let providerSlug: string | null = null
     let resolutionError: unknown = null
     try {
       agent = resolveGroupAgent(source, {
         fallbackModelRowId: input.fallbackModelRowId,
         getModel
       })
+      const provider = getProviderRowById(agent.model.providerId)
+      if (!provider) {
+        throw new Error(`成员“${sourceMember.name}”使用的供应商不存在`)
+      }
+      providerSlug = provider.slug
     } catch (err) {
       resolutionError = err
     }
@@ -122,13 +130,14 @@ async function runChain(
       parts: [],
       status: 'streaming',
       ...(agent ? { modelId: agent.model.modelId } : {}),
+      ...(providerSlug ? { providerSlug } : {}),
       author: sourceMember.id
     })
 
     let text = ''
     try {
+      if (resolutionError) throw resolutionError
       if (!agent) throw resolutionError ?? new Error(`成员“${sourceMember.name}”解析失败`)
-      const installedSkills = scanSkills()
       const wantedSkills = new Set(agent.skillIds)
       const selectedSkills = installedSkills.filter(
         (skill) => skill.source !== 'builtin' && wantedSkills.has(skill.name)
