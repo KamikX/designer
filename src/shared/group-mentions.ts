@@ -152,7 +152,8 @@ function parseFenceOpening(container: MarkdownContainer): FenceOpening | null {
   }
 }
 
-type InlineBlockKind = 'blank' | 'fence' | 'heading' | 'list' | 'blockquote' | 'thematic' | 'plain'
+type InlineBlockKind =
+  'blank' | 'fence' | 'heading' | 'list' | 'blockquote' | 'setext' | 'thematic' | 'plain'
 
 function inlineBlockKind(line: string): InlineBlockKind {
   if (/^[ \t]*$/.test(line)) return 'blank'
@@ -161,6 +162,7 @@ function inlineBlockKind(line: string): InlineBlockKind {
   if (/^ {0,3}#{1,6}(?:[ \t]+|$)/.test(container.content)) return 'heading'
   if (container.tokens.some((token) => token.type === 'list')) return 'list'
   if (container.tokens.some((token) => token.type === 'blockquote')) return 'blockquote'
+  if (/^ {0,3}(?:=+|-+)[ \t]*$/.test(container.content)) return 'setext'
   if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$/.test(container.content)) {
     return 'thematic'
   }
@@ -182,13 +184,18 @@ function findInlineSegmentStarts(text: string): number[] {
       kind === 'fence' ||
       kind === 'heading' ||
       kind === 'list' ||
+      kind === 'setext' ||
       kind === 'thematic' ||
       (kind === 'blockquote' && previousKind !== 'blockquote')
 
     if (lineStart > 0 && (forceNewSegment || startsBlock)) starts.push(lineStart)
 
     forceNewSegment =
-      kind === 'blank' || kind === 'fence' || kind === 'heading' || kind === 'thematic'
+      kind === 'blank' ||
+      kind === 'fence' ||
+      kind === 'heading' ||
+      kind === 'setext' ||
+      kind === 'thematic'
     previousKind = kind
     if (lineEnd === -1) break
     lineStart = lineEnd + 1

@@ -193,6 +193,15 @@ describe('tokenizeGroupMentions', () => {
     expect(firstMention(text, MEMBERS)).toBeNull()
   })
 
+  it.each(['===', '  === \t'])(
+    'inline backtick run 不跨 Setext 等号下划线 %j 配对',
+    (underline) => {
+      const text = ['`unclosed', underline, '`@UI 设计师`'].join('\n')
+
+      expect(firstMention(text, MEMBERS)).toBeNull()
+    }
+  )
+
   it('同一普通段落内的 code span 仍可跨 soft line break', () => {
     const text = ['`跨行', '@UI 设计师` @产品'].join('\n')
 
