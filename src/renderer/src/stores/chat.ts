@@ -185,6 +185,35 @@ export const useChatStore = defineStore('chat', {
       this.webSearch = false
     },
 
+    /**
+     * 回到"还没选会话"的状态(聊天首页)。
+     *
+     * 不建空会话就是这个状态存在的意义:用户点"新对话"只是想开个头,真到
+     * 发出第一句才落库。否则每点一次就在列表里留一条永远空着的记录。
+     */
+    closeConversation(): void {
+      this.conversationId = ''
+      this.messages = []
+      this.activities = {}
+      this.reasoning = {}
+      this.error = ''
+    },
+
+    /**
+     * 确保聊天模式下有一条会话可用。
+     *
+     * 起始页是**故意不建会话**的(见 closeConversation),但附件和目录授权都
+     * 需要一个归属——用户往起始页拖一个文件时不该静默无反应。所以这类动作
+     * 先调这个:到那一刻会话才真的落库。
+     *
+     * 设计工作台里 projectId 非空,直接返回,不受影响。
+     */
+    async ensureChat(): Promise<void> {
+      if (this.projectId || this.conversationId) return
+      const created = await window.api.chatSession.create()
+      await this.openConversation(created.id)
+    },
+
     /** 进入工作台时调用。重复调用只在会话变化时重新拉取 */
     async openConversation(conversationId: string): Promise<void> {
       this.ensureSubscribed()

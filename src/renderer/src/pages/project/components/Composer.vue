@@ -117,6 +117,9 @@ async function addFiles(files: File[]): Promise<void> {
 const localFiles = ref<GrantedRoot[]>([])
 
 async function attachLocalFiles(files: File[]): Promise<void> {
+  // 聊天起始页还没有会话,而授权需要一个归属。拖进来这一刻把它建出来,
+  // 否则文件被静默丢弃——用户完全看不出为什么没反应
+  await chatStore.ensureChat()
   const scope = chatStore.rootScope
   if (!scope) return
 
@@ -151,6 +154,7 @@ async function grantAndCollect(scope: RootScope, paths: string[]): Promise<void>
 }
 
 async function pickLocalFiles(): Promise<void> {
+  await chatStore.ensureChat()
   const scope = chatStore.rootScope
   if (!scope) return
   const { granted, rejected } = await window.api.workspace.pickFiles(scope)
@@ -210,6 +214,17 @@ function send(): void {
   localFiles.value = []
   emit('send', body, files)
 }
+
+/**
+ * 供外部预填输入框(聊天首页的快捷卡片)。
+ *
+ * 用 expose 而不是 prop:draft 是输入框的内部状态,做成受控 prop 会让每次
+ * 敲键盘都往上冒一次事件,而外部只在"点了卡片"这一个时刻需要写入。
+ */
+function setDraft(text: string): void {
+  draft.value = text
+}
+defineExpose({ setDraft })
 
 function onEnter(e: KeyboardEvent): void {
   // Enter 发送,Shift+Enter 换行(输入法组合期间不触发)
