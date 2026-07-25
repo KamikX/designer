@@ -33,6 +33,7 @@ interface FenceOpening {
 interface BacktickRun {
   start: number
   end: number
+  segment: number
   closingStart: number | null
 }
 
@@ -73,9 +74,17 @@ function markdownColumnAfter(text: string, initialColumn: number): number {
 function indexBacktickRuns(text: string): Map<number, BacktickRun> {
   const runs: BacktickRun[] = []
   const fenceDelimiterStarts = findFenceDelimiterStarts(text)
+  const segmentStarts = findInlineSegmentStarts(text)
   let index = 0
+  let segment = 0
+  let nextSegmentIndex = 1
 
   while (index < text.length) {
+    while (nextSegmentIndex < segmentStarts.length && index >= segmentStarts[nextSegmentIndex]) {
+      segment++
+      nextSegmentIndex++
+    }
+
     if (fenceDelimiterStarts.has(index)) {
       while (text[index] === '`') index++
       continue
@@ -89,15 +98,17 @@ function indexBacktickRuns(text: string): Map<number, BacktickRun> {
     const start = index
     index++
     while (text[index] === '`') index++
-    runs.push({ start, end: index, closingStart: null })
+    runs.push({ start, end: index, segment, closingStart: null })
   }
 
-  const nextByLength = new Map<number, number>()
+  const nextBySegment = new Map<number, Map<number, number>>()
   for (let index = runs.length - 1; index >= 0; index--) {
     const run = runs[index]
     const length = run.end - run.start
+    const nextByLength = nextBySegment.get(run.segment) ?? new Map<number, number>()
     run.closingStart = nextByLength.get(length) ?? null
     nextByLength.set(length, run.start)
+    nextBySegment.set(run.segment, nextByLength)
   }
 
   return new Map(runs.map((run) => [run.start, run]))
@@ -139,6 +150,51 @@ function parseFenceOpening(container: MarkdownContainer): FenceOpening | null {
     marker: opening[2],
     markerOffset: container.contentOffset + opening[1].length
   }
+}
+
+type InlineBlockKind = 'blank' | 'fence' | 'heading' | 'list' | 'blockquote' | 'thematic' | 'plain'
+
+function inlineBlockKind(line: string): InlineBlockKind {
+  if (/^[ \t]*$/.test(line)) return 'blank'
+  const container = parseMarkdownContainer(line)
+  if (parseFenceOpening(container)) return 'fence'
+  if (/^ {0,3}#{1,6}(?:[ \t]+|$)/.test(container.content)) return 'heading'
+  if (container.tokens.some((token) => token.type === 'list')) return 'list'
+  if (container.tokens.some((token) => token.type === 'blockquote')) return 'blockquote'
+  if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|(?:-[ \t]*){3,})$/.test(container.content)) {
+    return 'thematic'
+  }
+  return 'plain'
+}
+
+function findInlineSegmentStarts(text: string): number[] {
+  const starts = [0]
+  let lineStart = 0
+  let previousKind: InlineBlockKind | null = null
+  let forceNewSegment = false
+
+  while (lineStart < text.length) {
+    const lineEnd = text.indexOf('\n', lineStart)
+    const contentEnd = lineEnd === -1 ? text.length : lineEnd
+    const line = text.slice(lineStart, contentEnd).replace(/\r$/, '')
+    const kind = inlineBlockKind(line)
+    const startsBlock =
+      kind === 'fence' ||
+      kind === 'heading' ||
+      kind === 'list' ||
+      kind === 'thematic' ||
+      (kind === 'blockquote' && previousKind !== 'blockquote')
+
+    if (lineStart > 0 && (forceNewSegment || startsBlock)) starts.push(lineStart)
+
+    forceNewSegment =
+      kind === 'blank' || kind === 'fence' || kind === 'heading' || kind === 'thematic'
+    previousKind = kind
+    if (lineEnd === -1) break
+    lineStart = lineEnd + 1
+  }
+
+  return starts
 }
 
 function findFenceDelimiterStarts(text: string): Set<number> {

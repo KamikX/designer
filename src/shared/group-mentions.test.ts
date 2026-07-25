@@ -177,6 +177,28 @@ describe('tokenizeGroupMentions', () => {
     expect(firstMention(text, MEMBERS)).toBeNull()
   })
 
+  it('inline backtick run 不跨空行与下一段配对', () => {
+    const text = ['`unclosed', '', '`@UI 设计师`'].join('\n')
+
+    expect(firstMention(text, MEMBERS)).toBeNull()
+  })
+
+  it.each([
+    ['heading', '# '],
+    ['list', '- '],
+    ['blockquote', '> ']
+  ])('inline backtick run 不跨 %s 块边界配对', (_, prefix) => {
+    const text = ['`unclosed', `${prefix}\`@UI 设计师\``].join('\n')
+
+    expect(firstMention(text, MEMBERS)).toBeNull()
+  })
+
+  it('同一普通段落内的 code span 仍可跨 soft line break', () => {
+    const text = ['`跨行', '@UI 设计师` @产品'].join('\n')
+
+    expect(firstMention(text, MEMBERS)).toBe(FE_ID)
+  })
+
   it('backtick fence 的 info string 含反引号时不视为围栏', () => {
     const text = ['```md`invalid', '@UI 设计师'].join('\n')
 
