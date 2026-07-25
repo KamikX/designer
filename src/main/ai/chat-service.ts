@@ -16,7 +16,7 @@ import { getProviderRowById } from '../db/repo/provider'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { readConfig } from '../config'
 import { autoTitle, getConversation, touchConversation } from '../db/repo/conversation'
-import { getProject, touchProject } from '../db/repo/project'
+import { getProject, setProjectStyleBrief, touchProject } from '../db/repo/project'
 import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/repo/artifact'
 import { buildHistory } from './context'
 import { buildSystemPrompt } from './prompts'
@@ -28,7 +28,11 @@ import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
 import { loadTargetTemplates } from '../skills/targets'
 import { renderTargetTemplates, targetContractPrompt } from './prompts/targets'
-import { renderStyleBriefPrompt } from './style-brief'
+import {
+  buildStyleBriefTools,
+  createInitialStyleWriteGate,
+  renderStyleBriefPrompt
+} from './style-brief'
 import { connectMcpTools } from '../mcp/tools'
 import type { McpSession } from '../mcp/tools'
 import { buildSkillTools } from '../skills/tools'
@@ -209,6 +213,18 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const useTools = model.abilities.includes('tools')
   const canSeeImages = model.abilities.includes('vision')
   const vfs = new SessionVfs(currentFiles)
+  const initialStyleGate = project
+    ? createInitialStyleWriteGate({
+        styleBrief: project.styleBrief ?? '',
+        hasFiles: currentFiles.length > 0,
+        useTools
+      })
+    : null
+  if (initialStyleGate?.isLocked()) {
+    vfs.blockWrites(
+      '请先确认整体视觉方向；有答案时先调用 set_style_brief 保存，跳过后才可使用兜底风格。'
+    )
+  }
   const parser = new FileStreamParser()
   /** tools 路的解说自己累计;markers 路用 parser.narration */
   let toolNarration = ''
@@ -283,6 +299,31 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                   onDelete: (path) => emit({ streamId, type: 'file-delete', path })
                 })
               : {}),
+            // 整体视觉方向是项目数据；纯聊天没有项目，因而不暴露此工具。
+            ...buildStyleBriefTools(
+              project
+                ? {
+                    projectId: project.id,
+                    vfs,
+                    save: (styleBrief) => setProjectStyleBrief(project.id, styleBrief),
+                    onDiscard: (changes) => {
+                      for (const change of changes) {
+                        if (!vfs.existedAtStart(change.path)) {
+                          emit({ streamId, type: 'file-delete', path: change.path })
+                          continue
+                        }
+                        emit({
+                          streamId,
+                          type: 'file-patch',
+                          path: change.path,
+                          oldText: '',
+                          newText: change.before
+                        })
+                      }
+                    }
+                  }
+                : null
+            ),
             // 无条件内置:模型对"今天是几号"只有训练截止时的印象,而且它
             // 意识不到这一点——不给它这个,涉及日期的输出会自信地错
             ...buildTimeTools(),
@@ -311,8 +352,13 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               streamId,
               signal: abort.signal,
               emit: (questionId, ask) => emit({ streamId, type: 'question', questionId, ask }),
-              onAnswered: (questionId, ask, answer) =>
+              onAnswered: (questionId, ask, answer) => {
                 questionParts.push({ type: 'question', questionId, ask, answer })
+                // 安装类工具走它们自己的 askUser context，不会触发这个回调；
+                // 因此只有普通 ask_user 的"跳过"才能解除首次风格闸门。
+                initialStyleGate?.onStyleQuestionAnswered(answer)
+                if (initialStyleGate && !initialStyleGate.isLocked()) vfs.allowWrites()
+              }
             }),
             ...buildLocalTools(roots, { canSeeImages, intent: input.text }),
             ...buildImageTools({
@@ -344,7 +390,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             previewError,
             slopLint,
             skillCatalog: catalog,
-            styleBriefPrompt: renderStyleBriefPrompt(project, currentFiles.length > 0, useTools ? 'tools' : 'markers'),
+            styleBriefPrompt: renderStyleBriefPrompt(
+              project,
+              currentFiles.length > 0,
+              useTools ? 'tools' : 'markers'
+            ),
             targetContract: targetContractPrompt(targets),
             targetTemplates: renderTargetTemplates(targetTemplates)
           })

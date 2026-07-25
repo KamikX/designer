@@ -35,6 +35,7 @@ const VERB: Record<string, string> = {
   diff_changes: '查看本轮改动',
   check_syntax: '结构自检',
   revert_file: '撤销修改',
+  set_style_brief: '更新视觉方向',
   ask_user: '向你提问',
   view_image: '查看参考图',
   note_image: '记录参考图要点',

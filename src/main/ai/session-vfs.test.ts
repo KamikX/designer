@@ -301,6 +301,57 @@ describe('SessionVfs.transact', () => {
   })
 })
 
+describe('SessionVfs 写入闸门', () => {
+  it('锁住时空的 markers 灌入不算写入，首次确认回合可正常结束', () => {
+    const fs = vfs()
+    fs.blockWrites('请先确认整体视觉方向。')
+
+    expect(() => fs.ingest(new Map(), new Set())).not.toThrow()
+    expect(fs.hasChanges).toBe(false)
+  })
+
+  it('锁住时所有关键写路径都拒绝，解锁后恢复写入', () => {
+    const fs = vfs()
+    fs.blockWrites('请先确认整体视觉方向。')
+
+    expect(() => fs.write('new.css', 'x')).toThrow(/请先确认整体视觉方向/)
+    expect(() => fs.edit('index.html', '<h1>你好</h1>', '<h1>Hi</h1>')).toThrow(
+      /请先确认整体视觉方向/
+    )
+    expect(() => fs.multiEdit('index.html', [])).toThrow(/请先确认整体视觉方向/)
+    expect(() => fs.move('index.html', 'main.html')).toThrow(/请先确认整体视觉方向/)
+    expect(() => fs.copy('index.html', 'copy.html')).toThrow(/请先确认整体视觉方向/)
+    expect(() => fs.revert('index.html')).toThrow(/请先确认整体视觉方向/)
+    expect(() => fs.remove('index.html')).toThrow(/请先确认整体视觉方向/)
+    expect(() => fs.transact(() => fs.write('again.css', 'x'))).toThrow(/请先确认整体视觉方向/)
+    expect(() => fs.ingest(new Map([['marker.html', '<main />']]), new Set())).toThrow(
+      /请先确认整体视觉方向/
+    )
+    expect(fs.hasChanges).toBe(false)
+
+    fs.allowWrites()
+    expect(fs.write('new.css', 'x').path).toBe('new.css')
+  })
+
+  it('discardChanges 恢复文件、改动集与产物输出', () => {
+    const fs = vfs()
+    fs.edit('index.html', '<h1>你好</h1>', '<h1>Hello</h1>')
+    fs.remove('css/style.css')
+    fs.write('new.css', 'x')
+
+    fs.blockWrites('整体视觉方向保存失败。', { discardChanges: true, permanent: true })
+
+    expect(fs.hasChanges).toBe(false)
+    expect(fs.read('index.html')).toContain('<h1>你好</h1>')
+    expect(fs.has('css/style.css')).toBe(true)
+    expect(fs.has('new.css')).toBe(false)
+    expect(fs.writes.size).toBe(0)
+    expect(fs.deletes.size).toBe(0)
+    fs.allowWrites()
+    expect(() => fs.write('still-blocked.css', 'x')).toThrow(/整体视觉方向保存失败/)
+  })
+})
+
 describe('SessionVfs.changes', () => {
   it('相对回合开始时的快照,给出改前改后', () => {
     const fs = vfs()

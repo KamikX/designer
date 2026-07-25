@@ -1,4 +1,9 @@
+import { tool } from 'ai'
+import type { ToolSet } from 'ai'
+import { z } from 'zod'
 import type { Project } from '../../shared/types'
+import type { AskUserAnswer } from '../../shared/types'
+import { SessionVfs } from './session-vfs'
 
 export interface StyleFallback {
   color: string
@@ -10,6 +15,80 @@ export interface StyleFallback {
 }
 
 export type StyleBriefPromptMode = 'tools' | 'markers'
+
+export interface StyleBriefToolContext {
+  /** 只由项目设计会话传入；纯聊天传 null，因而不会暴露本工具。 */
+  projectId: string
+  vfs: SessionVfs
+  save: (styleBrief: string) => Project | null | Promise<Project | null>
+  /** 保存失败后撤回此前已推到渲染层的本轮文件预览。 */
+  onDiscard?: (changes: ReturnType<SessionVfs['changes']>) => void
+}
+
+/**
+ * 把首次确认的提问结果转换为可测试的写入状态。非跳过答案仍须先落库
+ * StyleBrief，避免模型把问答内容当作已经持久化的授权。
+ */
+export function createInitialStyleWriteGate(input: {
+  styleBrief: string
+  hasFiles: boolean
+  /** markers 协议没有 set_style_brief/ask_user 的解锁路径，不使用此工具专属闸门。 */
+  useTools?: boolean
+}): {
+  isLocked: () => boolean
+  onStyleQuestionAnswered: (answer: AskUserAnswer) => void
+} {
+  let locked = (input.useTools ?? true) && !input.styleBrief.trim() && !input.hasFiles
+  return {
+    isLocked: () => locked,
+    onStyleQuestionAnswered: (answer) => {
+      if (answer.skipped) locked = false
+    }
+  }
+}
+
+/**
+ * 整体视觉方向的唯一写入口。局部组件、单页例外不得调用它；成功保存前
+ * VFS 不会解锁，保存失败则丢弃本回合文件改动并永久锁住写入。
+ */
+export function buildStyleBriefTools(context: StyleBriefToolContext | null): ToolSet {
+  if (!context) return {}
+
+  return {
+    set_style_brief: tool({
+      description:
+        '保存用户明确确认的**项目整体视觉方向**，并让它从本轮起立即生效。' +
+        '仅用于全局风格、综合色彩、密度、整体气质等项目级决定；' +
+        '**局部组件调整、单页例外、某个区块的临时风格不得调用**。' +
+        '先调用本工具并确认保存成功，才能写任何设计稿文件。尽量保留用户原话，不要改写成模板化术语。',
+      inputSchema: z.object({
+        styleBrief: z
+          .string()
+          .describe('用户确认的整体视觉方向；保留原话，空字符串表示清除已有方向')
+      }),
+      execute: async (input) => {
+        const styleBrief = input.styleBrief.trim()
+        try {
+          const saved = await context.save(styleBrief)
+          if (!saved) throw new Error('项目不存在或未能保存。')
+        } catch {
+          const changes = context.vfs.changes()
+          context.vfs.blockWrites('未能保存项目视觉方向，本轮已丢弃文件改动且不再允许写入。', {
+            discardChanges: true,
+            permanent: true
+          })
+          context.onDiscard?.(changes)
+          return '错误:未能保存项目视觉方向，本轮文件改动已丢弃，后续写入已拒绝。'
+        }
+
+        context.vfs.allowWrites()
+        return styleBrief
+          ? `已更新视觉方向，本轮立即生效：${styleBrief}`
+          : '已清除项目视觉方向，本轮立即生效：后续将按当前设计稿或首次确认规则处理。'
+      }
+    })
+  }
+}
 
 const FALLBACK_OPTIONS: Record<keyof StyleFallback, readonly string[]> = {
   color: ['石墨中性', '靛青冷色', '森林绿', '绛红暖色', '青碧', '琥珀'],
@@ -106,5 +185,6 @@ ${escapeMarkdownFence(styleBrief)}
   return `## 首次风格确认
 
 项目尚未记录视觉方向，也还没有设计稿。**第一次写文件前**先用 ask_user 确认用户的整体风格，
-给 2–3 个结合业务的具体方向并允许自由输入；用户跳过时才使用下面的兜底风格。\n\n${renderFallback(project.id)}`
+给 2–3 个结合业务的具体方向并允许自由输入。若用户给出任何整体方向，必须先用 set_style_brief 保存后才能写文件；
+用户跳过时才使用下面的兜底风格。\n\n${renderFallback(project.id)}`
 }

@@ -172,10 +172,40 @@ export class SessionVfs {
   private readonly touched = new Set<string>()
   /** 本回合删掉的路径 */
   private readonly removed = new Set<string>()
+  /** 写入闸门:首次风格未确认、或视觉方向保存失败时阻止本回合再产出文件。 */
+  private writeBlockReason: string | null = null
+  private writesPermanentlyBlocked = false
 
   constructor(seed: ArtifactFile[]) {
     this.files = new Map(seed.map((f) => [f.path, f.content]))
     this.original = new Map(this.files)
+  }
+
+  /** 阻止后续文件改动；可选地丢弃本回合已累积的全部改动。 */
+  blockWrites(
+    reason: string,
+    options: { discardChanges?: boolean; permanent?: boolean } = {}
+  ): void {
+    if (options.discardChanges) this.discardChanges()
+    this.writeBlockReason = reason
+    this.writesPermanentlyBlocked ||= options.permanent === true
+  }
+
+  /** 解除可恢复的写入闸门；保存失败造成的永久闸门不能由模型绕过。 */
+  allowWrites(): void {
+    if (this.writesPermanentlyBlocked) return
+    this.writeBlockReason = null
+  }
+
+  private assertWritesAllowed(): void {
+    if (this.writeBlockReason) throw new VfsError(this.writeBlockReason)
+  }
+
+  private discardChanges(): void {
+    this.files.clear()
+    for (const [path, content] of this.original) this.files.set(path, content)
+    this.touched.clear()
+    this.removed.clear()
   }
 
   /* ---------------------------------------------------------------- */
@@ -199,6 +229,11 @@ export class SessionVfs {
 
   has(path: string): boolean {
     return this.files.has(path)
+  }
+
+  /** 路径在本回合开始时是否存在，供撤回实时预览时区分新建与空文件。 */
+  existedAtStart(path: string): boolean {
+    return this.original.has(assertPath(path))
   }
 
   /** 原文,不带行号也不截断。给 check_syntax 这类内部消费者用,不直接喂模型 */
@@ -357,6 +392,7 @@ export class SessionVfs {
 
   /** 整份写入:新建文件,或改动幅度过大时的重写 */
   write(path: string, content: string): VfsPatch {
+    this.assertWritesAllowed()
     const key = assertPath(path)
     this.files.set(key, content)
     this.touched.add(key)
@@ -367,6 +403,7 @@ export class SessionVfs {
 
   /** 局部替换。锚点必须逐字符一致且(默认)唯一 */
   edit(path: string, oldText: string, newText: string, replaceAll = false): VfsPatch {
+    this.assertWritesAllowed()
     const { key, content } = this.mustGetForEdit(path)
     const next = applyEdit(content, { oldText, newText, replaceAll })
     this.files.set(key, next.content)
@@ -382,6 +419,7 @@ export class SessionVfs {
    * 收拾,模型也说不清自己改到哪了。
    */
   multiEdit(path: string, edits: EditSpec[]): VfsPatch[] {
+    this.assertWritesAllowed()
     if (edits.length === 0) throw new VfsError('edits 不能为空。')
     const { key, content } = this.mustGetForEdit(path)
 
@@ -417,6 +455,7 @@ export class SessionVfs {
    * 内容参与。
    */
   move(from: string, to: string): { removed: string; patch: VfsPatch } {
+    this.assertWritesAllowed()
     const source = this.mustGetForEdit(from)
     const target = assertPath(to)
     if (source.key === target) throw new VfsError('源路径与目标路径相同。')
@@ -429,6 +468,7 @@ export class SessionVfs {
 
   /** 复制。同样不需要内容过一遍模型 */
   copy(from: string, to: string): VfsPatch {
+    this.assertWritesAllowed()
     const source = this.mustGetForEdit(from)
     const target = assertPath(to)
     if (source.key === target) throw new VfsError('源路径与目标路径相同。')
@@ -445,6 +485,7 @@ export class SessionVfs {
    * 一份自己刚弄坏的文件"恰恰是最容易越描越黑的操作。
    */
   revert(path: string): { patch: VfsPatch | null; deleted: string | null } {
+    this.assertWritesAllowed()
     const key = assertPath(path)
     const wasTouched = this.touched.has(key)
     const wasRemoved = this.removed.has(key)
@@ -467,6 +508,7 @@ export class SessionVfs {
 
   /** 返回归一化后的路径,供事件发送 */
   remove(path: string): string {
+    this.assertWritesAllowed()
     const key = assertPath(path)
     if (!this.files.has(key)) {
       throw new VfsError(`文件不存在:${key},无需删除。`)
@@ -485,6 +527,7 @@ export class SessionVfs {
    * patch 事件攒着,等事务成了再发,否则渲染层已经画上去了。
    */
   transact<T>(run: () => T): T {
+    this.assertWritesAllowed()
     const files = new Map(this.files)
     const touched = new Set(this.touched)
     const removed = new Set(this.removed)
@@ -521,16 +564,25 @@ export class SessionVfs {
   ingest(writes: Map<string, string>, deletes: Set<string>): void {
     // 这一路的路径来自模型自由书写的标记,非法的直接丢弃而不是抛——
     // 一个坏路径不该让整回合的产出都落不了库
-    for (const path of deletes) {
+    const validDeletes = [...deletes].flatMap((path) => {
       const key = safePath(path)
-      if (!key) continue
+      return key ? [key] : []
+    })
+    const validWrites = [...writes].flatMap(([path, content]) => {
+      const key = safePath(path)
+      return key ? [[key, content] as const] : []
+    })
+    // markers 路即使没有文件标记也会走一次 ingest；空输入不改变 VFS，
+    // 因此不能把首次确认回合误判成一次被拒绝的写入。
+    if (validDeletes.length === 0 && validWrites.length === 0) return
+    this.assertWritesAllowed()
+
+    for (const key of validDeletes) {
       this.files.delete(key)
       this.touched.delete(key)
       this.removed.add(key)
     }
-    for (const [path, content] of writes) {
-      const key = safePath(path)
-      if (!key) continue
+    for (const [key, content] of validWrites) {
       this.files.set(key, content)
       this.touched.add(key)
       this.removed.delete(key)

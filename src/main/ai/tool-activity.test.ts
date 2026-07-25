@@ -72,6 +72,10 @@ describe('大字段不外泄', () => {
 })
 
 describe('各工具的标签', () => {
+  it('更新整体视觉方向不用暴露原话', () => {
+    expect(verbOf('set_style_brief')).toBe('更新视觉方向')
+    expect(labelFor('set_style_brief', { styleBrief: '冷灰紧凑' })).toBe('更新视觉方向')
+  })
   it('搜索带上关键词与范围', () => {
     expect(labelFor('search_files', { query: '--brand' })).toBe('搜索 “--brand”')
     expect(labelFor('search_files', { query: 'hero', glob: 'css/**' })).toBe('搜索 “hero” (css/**)')

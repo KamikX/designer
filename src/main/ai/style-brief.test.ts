@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Project } from '../../shared/types'
 import { CRAFT_CORE } from './prompts/craft-core'
-import { renderStyleBriefPrompt, styleFallback } from './style-brief'
+import {
+  buildStyleBriefTools,
+  createInitialStyleWriteGate,
+  renderStyleBriefPrompt,
+  styleFallback
+} from './style-brief'
+import { SessionVfs } from './session-vfs'
 
 function project(styleBrief: string): Project {
   return {
@@ -36,6 +42,7 @@ describe('renderStyleBriefPrompt', () => {
 
     expect(out).toContain('第一次写文件前')
     expect(out).toContain('ask_user')
+    expect(out).toContain('set_style_brief')
     expect(out).toContain('用户跳过')
     expect(out).toContain('兜底风格')
     expect(out).toContain('色彩')
@@ -67,13 +74,142 @@ describe('renderStyleBriefPrompt', () => {
   })
 })
 
+describe('buildStyleBriefTools', () => {
+  it('没有项目上下文时不构建整体视觉方向工具', () => {
+    expect(buildStyleBriefTools(null)).toEqual({})
+  })
+
+  async function call(
+    save: (value: string) => Project | null,
+    input: { styleBrief: string },
+    vfs = new SessionVfs([])
+  ): Promise<string> {
+    const entry = buildStyleBriefTools({
+      projectId: 'project-style-brief',
+      vfs,
+      save
+    }).set_style_brief
+    return String(
+      await entry.execute!(input, {
+        toolCallId: 'style',
+        messages: []
+      } as never)
+    )
+  }
+
+  it('trim 后保存整体视觉方向，并回显本轮立即生效的值', async () => {
+    let saved = ''
+    const vfs = new SessionVfs([])
+    vfs.blockWrites('等待整体视觉方向。')
+
+    const out = await call(
+      (value) => {
+        saved = value
+        return project(value)
+      },
+      { styleBrief: '  冷灰、紧凑的数据工作台  ' },
+      vfs
+    )
+
+    expect(saved).toBe('冷灰、紧凑的数据工作台')
+    expect(out).toContain('冷灰、紧凑的数据工作台')
+    expect(vfs.write('index.html', '<main />').path).toBe('index.html')
+  })
+
+  it('空串会清除已保存的整体视觉方向', async () => {
+    let saved = '未调用'
+    const out = await call(
+      (value) => {
+        saved = value
+        return project(value)
+      },
+      { styleBrief: '   ' }
+    )
+
+    expect(saved).toBe('')
+    expect(out).toContain('已清除')
+  })
+
+  it('保存失败会丢弃本轮改动并永久拒绝后续写入', async () => {
+    const vfs = new SessionVfs([])
+    vfs.write('draft.html', '<main>临时</main>')
+
+    const out = await call(() => null, { styleBrief: '深色工业风' }, vfs)
+
+    expect(out).toMatch(/^错误:/)
+    expect(out).toContain('未能保存')
+    expect(vfs.hasChanges).toBe(false)
+    expect(vfs.has('draft.html')).toBe(false)
+    expect(() => vfs.write('index.html', '<main />')).toThrow(/未能保存项目视觉方向/)
+  })
+
+  it('保存失败会报告需要撤回的实时文件改动', async () => {
+    const vfs = new SessionVfs([{ path: 'index.html', content: '<main>原始</main>' }])
+    const discarded: unknown[] = []
+    vfs.write('index.html', '<main>临时</main>')
+
+    const entry = buildStyleBriefTools({
+      projectId: 'project-style-brief',
+      vfs,
+      save: () => null,
+      onDiscard: (changes: unknown) => discarded.push(changes)
+    } as never).set_style_brief
+    await entry.execute!({ styleBrief: '深色工业风' }, {
+      toolCallId: 'style',
+      messages: []
+    } as never)
+
+    expect(discarded).toEqual([
+      [
+        {
+          path: 'index.html',
+          before: '<main>原始</main>',
+          after: '<main>临时</main>'
+        }
+      ]
+    ])
+  })
+})
+
+describe('首次风格写入闸门', () => {
+  it('仅在首次无方向且没有设计稿时锁住；跳过提问才解锁', () => {
+    const gate = createInitialStyleWriteGate({ styleBrief: '', hasFiles: false })
+
+    expect(gate.isLocked()).toBe(true)
+    gate.onStyleQuestionAnswered({ selections: [['深色']], skipped: false })
+    expect(gate.isLocked()).toBe(true)
+    gate.onStyleQuestionAnswered({ selections: [], skipped: true })
+    expect(gate.isLocked()).toBe(false)
+  })
+
+  it('已有方向或已有文件时不启用首次闸门', () => {
+    expect(createInitialStyleWriteGate({ styleBrief: '冷灰', hasFiles: false }).isLocked()).toBe(
+      false
+    )
+    expect(createInitialStyleWriteGate({ styleBrief: '', hasFiles: true }).isLocked()).toBe(false)
+  })
+
+  it('markers 协议不启用工具专属的首次写入闸门', () => {
+    expect(
+      createInitialStyleWriteGate({ styleBrief: '', hasFiles: false, useTools: false }).isLocked()
+    ).toBe(false)
+  })
+})
+
 describe('styleFallback', () => {
   it('同一项目的六个维度稳定，且每个维度由自己的 key 派生', () => {
     const first = styleFallback('project-a')
     const second = styleFallback('project-a')
 
     expect(second).toEqual(first)
-    expect(Object.keys(first)).toEqual(['color', 'brightness', 'density', 'geometry', 'surface', 'navigation'])
+    expect(Object.keys(first)).toEqual([
+      'color',
+      'brightness',
+      'density',
+      'geometry',
+      'surface',
+      'navigation'
+    ])
     expect(first).toEqual({
       color: expect.any(String),
       brightness: expect.any(String),
@@ -88,9 +224,15 @@ describe('styleFallback', () => {
     const projects = Array.from({ length: 24 }, (_, i) => `project-${i}`)
     const signatures = projects.map((id) => styleFallback(id))
 
-    expect(new Set(signatures.map((fallback) => `${fallback.color}|${fallback.brightness}`)).size).toBeGreaterThan(5)
-    expect(new Set(signatures.map((fallback) => `${fallback.density}|${fallback.geometry}`)).size).toBeGreaterThan(5)
-    expect(new Set(signatures.map((fallback) => `${fallback.surface}|${fallback.navigation}`)).size).toBeGreaterThan(5)
+    expect(
+      new Set(signatures.map((fallback) => `${fallback.color}|${fallback.brightness}`)).size
+    ).toBeGreaterThan(5)
+    expect(
+      new Set(signatures.map((fallback) => `${fallback.density}|${fallback.geometry}`)).size
+    ).toBeGreaterThan(5)
+    expect(
+      new Set(signatures.map((fallback) => `${fallback.surface}|${fallback.navigation}`)).size
+    ).toBeGreaterThan(5)
   })
 })
 
