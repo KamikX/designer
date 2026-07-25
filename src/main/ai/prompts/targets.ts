@@ -22,13 +22,14 @@ export const TARGET_LABELS: Record<DesignTarget, string> = {
 
 /**
  * 一句话切人格。借 open-design 的做法:同一个模型,先说清"此刻你是谁",
- * 产出的姿态就跟着变——落地页需要的是品牌感,中后台需要的恰恰是无趣。
+ * 产出的姿态就跟着变——落地页需要的是品牌感,中后台需要的是清晰的运营效率。
  */
 const TARGET_ROLES: Record<DesignTarget, string> = {
   landing: '**落地页** —— 此刻你是品牌设计师:讲一个故事、推一个行动,整页只允许一个决定性的亮点。',
   web: '**Web 应用** —— 此刻你是系统设计师:hover、焦点、键盘是一等公民,第一屏就是干活的界面。',
   mobile: '**移动端 App** —— 此刻你是交互设计师:真机框呈现,一屏只做一件事,拇指够得着才算数。',
-  admin: '**中后台** —— 此刻你是信息架构师:密度即功能,装饰即噪音,克制到近乎无趣才是对的。'
+  admin:
+    '**中后台** —— 此刻你是信息架构师:优先让高频运营任务清晰、高效；具体的字体、色温、表面与装饰程度服从 StyleBrief。'
 }
 
 export function targetContractPrompt(targets: DesignTarget[]): string {

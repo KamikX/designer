@@ -50,10 +50,6 @@ const TRUST_GRADIENT =
 const REMOTE_PLACEHOLDER =
   /(unsplash\.com|placehold\.co|placekitten|picsum\.photos|via\.placeholder)/i
 
-/** 标题用无衬线系统字体 */
-const DISPLAY_SANS =
-  /(?:^|\})\s*(?:h1|h2|\.h1|\.hero[\w-]*)[^{}]*\{[^}]*font-family\s*:\s*["']?(?:Inter|Roboto|Arial|system-ui|-apple-system)/im
-
 export function lintArtifact(path: string, source: string): Finding[] {
   // 只查前端产物。theme.css 里出现色值是正常的
   if (!/\.(html|vue|tsx|jsx|css)$/.test(path)) return []
@@ -116,13 +112,6 @@ export function lintArtifact(path: string, source: string): Finding[] {
     fix: '用 .ph-img 这类本地占位块。'
   })
 
-  hit(DISPLAY_SANS, {
-    rule: 'display-sans',
-    severity: 'P1',
-    message: '标题硬写了无衬线系统字体。',
-    fix: '标题用 theme.css 里的 --font-display;标题字体要和正文不同。'
-  })
-
   /*
    * 用了组件库却没定制主题。
    *
@@ -135,7 +124,7 @@ export function lintArtifact(path: string, source: string): Finding[] {
       rule: 'antd-unthemed',
       severity: 'P1',
       message: '用了 antdv-next 组件,但 App.vue 没有 a-config-provider 定制主题,控件是默认蓝。',
-      fix: '最外层包 <a-config-provider :theme>,colorPrimary 对齐 theme.css 的 brand;配方见 antdv-theme 技能。',
+      fix: '最外层包 <a-config-provider :theme>，让 colorPrimary、字体、圆角与明暗按 StyleBrief 映射到 theme.css；实现方式见 antdv-theme 技能。',
       snippet: 'App.vue'
     })
   }

@@ -20,18 +20,20 @@ StyleBrief 高于本文示例。先从其中识别明暗、密度、几何、字
 <script setup lang="ts">
 import { theme } from 'antdv-next'
 
-const resolved = readProjectThemeTokens() // 从项目自己的 theme.css 读取已确认的语义 token
+const rootStyle = getComputedStyle(document.documentElement)
+const readToken = (name: string) => rootStyle.getPropertyValue(name).trim()
+const readNumberToken = (name: string) => Number.parseFloat(readToken(name))
+const isDark = document.documentElement.dataset.theme === 'dark'
 
 const themeConfig = {
-  algorithm: resolved.algorithms,
+  algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
   token: {
-    colorPrimary: resolved.brand, // 必须 = theme.css 的 --color-brand-500
-    colorBgBase: resolved.background,
-    colorTextBase: resolved.text,
-    borderRadius: resolved.radius, // 必须 = --radius-base 同档
-    fontFamily: resolved.fontFamily
-  },
-  components: resolved.components
+    colorPrimary: readToken('--color-brand-500'), // 必须 = theme.css
+    colorBgBase: readToken('--color-bg'),
+    colorTextBase: readToken('--color-ink'),
+    borderRadius: readNumberToken('--radius-base'),
+    fontFamily: readToken('--font-body')
+  }
 }
 </script>
 
@@ -42,8 +44,9 @@ const themeConfig = {
 </template>
 ```
 
-`readProjectThemeTokens` 是项目内的转换函数：它只读取本项目已生成的 `theme.css`，再按需要
-把 CSS 值转换为 antdv-next 所需的字符串或数字。不要把示例中的任何 token 组合抄成默认。
+示例直接读取本项目已生成的 `theme.css`，可在 Vue 浏览器预览中运行。`data-theme` 只用于
+表达项目已确认的明暗模式；需要紧凑算法或组件 token 时，按 StyleBrief 在同一对象中添加，
+不要把示例中的任何组合抄成默认。
 
 ## 三层开放翻译,从信号到组件
 
@@ -61,8 +64,8 @@ const themeConfig = {
 
 - **`colorPrimary` 必须等于 theme.css 的 `--color-brand-500`**。页面一套主色、
   控件另一套,是两套语言在打架——这条没有例外。
-- 圆角、字体同理对齐 theme.css:`borderRadius` 与 `--radius-base` 同档,
-  `fontFamily: 'inherit'` 跟页面。
+- 圆角、字体同理对齐 theme.css:`borderRadius` 与 `--radius-base` 同档，
+  `fontFamily` 与项目的字体 token 一致。
 - 明暗 algorithm 与页面侧 `theme.css` 同步，别出现控件和页面处于相反主题的情况。
 - 状态色(success/warning/error)必须保持清晰语义、足够对比度和非色彩辅助线索；品牌需求
   不能牺牲“危险”“成功”等含义。

@@ -44,12 +44,6 @@ describe('抓得住的', () => {
     const f = lintArtifact('a.css', '.k{text-transform:uppercase;font-size:11px}')
     expect(f.map((x) => x.rule)).toContain('caps-no-tracking')
   })
-
-  it('标题硬写系统无衬线', () => {
-    expect(
-      lintArtifact('a.css', 'h1 { font-family: Inter, sans-serif; }').map((x) => x.rule)
-    ).toContain('display-sans')
-  })
 })
 
 describe('不该报的', () => {
@@ -83,6 +77,14 @@ describe('不该报的', () => {
   it('色值少于阈值时不报', () => {
     const few = Array.from({ length: 8 }, (_, i) => `#00000${i}`).join(' ')
     expect(lintArtifact('a.html', few).map((x) => x.rule)).not.toContain('raw-hex')
+  })
+
+  it('明确的全 sans 字体体系合法，不按字体类别告警', () => {
+    const source = `
+      h1 { font-family: Inter, ui-sans-serif, sans-serif; }
+      body { font-family: Inter, ui-sans-serif, sans-serif; }
+    `
+    expect(lintArtifact('app.css', source)).toEqual([])
   })
 
   it('用户指定暖橙时不把单个颜色当成旧种子', () => {

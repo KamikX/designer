@@ -105,8 +105,9 @@ const LIB_PROMPTS: Record<PreviewLib, string> = {
   依赖组件库的栅格和默认主题色,设计感来自你的 token,组件库只是控件来源。
 - **主题必须定制,默认蓝原样交付 = 没做设计**:App.vue 最外层包
   \`<a-config-provider :theme>\`,colorPrimary 对齐 theme.css 的 brand、
-  圆角与字体同档、算法按气质选(dark/compact 可组合)。完整 token 清单、
-  算法组合与六套风格配方,**动手前先 activate_skill 加载 antdv-theme**。
+  圆角、字体与明暗基调也从同一份 theme.css 读取。按 StyleBrief 将信号开放映射到
+  algorithm、seed token 与必要的 component token，**动手前先 activate_skill 加载
+  antdv-theme**。
 `,
   '@antdv-next/icons': `
 ### 图标库:@antdv-next/icons(预览环境已加载)
