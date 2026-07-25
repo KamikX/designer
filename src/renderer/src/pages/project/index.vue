@@ -4,6 +4,7 @@ import { useProjectStore } from '@renderer/stores/project'
 import { ArrowLeftOutlined } from '@antdv-next/icons'
 import ChatPanel from './components/ChatPanel.vue'
 import WorkspacePane from './components/WorkspacePane.vue'
+import ExportButton from './components/ExportButton.vue'
 
 /**
  * 项目工作台:左对话 / 右预览与代码,中间分割条可拖拽调宽。
@@ -45,14 +46,23 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
       <a-tag v-if="store.current" style="margin-left: 4px">
         {{ STACK_LABEL[store.current.stack] }}
       </a-tag>
+      <!-- 顶到最右:导出是项目级动作,和标题同级 -->
+      <ExportButton v-if="store.current" style="margin-left: auto" />
     </a-flex>
 
-    <a-splitter class="workbench-body">
-      <a-splitter-panel :default-size="440" :min="340" :max="720" class="chat-pane">
-        <ChatPanel v-if="store.current" :project="store.current" />
+    <!-- flex 收在行内:<a-splitter> 的 class 同样带不上 scoped 的 data-v,
+         写成 .workbench-body{} 是不会生效的 -->
+    <a-splitter class="workbench-body" style="flex: 1; min-height: 0">
+      <!-- 面板里再套一层自己的 div:样式只能挂在这层上,原因见下方注释 -->
+      <a-splitter-panel :default-size="360" :min="300" :max="720">
+        <div class="chat-pane">
+          <ChatPanel v-if="store.current" :project="store.current" />
+        </div>
       </a-splitter-panel>
-      <a-splitter-panel :min="480" class="workspace-pane">
-        <WorkspacePane v-if="store.current" :project="store.current" />
+      <a-splitter-panel :min="480">
+        <div class="workspace-pane">
+          <WorkspacePane v-if="store.current" :project="store.current" />
+        </div>
       </a-splitter-panel>
     </a-splitter>
   </div>
@@ -64,6 +74,7 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  padding: 0 var(--page-pad) var(--page-pad);
 }
 
 .workbench-header {
@@ -71,20 +82,35 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
   padding-bottom: 8px;
 }
 
-.workbench-body {
-  flex: 1;
+/*
+ * ⚠️ 样式绝不能写在 <a-splitter-panel> 上,必须写在它里面那层自己的 div 上。
+ *
+ * Splitter 不会渲染我们写的 <a-splitter-panel>,而是取出 props 后在**它自己的**
+ * render 里重建面板(Splitter.js: createVNode(InternalPanel, ...))。class 会被
+ * 带过去,scoped 样式依赖的 data-v 属性不会——于是 `.chat-pane[data-v-x]` 这类
+ * 选择器永远匹配不上。
+ *
+ * 这种失效**完全静默**:CSS 语法正确、构建通过、类名在 DOM 上也看得见,只是
+ * 多了个属性条件匹配不上。我在这上面连着栽过两次(面板间距、文件树间距),
+ * 两次都以为改好了。所以现在一律多包一层 div。
+ */
+.chat-pane,
+.workspace-pane {
+  height: 100%;
   min-height: 0;
 }
 
 .chat-pane {
-  padding-right: 12px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  /* 左边距来自 .workbench 的 padding-left,取同一个值,输入框才左右对称 */
+  padding-right: var(--page-pad);
 }
 
 .workspace-pane {
-  padding-left: 12px;
-  min-height: 0;
+  /*
+   * 只取一半。这一侧不需要和 .chat-pane 对等:工作区是一张有底色、有圆角的
+   * 卡片,边界本来就看得见;而对话侧是裸内容,得靠留白把它和卡片分开。
+   * 两边都给满的话中间那条空白就过宽了。
+   */
+  padding-left: calc(var(--page-pad) / 2);
 }
 </style>

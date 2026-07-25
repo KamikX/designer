@@ -1,10 +1,15 @@
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { Conversation } from '../../../shared/types'
 import { getDb } from '../index'
 import { conversations } from '../schema'
 import type { ConversationRow } from '../schema'
 
-/** 会话仓储。一期每个项目只有一条 design 主会话,创建项目时自动建好。 */
+/**
+ * 会话仓储。两类会话共用这张表:
+ *
+ * - `design`:挂在项目下,每个项目一条主会话,创建项目时自动建好
+ * - `chat`:独立的纯聊天,**没有项目**(projectId 为 NULL),可以开很多条
+ */
 
 function toView(row: ConversationRow): Conversation {
   return row as Conversation
@@ -33,4 +38,61 @@ export function createConversation(projectId: string, kind = 'design'): Conversa
 export function ensureDesignConversation(projectId: string): Conversation {
   const existing = listConversations(projectId).find((c) => c.kind === 'design')
   return existing ?? createConversation(projectId, 'design')
+}
+
+/* ------------------------------------------------------------------ */
+/* 纯聊天                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 聊天列表,最近活跃的在前。
+ *
+ * 条件里的 projectId IS NULL 不是多余的:kind 是普通文本列,没有约束能阻止
+ * 将来出现一条挂在项目下的 chat,那种也不该混进独立聊天列表。
+ */
+export function listChats(): Conversation[] {
+  return getDb()
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.kind, 'chat'), isNull(conversations.projectId)))
+    .orderBy(desc(conversations.updatedAt))
+    .all()
+    .map(toView)
+}
+
+export function createChat(title = ''): Conversation {
+  return toView(
+    getDb().insert(conversations).values({ projectId: null, kind: 'chat', title }).returning().get()
+  )
+}
+
+export function renameConversation(id: string, title: string): void {
+  getDb().update(conversations).set({ title }).where(eq(conversations.id, id)).run()
+}
+
+export function deleteConversation(id: string): void {
+  // messages 与 workspace_roots 都带级联,不用手动清
+  getDb().delete(conversations).where(eq(conversations.id, id)).run()
+}
+
+/** 有新消息时提上来。聊天列表按这个排序 */
+export function touchConversation(id: string): void {
+  getDb()
+    .update(conversations)
+    .set({ updatedAt: sql`(datetime('now'))` })
+    .where(eq(conversations.id, id))
+    .run()
+}
+
+/**
+ * 用首条用户消息给聊天起标题。
+ *
+ * 只在标题还空着时写,不覆盖用户自己改过的名字。截断放在这里而不是显示层:
+ * 把几千字的开场白整段存进 title 列没有意义。
+ */
+export function autoTitle(id: string, firstMessage: string): void {
+  const current = getConversation(id)
+  if (!current || current.title) return
+  const title = firstMessage.replace(/\s+/g, ' ').trim().slice(0, 40)
+  if (title) renameConversation(id, title)
 }

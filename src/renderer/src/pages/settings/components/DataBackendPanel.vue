@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { message } from 'antdv-next'
+import { App } from 'antdv-next'
+
+// 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
+// 上下文,主题、语言、z-index 全用的是默认值
+const { message } = App.useApp()
 
 /**
  * 数据与同步。本期只做模式选择与连接参数保存(同步引擎二期上线):

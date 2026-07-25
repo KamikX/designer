@@ -3,7 +3,10 @@ import { extname, join, normalize, sep } from 'path'
 import { app, protocol } from 'electron'
 import { getArtifact, getArtifactFiles } from '../db/repo/artifact'
 import { getProject } from '../db/repo/project'
+import { resolveAsset } from '../storage/service'
 import { buildBootstrapHtml, injectHtmlRuntime } from './bootstrap'
+import { compilePreviewFile, isCompilable } from './compile'
+import type { Compiled } from './compile'
 
 /**
  * preview:// 协议:iframe 预览的静态服务。
@@ -60,7 +63,6 @@ export function registerAssetHandler(): void {
       // asset://<id> —— standard scheme 会把 host 小写,而 ULID 是大写,
       // 这里按小写化后的 host 反查不可行,所以资源 id 统一转大写比对
       const id = new URL(request.url).host.toUpperCase()
-      const { resolveAsset } = await import('../storage/service')
       const hit = await resolveAsset(id)
       if (!hit) return new Response('Not Found', { status: 404 })
       return new Response(new Uint8Array(hit.data), {
@@ -119,10 +121,13 @@ function serveArtifact(pathname: string): Response {
 
   const files = getArtifactFiles(artifact.id)
   const isEntry = filePath === '' || filePath === 'index.html'
+  // 设计 token:三种栈共用同一个约定文件,由运行时统一注入,
+  // 页面里不需要 link 或 import
+  const theme = files.find((f) => f.path === 'theme.css')?.content
 
   // vue3 / react:入口出引导页,其余文件按名直出(引导页里 fetch 用)
   if (isEntry && project.stack !== 'html') {
-    return html(buildBootstrapHtml(project.stack))
+    return html(buildBootstrapHtml(project.stack, theme))
   }
 
   const entryName = filePath === '' ? 'index.html' : filePath
@@ -131,11 +136,71 @@ function serveArtifact(pathname: string): Response {
 
   // html 栈的 html 文件注入 Tailwind 运行时与错误上抛
   if (project.stack === 'html' && entryName.endsWith('.html')) {
-    return html(injectHtmlRuntime(file.content))
+    return html(injectHtmlRuntime(file.content, theme))
   }
+
+  // SFC / TSX / TS / CSS 编译成 ES 模块直出。浏览器解析 `import './Foo.vue'`
+  // 时会自己发请求过来,再走一遍这里——不需要我们爬依赖
+  if (isCompilable(entryName)) {
+    try {
+      const { code, mime } = compileCached(artifact.id, entryName, file.content)
+      return new Response(code, {
+        headers: { 'content-type': mime, 'cache-control': 'no-cache' }
+      })
+    } catch (err) {
+      /*
+       * 返回一个**加载即抛错**的模块,而不是 500。
+       *
+       * 500 的响应体浏览器不会暴露给 JS——import 失败只会得到一句
+       * "Failed to fetch dynamically imported module",编译器的诊断信息全丢了。
+       * 而那句话对模型毫无用处:它不知道自己哪一行写错了。
+       *
+       * 改成 200 + 一个 throw,错误文本就会原样出现在 iframe 的 catch 里,
+       * 经 postMessage → 预览面板 → reportPreviewError,下一轮进 system prompt。
+       * 模型于是能看着真正的编译错误自己改。
+       */
+      const detail = err instanceof Error ? err.message : String(err)
+      return new Response(
+        `throw new Error(${JSON.stringify(`编译失败 ${entryName}\n${detail}`)})`,
+        {
+          headers: { 'content-type': JS_MIME, 'cache-control': 'no-cache' }
+        }
+      )
+    }
+  }
+
   return new Response(file.content, {
     headers: { 'content-type': mimeOf(entryName), 'cache-control': 'no-cache' }
   })
+}
+
+/**
+ * 编译缓存。
+ *
+ * 版本产物是**不可变**的:改一次生成一个新 artifactId,老版本的内容永远不变。
+ * 所以 (artifactId, path) 是一个天然的永久缓存键,不需要失效策略。
+ *
+ * 这比换编译器更能决定体验:一次预览要发十几个模块请求,刷新、切 tab、切版本
+ * 又会重来一遍。缓存之后除首次外全是查表。
+ *
+ * 只按条数封顶,不按字节:编译产物是文本,几百个文件也就几 MB,而按字节算要
+ * 额外维护大小统计,不划算。
+ */
+const CACHE_LIMIT = 500
+const cache = new Map<string, Compiled>()
+
+const JS_MIME = 'text/javascript; charset=utf-8'
+
+function compileCached(artifactId: string, path: string, source: string): Compiled {
+  const key = `${artifactId}/${path}`
+  const hit = cache.get(key)
+  if (hit) return hit
+
+  const compiled = compilePreviewFile(path, source)
+  // 超了就丢最早的一条(Map 保持插入序),够用的 LRU 近似
+  if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value!)
+  cache.set(key, compiled)
+  return compiled
 }
 
 function html(content: string): Response {

@@ -64,7 +64,7 @@ export async function importSkillPackage(givenPath?: string): Promise<Skill | nu
 
 /** 解析 SKILL.md:可选的 YAML frontmatter(只认 name/description 两行)+ 正文 */
 function parseSkillMd(raw: string): { name: string; description: string; body: string } {
-  const text = raw.replace(/^﻿/, '')
+  const text = raw.replace(/^\uFEFF/, '')
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!match) {
     return { name: '', description: '', body: text.trim() }

@@ -1,5 +1,5 @@
 import type { MenuItemType } from 'antdv-next'
-import { AppstoreOutlined, HomeOutlined, SettingOutlined } from '@antdv-next/icons'
+import { AppstoreOutlined, HomeOutlined, MessageOutlined, SettingOutlined } from '@antdv-next/icons'
 
 /**
  * 侧栏菜单配置。
@@ -11,6 +11,7 @@ import { AppstoreOutlined, HomeOutlined, SettingOutlined } from '@antdv-next/ico
 /** 上半部分：主导航 */
 export const MENU_ITEMS: MenuItemType[] = [
   { key: '/', icon: HomeOutlined, label: '首页' },
+  { key: '/chat', icon: MessageOutlined, label: '聊天' },
   { key: '/components', icon: AppstoreOutlined, label: '组件' }
 ]
 

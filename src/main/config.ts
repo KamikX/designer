@@ -19,7 +19,9 @@ const DEFAULT_CONFIG: AppConfig = {
   lang: 'zh-CN',
   dark: false,
   primaryColor: '#1677ff',
-  window: { width: 1400, height: 900 }
+  window: { width: 1400, height: 900 },
+  assistantModel: null,
+  searchApi: null
 }
 
 let cache: AppConfig | null = null

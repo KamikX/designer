@@ -3,11 +3,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, extname, join } from 'path'
 import { ulid } from 'ulid'
 import type { AssetRef, ProviderTestResult, StorageConfigInput } from '../../shared/types'
-import { createAssetRecord, getAssetRecord } from '../db/repo/asset'
+import { createAssetRecord, findAssetBySha256, getAssetRecord } from '../db/repo/asset'
 import { ASSET_CACHE_DIR } from '../paths'
 import { s3Credentials, storageMode } from '../services-config'
 import { createLocalBackend } from './backends/local'
 import { createS3Backend } from './backends/s3'
+import { prepareImage } from './image'
 import type { StorageBackend } from './types'
 
 /**
@@ -56,6 +57,55 @@ export async function importAsset(filePath: string): Promise<AssetRef> {
     location: key
   })
   return { id, uri: `asset://${id}`, mime, size: data.length }
+}
+
+/**
+ * 导入图片字节(拖拽 / 粘贴 / 选文件通用)。
+ *
+ * 入库前先缩放——省的是后面每一次发送的上行带宽和被拒风险,见 image.ts。
+ * 按 sha256 去重:同一张图拖两次不该变成两条记录、两份存储。
+ */
+export async function importImage(input: {
+  name: string
+  mime: string
+  data: Buffer
+}): Promise<AssetRef> {
+  const prepared = prepareImage(input.data, input.mime, input.name)
+  const sha256 = createHash('sha256').update(prepared.data).digest('hex')
+
+  const existing = findAssetBySha256(sha256)
+  if (existing) {
+    return {
+      id: existing.id,
+      uri: `asset://${existing.id}`,
+      mime: existing.mime,
+      size: existing.size,
+      width: prepared.width || undefined,
+      height: prepared.height || undefined
+    }
+  }
+
+  const id = ulid()
+  const { backend, kind } = await activeBackend()
+  const key = kind === 'local' ? `${id.slice(0, 2)}/${id}` : `assets/${id}`
+  await backend.put(key, prepared.data, prepared.mime)
+
+  createAssetRecord({
+    id,
+    mime: prepared.mime,
+    size: prepared.data.length,
+    sha256,
+    backend: kind,
+    location: key
+  })
+  return {
+    id,
+    uri: `asset://${id}`,
+    mime: prepared.mime,
+    size: prepared.data.length,
+    width: prepared.width || undefined,
+    height: prepared.height || undefined
+  }
 }
 
 /** asset:// 协议用:按 id 取回实体与 mime */

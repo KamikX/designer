@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAppConfig } from '@renderer/components/config/config'
+import AssistantModelField from './AssistantModelField.vue'
 
 const { lang, dark, primaryColor, langOptions, colorPresets, resetTheme } = useAppConfig()
 </script>
@@ -23,6 +24,9 @@ const { lang, dark, primaryColor, langOptions, colorPresets, resetTheme } = useA
         />
       </a-form-item>
       <a-button @click="resetTheme">重置主题</a-button>
+
+      <a-divider />
+      <AssistantModelField />
     </a-form>
   </div>
 </template>

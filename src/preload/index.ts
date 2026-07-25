@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AppConfig, DesignerApi } from './api'
 
@@ -21,10 +21,17 @@ const api: DesignerApi = {
     get: (id) => ipcRenderer.invoke('project:get', id),
     create: (input) => ipcRenderer.invoke('project:create', input),
     rename: (id, name) => ipcRenderer.invoke('project:rename', id, name),
-    remove: (id) => ipcRenderer.invoke('project:delete', id)
+    remove: (id) => ipcRenderer.invoke('project:delete', id),
+    saveSettings: (id, patch) => ipcRenderer.invoke('project:save-settings', id, patch)
   },
   conversation: {
     ensureDesign: (projectId) => ipcRenderer.invoke('conversation:ensure-design', projectId)
+  },
+  chatSession: {
+    list: () => ipcRenderer.invoke('chat:list'),
+    create: () => ipcRenderer.invoke('chat:create'),
+    rename: (id, title) => ipcRenderer.invoke('chat:rename', id, title),
+    remove: (id) => ipcRenderer.invoke('chat:delete', id)
   },
   provider: {
     list: () => ipcRenderer.invoke('provider:list'),
@@ -45,6 +52,8 @@ const api: DesignerApi = {
     listMessages: (conversationId) => ipcRenderer.invoke('chat:list-messages', conversationId),
     send: (input) => ipcRenderer.invoke('chat:send', input),
     abort: (streamId) => ipcRenderer.invoke('chat:abort', streamId),
+    answerQuestion: (questionId, answer) =>
+      ipcRenderer.invoke('chat:answer-question', questionId, answer),
     onStream: (cb) => {
       // 只透传 payload,不把 IpcRendererEvent 漏给渲染层
       const listener = (_e: Electron.IpcRendererEvent, event: Parameters<typeof cb>[0]): void =>
@@ -52,6 +61,25 @@ const api: DesignerApi = {
       ipcRenderer.on('chat:stream', listener)
       return () => ipcRenderer.removeListener('chat:stream', listener)
     }
+  },
+  preview: {
+    reportError: (projectId, artifactId, message) =>
+      ipcRenderer.invoke('preview:report-error', projectId, artifactId, message)
+  },
+  workspace: {
+    list: (scope) => ipcRenderer.invoke('workspace:list', scope),
+    grant: (scope) => ipcRenderer.invoke('workspace:grant', scope),
+    pickFiles: (scope) => ipcRenderer.invoke('workspace:pick-files', scope),
+    grantPaths: (scope, paths) => ipcRenderer.invoke('workspace:grant-paths', scope, paths),
+    /**
+     * 取拖进来的 File 的真实磁盘路径。
+     *
+     * Electron 32 起 File.path 被移除了(它本来就是个违反 Web 标准的扩展),
+     * 只能走 webUtils,而 webUtils 只在 preload 里有——渲染进程直接调不到。
+     * 这是拖拽文件这条路唯一的取路径手段。
+     */
+    pathOf: (file) => webUtils.getPathForFile(file),
+    revoke: (id) => ipcRenderer.invoke('workspace:revoke', id)
   },
   artifact: {
     list: (projectId) => ipcRenderer.invoke('artifact:list', projectId),
@@ -62,7 +90,8 @@ const api: DesignerApi = {
     getConfig: () => ipcRenderer.invoke('storage:get-config'),
     setConfig: (input) => ipcRenderer.invoke('storage:set-config', input),
     test: (input) => ipcRenderer.invoke('storage:test', input),
-    importAsset: (filePath) => ipcRenderer.invoke('storage:import-asset', filePath)
+    importAsset: (filePath) => ipcRenderer.invoke('storage:import-asset', filePath),
+    importImage: (input) => ipcRenderer.invoke('storage:import-image', input)
   },
   sync: {
     getConfig: () => ipcRenderer.invoke('sync:get-config'),
@@ -77,6 +106,7 @@ const api: DesignerApi = {
   },
   skill: {
     list: () => ipcRenderer.invoke('skill:list'),
+    listBuiltin: () => ipcRenderer.invoke('skill:list-builtin'),
     create: (input) => ipcRenderer.invoke('skill:create', input),
     update: (id, patch) => ipcRenderer.invoke('skill:update', id, patch),
     remove: (id) => ipcRenderer.invoke('skill:delete', id),

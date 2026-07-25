@@ -63,5 +63,12 @@ export default defineConfig(
       ]
     }
   },
+  {
+    // 构建脚本是纯 .mjs，套用应用代码的类型规则没有意义——那里写不了类型注解
+    files: ['scripts/**/*.mjs'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
+    }
+  },
   eslintConfigPrettier
 )

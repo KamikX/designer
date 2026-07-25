@@ -3,6 +3,7 @@ import { dirname, join, normalize, sep } from 'path'
 import { dialog, shell } from 'electron'
 import { getArtifact, getArtifactFiles } from './db/repo/artifact'
 import { getProject } from './db/repo/project'
+import { exportDirName } from '../shared/export-name'
 
 /**
  * 导出设计稿:弹目录选择框,把当前版本的整棵文件树写出去。
@@ -19,9 +20,9 @@ export async function exportArtifact(artifactId: string): Promise<string | null>
   })
   if (result.canceled || result.filePaths.length === 0) return null
 
-  // 目录名带项目名和版本号,避免直接把一堆文件倒进用户选的目录
-  const dirName = `${sanitizeName(project?.name ?? 'design')}-v${artifact.version}`
-  const targetDir = join(result.filePaths[0], dirName)
+  // 目录名带项目名和版本号,避免直接把一堆文件倒进用户选的目录。
+  // 规则在 shared,渲染层的文件树根节点显示的就是这个名字
+  const targetDir = join(result.filePaths[0], exportDirName(project?.name, artifact.version))
 
   for (const file of getArtifactFiles(artifactId)) {
     const safe = safeJoin(targetDir, file.path)
@@ -31,10 +32,6 @@ export async function exportArtifact(artifactId: string): Promise<string | null>
 
   shell.showItemInFolder(targetDir)
   return targetDir
-}
-
-function sanitizeName(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '_').slice(0, 50) || 'design'
 }
 
 /**

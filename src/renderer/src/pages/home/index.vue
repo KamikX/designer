@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { theme, Modal } from 'antdv-next'
+import { App, theme } from 'antdv-next'
 import { DeleteOutlined, PlusOutlined } from '@antdv-next/icons'
 import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '@renderer/stores/project'
 import CreateProjectModal from './components/CreateProjectModal.vue'
 import type { Project, Stack } from '@shared/types'
+
+// 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
+// 上下文,主题、语言、z-index 全用的是默认值
+const { modal } = App.useApp()
 
 const { token } = theme.useToken()
 const router = useRouter()
@@ -40,7 +44,7 @@ function openProject(id: string): void {
 }
 
 function confirmRemove(p: Project): void {
-  Modal.confirm({
+  modal.confirm({
     title: `删除项目「${p.name}」?`,
     content: '对话记录与设计稿会一并删除,不可恢复。',
     okType: 'danger',
@@ -124,6 +128,11 @@ function fromNow(time: string): string {
 </template>
 
 <style scoped>
+/* 页面自己的边距。以前靠 layout-content__inner 统一给,现在各页面自理 */
+.home {
+  padding: 0 var(--page-pad) var(--page-pad);
+}
+
 .home-head {
   margin-bottom: 20px;
 }

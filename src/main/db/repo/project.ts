@@ -1,5 +1,5 @@
 import { desc, eq, sql } from 'drizzle-orm'
-import type { CreateProjectInput, Project } from '../../../shared/types'
+import type { CreateProjectInput, Project, ProjectSettings } from '../../../shared/types'
 import { getDb } from '../index'
 import { projects } from '../schema'
 import type { ProjectRow } from '../schema'
@@ -66,4 +66,22 @@ export function touchProject(id: string): void {
 
 export function deleteProject(id: string): void {
   getDb().delete(projects).where(eq(projects.id, id)).run()
+}
+
+/**
+ * 合并保存工作台选择。
+ *
+ * 用合并而不是整体覆盖:模型选择器和技能勾选是两个独立组件,各自变化时
+ * 各存各的。整体覆盖会让后写的那个把前一个刚存的抹掉。
+ *
+ * 不动 updatedAt——它决定项目列表的排序,"换了个模型"不该让项目跳到最前面。
+ */
+export function saveProjectSettings(id: string, patch: ProjectSettings): void {
+  const current = getProject(id)
+  if (!current) return
+  getDb()
+    .update(projects)
+    .set({ settings: { ...current.settings, ...patch } })
+    .where(eq(projects.id, id))
+    .run()
 }

@@ -27,7 +27,13 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   return db
 }
 
-/** 参与同步的业务表。change_log/local_meta 是同步设施自身，不在其列 */
+/**
+ * 参与同步的业务表。change_log/local_meta 是同步设施自身，不在其列。
+ *
+ * workspace_roots 也**故意不同步**：它存的是本机的绝对路径，同步到另一台
+ * 机器上要么路径不存在，要么更糟——恰好存在一个同名目录，于是把那台机器上
+ * 完全不相干的目录授权给了 AI。授权必须在哪台机器上给、就只在哪台机器上生效。
+ */
 const SYNCED_TABLES = [
   'projects',
   'providers',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { message, Modal, theme } from 'antdv-next'
+import { App, theme } from 'antdv-next'
 import { DownOutlined, PlusOutlined, SyncOutlined } from '@antdv-next/icons'
 import { useProviderStore } from '@renderer/stores/provider'
 import { inferModelMeta } from '@shared/model-caps'
@@ -12,6 +12,10 @@ import type {
   Provider,
   RemoteModel
 } from '@shared/types'
+
+// 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
+// 上下文,主题、语言、z-index 全用的是默认值
+const { message, modal } = App.useApp()
 
 /**
  * AI 供应商配置(合并了模型管理)。
@@ -435,7 +439,7 @@ async function runTest(p: Provider): Promise<void> {
 }
 
 function confirmRemove(p: Provider): void {
-  Modal.confirm({
+  modal.confirm({
     title: `删除供应商「${p.name}」?`,
     content: '其下的模型配置会一并删除。',
     okType: 'danger',

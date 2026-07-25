@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { message, theme } from 'antdv-next'
+import { App, theme } from 'antdv-next'
 import { useProjectStore } from '@renderer/stores/project'
 import type { DesignMode, Stack } from '@shared/types'
+
+// 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
+// 上下文,主题、语言、z-index 全用的是默认值
+const { message } = App.useApp()
 
 const open = defineModel<boolean>('open', { default: false })
 

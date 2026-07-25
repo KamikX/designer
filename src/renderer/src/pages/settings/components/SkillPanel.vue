@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { message, Modal, theme } from 'antdv-next'
+import { App, theme } from 'antdv-next'
 import { ImportOutlined, PlusOutlined } from '@antdv-next/icons'
-import type { Skill } from '@shared/types'
+import type { BuiltinSkillView, Skill } from '@shared/types'
+
+// 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
+// 上下文,主题、语言、z-index 全用的是默认值
+const { message, modal } = App.useApp()
 
 /**
  * 技能配置:可复用的提示词包(设计规范、组件库偏好、行业模板等)。
@@ -11,7 +15,10 @@ import type { Skill } from '@shared/types'
 const { token } = theme.useToken()
 
 const skills = ref<Skill[]>([])
+const builtins = ref<BuiltinSkillView[]>([])
 const loaded = ref(false)
+
+void window.api.skill.listBuiltin().then((list) => (builtins.value = list))
 
 async function load(): Promise<void> {
   skills.value = await window.api.skill.list()
@@ -99,7 +106,7 @@ async function toggle(s: Skill, enabled: boolean): Promise<void> {
 }
 
 function confirmRemove(s: Skill): void {
-  Modal.confirm({
+  modal.confirm({
     title: `删除技能「${s.name}」?`,
     okType: 'danger',
     onOk: async () => {
@@ -130,9 +137,29 @@ function confirmRemove(s: Skill): void {
       </a-space>
     </a-flex>
 
+    <!-- 内置技能:只读,让用户知道有哪些规范在强制生效。
+         不摆出来的话,"AI 为什么总是先做设计体系"就成了黑箱 -->
+    <div v-if="builtins.length" class="builtin-block">
+      <div class="builtin-title">内置规范(随应用更新,不可编辑)</div>
+      <div
+        v-for="b in builtins"
+        :key="b.id"
+        class="builtin-row"
+        :style="{ borderColor: token.colorBorderSecondary }"
+      >
+        <a-flex align="center" :gap="8">
+          <span style="font-weight: 500">{{ b.name }}</span>
+          <a-tag v-if="b.alwaysOn" color="blue">始终生效</a-tag>
+        </a-flex>
+        <div class="builtin-desc" :style="{ color: token.colorTextTertiary }">
+          {{ b.description }}
+        </div>
+      </div>
+    </div>
+
     <a-empty
       v-if="loaded && skills.length === 0"
-      description="还没有配置技能"
+      description="还没有自己的技能"
       style="margin-top: 80px"
     >
       <a-space>
@@ -222,5 +249,31 @@ function confirmRemove(s: Skill): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.builtin-block {
+  margin-bottom: 16px;
+}
+
+.builtin-title {
+  font-size: 12px;
+  opacity: 0.55;
+  margin-bottom: 8px;
+}
+
+.builtin-row {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.builtin-row + .builtin-row {
+  margin-top: 6px;
+}
+
+.builtin-desc {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 2px;
 }
 </style>

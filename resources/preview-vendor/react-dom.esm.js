@@ -1,3 +1,13 @@
+/* 由 scripts/prepare-preview-vendor.mjs 生成,勿手改 */
+import __React__ from './react.esm.js'
+const __module__ = { exports: {} }
+function __require__(id) {
+  if (id === 'react') return __React__
+  throw new Error('预览运行时缺少依赖: ' + id)
+}
+// call(globalThis):ESM 里 this 是 undefined,而 UMD 头部拿 this 当全局对象。
+// 这里走的是 CommonJS 分支用不到它,但别留一个 undefined 在那儿等着炸
+;(function (module, exports, require) {
 /**
  * @license React
  * react-dom.production.min.js
@@ -265,3 +275,8 @@ c,!1,d,e);a[Ja]=b.current;sc(8===a.nodeType?a.parentNode:a);return new Xf(b)};Q.
 var d=null!=c&&c.hydratedSources||null,e=!1,f="",g=aj;null!==c&&void 0!==c&&(!0===c.unstable_strictMode&&(e=!0),void 0!==c.identifierPrefix&&(f=c.identifierPrefix),void 0!==c.onRecoverableError&&(g=c.onRecoverableError));b=Wi(b,null,a,1,null!=c?c:null,e,!1,f,g);a[Ja]=b.current;sc(a);if(d)for(a=0;a<d.length;a++)c=d[a],e=c._getVersion,e=e(c._source),null==b.mutableSourceEagerHydrationData?b.mutableSourceEagerHydrationData=[c,e]:b.mutableSourceEagerHydrationData.push(c,e);return new Ud(b)};Q.render=
 function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmountComponentAtNode=function(a){if(!Vd(a))throw Error(m(40));return a._reactRootContainer?(yb(function(){Wd(null,null,a,!1,function(){a._reactRootContainer=null;a[Ja]=null})}),!0):!1};Q.unstable_batchedUpdates=Tf;Q.unstable_renderSubtreeIntoContainer=function(a,b,c,d){if(!Vd(c))throw Error(m(200));if(null==a||void 0===a._reactInternals)throw Error(m(38));return Wd(a,b,c,!1,d)};Q.version="18.3.1-next-f1338f8080-20240426"});
 })();
+
+}).call(globalThis, __module__, __module__.exports, __require__)
+const __default__ = __module__.exports
+export default __default__
+export const { __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED, createPortal, createRoot, findDOMNode, flushSync, hydrate, hydrateRoot, render, unmountComponentAtNode, unstable_batchedUpdates, unstable_renderSubtreeIntoContainer, version } = __default__

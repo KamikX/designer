@@ -13,6 +13,8 @@ asarUnpack:
   - resources/**
   # 原生模块的 .node 必须解包到 asar 外，打包在 asar 里 dlopen 加载不了
   - '**/node_modules/better-sqlite3/**'
+  # oxc 的编译二进制（按平台分发的 N-API 预编译包），同理
+  - '**/node_modules/@oxc-transform/**'
 win:
   executableName: designer
 nsis:

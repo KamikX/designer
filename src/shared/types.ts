@@ -15,6 +15,19 @@ export interface AppConfig {
   dark: boolean
   primaryColor: string
   window: { width: number; height: number }
+  /**
+   * 全局辅助模型:长文档超过阈值时,先用它压成"设计要用的提炼稿"再交给
+   * 主模型。挑一个便宜的即可——它做的是信息抽取,不是设计。
+   * 没配就跳过提炼,直接把截断后的原文给主模型。
+   */
+  assistantModel: { providerId: string; modelId: string } | null
+  /**
+   * 搜索 API 备用来源。默认不配——联网搜索走 Electron 无头浏览器,开箱即用。
+   *
+   * 只在浏览器那条路**被反爬拦住**时才动用,不是"配了就优先用":那会白白
+   * 消耗用户的配额,而多数时候浏览器那条是好使的。
+   */
+  searchApi: { provider: 'brave' | 'tavily'; key: string } | null
 }
 
 /** 设计稿产物技术栈，项目创建时三选一，之后不可改 */
@@ -23,12 +36,31 @@ export type Stack = 'html' | 'vue3' | 'react'
 /** 设计模式：高质量 UI 设计 / 快速原型（原型的差异化二期细化） */
 export type DesignMode = 'design' | 'prototype'
 
+/**
+ * 工作台里"上次选了什么",按项目记住。
+ *
+ * 为什么按项目而不是全局:不同项目本来就该配不同的模型和技能——给管理
+ * 后台画图和给营销页画图,需要的技能集不一样。全局单值会让每次切项目
+ * 都要重设一遍。
+ *
+ * 每个字段都可缺省,含义是"这个项目还没选过,按全局默认来"。注意 skillIds
+ * 的 `[]` 和 `undefined` 不是一回事:前者是用户**明确一个都不要**,后者才是
+ * 没选过——两者混为一谈会让"全部取消勾选"这个操作在重启后失效。
+ */
+export interface ProjectSettings {
+  providerId?: string
+  modelId?: string
+  skillIds?: string[]
+  mcpIds?: string[]
+}
+
 export interface Project {
   id: string
   name: string
   stack: Stack
   designMode: DesignMode
   description: string
+  settings: ProjectSettings | null
   createdAt: string
   updatedAt: string
 }
@@ -42,20 +74,87 @@ export interface CreateProjectInput {
 
 export interface Conversation {
   id: string
-  projectId: string
+  /** 纯聊天没有项目,这里为 null */
+  projectId: string | null
   title: string
-  /** 'design' 主设计会话;二期问答模式为 'qa' */
-  kind: 'design' | 'qa'
+  /** 'design' 项目里的设计会话 | 'chat' 独立的纯聊天 */
+  kind: 'design' | 'chat'
   createdAt: string
   updatedAt: string
+}
+
+/* ------------------------------------------------------------------ */
+/* 交互式提问(AI 动手前先跟用户确认方向)                                */
+/* ------------------------------------------------------------------ */
+
+/** 一道题的选项 */
+export interface AskOption {
+  label: string
+  /** 选项释义,渲染成小字;帮用户判断选哪个 */
+  description?: string
+}
+
+export interface AskQuestion {
+  /** 极短标签(不超过 8 个字),折叠态和已答摘要里显示 */
+  header: string
+  question: string
+  /** single 单选 / multiple 多选 */
+  kind: 'single' | 'multiple'
+  options: AskOption[]
+  /** 允许"其他",用户可以自己填一个 */
+  allowCustom?: boolean
+}
+
+/** ask_user 工具的入参:一次最多问 4 题,别把用户当问卷填 */
+export interface AskUserInput {
+  /** 一句话说明为什么要问 */
+  intro?: string
+  questions: AskQuestion[]
+  /** 末尾的自由描述框 */
+  notes?: { label: string; placeholder?: string }
+}
+
+export interface AskUserAnswer {
+  /** 按题序排列,每题选中的标签(自定义输入直接作为一项) */
+  selections: string[][]
+  /** 自由描述 */
+  notes?: string
+  /** 用户点了跳过 / 中止 / 超时 */
+  skipped?: boolean
 }
 
 /**
  * 消息内容分片。assistant 生成的文件正文不存在 parts 里(在
  * artifact_files),这里只留 file 引用——历史回放时天然不带旧文件体。
+ *
+ * question 分片连答案一起存:重开项目时问答卡片照常显示,而且是已答状态。
  */
 export type MessagePart =
-  { type: 'text'; text: string } | { type: 'file'; path: string; action: 'write' | 'delete' }
+  | { type: 'text'; text: string }
+  | { type: 'file'; path: string; action: 'write' | 'delete' }
+  | {
+      type: 'question'
+      questionId: string
+      ask: AskUserInput
+      answer: AskUserAnswer | null
+    }
+  /**
+   * 用户提供的参考图。**只有发出它的那一轮**会把像素喂给模型,之后的
+   * 历史里只回放引用与 description——图片按尺寸计费,每轮重发一次等于
+   * 每轮重付一次。模型真要再看,用 view_image 工具自己拉回来。
+   *
+   * description 由模型看过图之后用 note_image 写下,是"记忆"的载体:
+   * 有它多数后续轮次就不必再看图了。
+   */
+  | {
+      type: 'image'
+      assetId: string
+      mime: string
+      name: string
+      width?: number
+      height?: number
+      description?: string
+    }
 
 export interface ChatUsage {
   inputTokens: number
@@ -96,12 +195,34 @@ export interface SendChatInput {
   text: string
   providerId: string
   modelId: string
+  /**
+   * 随本轮附上的参考图。模型需有 vision 能力,否则主进程直接拒。
+   * 带上 name 是因为 assets 表只存哈希与位置,不存文件名。
+   */
+  attachments?: { assetId: string; name: string }[]
+  /**
+   * 本会话启用的技能 id。内置的强制技能不在这里——它们由主进程无条件
+   * 注入,用户关不掉。
+   */
+  skillIds?: string[]
+  /**
+   * 本轮是否开启联网搜索。默认关。
+   *
+   * 按轮次传而不是存成会话设置:用户是在输入框上点开关的,那是一个"这句话
+   * 要不要联网"的即时决定。存成持久状态会出现"我上周开过,今天忘了它还开着"。
+   */
+  webSearch?: boolean
 }
 
 export interface SendChatResult {
   streamId: string
   userMessageId: string
   assistantMessageId: string
+  /**
+   * 本轮从用户消息里识别并自动授权的本地路径。渲染层据此刷新授权列表,
+   * 让用户立刻看见"我刚才那句话让 AI 能读什么了"。
+   */
+  grantedRoots?: WorkspaceRoot[]
 }
 
 /**
@@ -114,9 +235,39 @@ export type ChatStreamEvent = { streamId: string } & (
   | { type: 'file-delta'; path: string; text: string }
   | { type: 'file-end'; path: string }
   | { type: 'file-delete'; path: string }
+  /**
+   * 工具协议下的局部编辑。oldText 是定位锚点,空串表示整份替换
+   * (新建或全文重写)。渲染层据此就地 applyEdits,而不是重放全文。
+   */
+  | {
+      type: 'file-patch'
+      path: string
+      oldText: string
+      newText: string
+      replaceAll?: boolean
+    }
+  /**
+   * AI 要问用户问题,工具循环**停在这里等作答**。渲染层弹出问答卡片,
+   * 用户提交后走 chat.answerQuestion 把答案送回主进程,循环才继续。
+   */
+  | { type: 'question'; questionId: string; ask: AskUserInput }
+  /**
+   * 工具调用的生命周期。没有这几个事件,工具协议下聊天框就是一片死寂:
+   * 模型在调工具的那几十秒里根本不产文字,textStream 无事可吐。
+   *
+   * label / summary 都是主进程算好的人话短句——原始入参不出主进程,
+   * write_file 的 content 是整份文件,推给渲染层既没用又贵。
+   */
+  | { type: 'tool-start'; callId: string; toolName: string; label: string }
+  | { type: 'tool-update'; callId: string; label: string }
+  | { type: 'tool-end'; callId: string; ok: boolean; summary?: string }
+  /** 有思考能力的模型的思考流。本来就在计费,显示出来不额外花钱 */
+  | { type: 'reasoning'; text: string }
   | { type: 'usage'; usage: ChatUsage }
   | { type: 'done'; messageId: string; artifactId: string | null }
-  | { type: 'error'; message: string }
+  // artifactId:出错前工具已经改好的部分仍然会成版本(见 chat-service 的
+  // keepWork),渲染层要认下来,否则那些改动存了却看不见
+  | { type: 'error'; message: string; artifactId?: string | null }
 )
 
 /** 决定主进程用哪个 AI SDK 工厂创建模型实例 */
@@ -261,6 +412,14 @@ export interface Skill {
   updatedAt: string
 }
 
+/** 内置技能:随应用发布,用户不可编辑;alwaysOn 的还不可关闭 */
+export interface BuiltinSkillView {
+  id: string
+  name: string
+  description: string
+  alwaysOn: boolean
+}
+
 export interface SkillInput {
   name: string
   description?: string
@@ -333,11 +492,54 @@ export interface DataBackendInput {
   }
 }
 
+/**
+ * 用户授权给某个项目的本地目录。本地文件工具的唯一权限来源:
+ * 没有授权就没有工具,AI 连试探的入口都没有。
+ */
+export interface WorkspaceRoot {
+  id: string
+  /** 设计项目的授权。与 conversationId 恰好有一个存在 */
+  projectId?: string
+  /** 纯聊天的授权,跟着会话走 */
+  conversationId?: string
+  path: string
+  name: string
+}
+
+/**
+ * 授权范围的归属:设计项目 或 纯聊天会话,恰好有一个。
+ *
+ * 用联合类型而不是两个可选字段——后者允许"两个都传"和"都不传",
+ * 而那两种都是无意义的调用,却要到运行时才发现。
+ */
+export type RootScope = { projectId: string } | { conversationId: string }
+
+export interface GrantedRoot extends WorkspaceRoot {
+  /** 文件还是目录。只用于界面显示,不入库 */
+  isFile: boolean
+}
+
+/** 批量授权的结果。单条失败不拖垮整批,失败的原样带回来告诉用户 */
+export interface GrantOutcome {
+  granted: GrantedRoot[]
+  rejected: { path: string; reason: string }[]
+}
+
 export interface AssetRef {
   id: string
   uri: string
   mime: string
   size: number
+  /** 图片才有;缩放之后的尺寸 */
+  width?: number
+  height?: number
+}
+
+/** 渲染层拖拽 / 粘贴 / 选文件三种来源统一走字节,不走路径 */
+export interface ImportImageInput {
+  name: string
+  mime: string
+  data: ArrayBuffer
 }
 
 /**
@@ -359,17 +561,49 @@ export interface DesignerApi {
     create: (input: CreateProjectInput) => Promise<Project>
     rename: (id: string, name: string) => Promise<Project | null>
     remove: (id: string) => Promise<void>
+    /** 合并保存工作台选择(模型/技能/MCP),只覆盖传进来的字段 */
+    saveSettings: (id: string, patch: ProjectSettings) => Promise<void>
   }
   conversation: {
     /** 项目的 design 主会话,不存在则自动创建 */
     ensureDesign: (projectId: string) => Promise<Conversation>
   }
+  /** 独立的纯聊天会话(没有项目) */
+  chatSession: {
+    list: () => Promise<Conversation[]>
+    create: () => Promise<Conversation>
+    rename: (id: string, title: string) => Promise<void>
+    remove: (id: string) => Promise<void>
+  }
   chat: {
     listMessages: (conversationId: string) => Promise<Message[]>
     send: (input: SendChatInput) => Promise<SendChatResult>
     abort: (streamId: string) => Promise<void>
+    /** 回答 AI 的提问,工具循环收到后继续往下跑 */
+    answerQuestion: (questionId: string, answer: AskUserAnswer) => Promise<void>
     /** 订阅流式事件,返回取消订阅函数。整个应用只应有一个订阅者(chat store) */
     onStream: (cb: (event: ChatStreamEvent) => void) => () => void
+  }
+  preview: {
+    /** 预览 iframe 里出的运行时错误,上报给主进程,下一轮带给模型 */
+    reportError: (projectId: string, artifactId: string, message: string) => Promise<void>
+  }
+  workspace: {
+    list: (scope: RootScope) => Promise<WorkspaceRoot[]>
+    /** 弹目录选择框授权一个本地目录;用户取消返回 null */
+    grant: (scope: RootScope) => Promise<WorkspaceRoot | null>
+    /** 弹原生文件选择框并授权选中的文件 */
+    pickFiles: (scope: RootScope) => Promise<GrantOutcome>
+    /** 授权一批已知路径(从拖拽拿到的) */
+    grantPaths: (scope: RootScope, paths: string[]) => Promise<GrantOutcome>
+    /**
+     * 拖进来的 File → 真实磁盘路径。
+     *
+     * Electron 32 起 File.path 被移除,只能走 preload 里的 webUtils,
+     * 渲染进程自己拿不到——这是拖拽文件唯一的取路径手段。
+     */
+    pathOf: (file: File) => string
+    revoke: (id: string) => Promise<void>
   }
   artifact: {
     list: (projectId: string) => Promise<Artifact[]>
@@ -410,6 +644,8 @@ export interface DesignerApi {
     test: (input: StorageConfigInput) => Promise<ProviderTestResult>
     /** 导入本地文件为资源,返回 asset:// 引用 */
     importAsset: (filePath: string) => Promise<AssetRef>
+    /** 导入图片字节(拖拽 / 粘贴 / 选文件通用),入库前会按需缩放 */
+    importImage: (input: ImportImageInput) => Promise<AssetRef>
   }
   sync: {
     getConfig: () => Promise<DataBackendView>
@@ -428,6 +664,8 @@ export interface DesignerApi {
   }
   skill: {
     list: () => Promise<Skill[]>
+    /** 内置技能清单(只读),让用户知道有哪些规范在强制生效 */
+    listBuiltin: () => Promise<BuiltinSkillView[]>
     create: (input: SkillInput) => Promise<Skill>
     update: (
       id: string,

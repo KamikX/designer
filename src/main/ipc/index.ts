@@ -1,4 +1,4 @@
-import { ipcMain, nativeTheme } from 'electron'
+import { dialog, ipcMain, nativeTheme } from 'electron'
 import type { AppConfig } from '../config'
 import { patchConfig, readConfig } from '../config'
 import {
@@ -16,6 +16,7 @@ import type {
   FetchModelsInput,
   McpServerInput,
   ModelSelection,
+  ProjectSettings,
   Provider,
   SkillInput
 } from '../../shared/types'
@@ -24,9 +25,16 @@ import {
   deleteProject,
   getProject,
   listProjects,
-  renameProject
+  renameProject,
+  saveProjectSettings
 } from '../db/repo/project'
-import { ensureDesignConversation } from '../db/repo/conversation'
+import {
+  createChat,
+  deleteConversation,
+  ensureDesignConversation,
+  listChats,
+  renameConversation
+} from '../db/repo/conversation'
 import {
   clearProviderKey,
   createProvider,
@@ -40,16 +48,27 @@ import { listMessages } from '../db/repo/message'
 import { testProvider } from '../ai/registry'
 import { fetchRemoteModels } from '../ai/model-catalog'
 import { abortChat, sendChat } from '../ai/chat-service'
+import { answerQuestion } from '../ai/ask-user'
+import { BUILTIN_SKILLS } from '../ai/prompts/builtin-skills'
+import { addRoot, grantPaths, listRoots, removeRoot } from '../workspace/roots'
+import type { RootScope } from '../workspace/roots'
+import { reportPreviewError } from '../preview/errors'
 import { getArtifactFiles, listArtifacts } from '../db/repo/artifact'
 import { exportArtifact } from '../artifact-export'
-import { importAsset, testStorage } from '../storage/service'
+import { importAsset, importImage, testStorage } from '../storage/service'
 import {
   dataBackendView,
   setDataBackendConfig,
   setStorageConfig,
   storageView
 } from '../services-config'
-import type { DataBackendInput, SendChatInput, StorageConfigInput } from '../../shared/types'
+import type {
+  AskUserAnswer,
+  DataBackendInput,
+  ImportImageInput,
+  SendChatInput,
+  StorageConfigInput
+} from '../../shared/types'
 
 /**
  * 统一注册 IPC。
@@ -83,6 +102,14 @@ export function registerIpc(): void {
   })
   ipcMain.handle('project:rename', (_e, id: string, name: string) => renameProject(id, name))
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
+  ipcMain.handle('project:save-settings', (_e, id: string, patch: ProjectSettings) =>
+    saveProjectSettings(id, patch)
+  )
+
+  ipcMain.handle('chat:list', () => listChats())
+  ipcMain.handle('chat:create', () => createChat())
+  ipcMain.handle('chat:rename', (_e, id: string, title: string) => renameConversation(id, title))
+  ipcMain.handle('chat:delete', (_e, id: string) => deleteConversation(id))
 
   ipcMain.handle('conversation:ensure-design', (_e, projectId: string) =>
     ensureDesignConversation(projectId)
@@ -110,6 +137,43 @@ export function registerIpc(): void {
   // sender 从事件对象上取:流式增量必须发回发起请求的那个窗口
   ipcMain.handle('chat:send', (e, input: SendChatInput) => sendChat(e.sender, input))
   ipcMain.handle('chat:abort', (_e, streamId: string) => abortChat(streamId))
+  // 提问的答案:主进程侧 resolve 掉那个挂着的工具调用,循环继续往下跑
+  ipcMain.handle('chat:answer-question', (_e, questionId: string, answer: AskUserAnswer) => {
+    answerQuestion(questionId, answer)
+  })
+
+  ipcMain.handle(
+    'preview:report-error',
+    (_e, projectId: string, artifactId: string, message: string) => {
+      reportPreviewError(projectId, artifactId, message)
+    }
+  )
+
+  ipcMain.handle('workspace:list', (_e, scope: RootScope) => listRoots(scope))
+  ipcMain.handle('workspace:grant', async (_e, scope: RootScope) => {
+    const res = await dialog.showOpenDialog({
+      title: '选择要让 AI 参考的本地目录',
+      message: 'AI 将能读取该目录下的文件用于分析;范围之外一律不可见',
+      properties: ['openDirectory']
+    })
+    if (res.canceled || res.filePaths.length === 0) return null
+    return addRoot(scope, res.filePaths[0])
+  })
+  // 选文件(不是目录)。和上面共用一套授权,只是入口不同:拖拽进来的
+  // 走 grant-paths,点"+ 文件"的走这里
+  ipcMain.handle('workspace:pick-files', async (_e, scope: RootScope) => {
+    const res = await dialog.showOpenDialog({
+      title: '选择要让 AI 参考的文件',
+      message: 'AI 将能读取这些文件用于分析;其余文件一律不可见',
+      properties: ['openFile', 'multiSelections']
+    })
+    if (res.canceled || res.filePaths.length === 0) return { granted: [], rejected: [] }
+    return grantPaths(scope, res.filePaths)
+  })
+  ipcMain.handle('workspace:grant-paths', (_e, scope: RootScope, paths: string[]) =>
+    grantPaths(scope, paths)
+  )
+  ipcMain.handle('workspace:revoke', (_e, id: string) => removeRoot(id))
 
   ipcMain.handle('artifact:list', (_e, projectId: string) => listArtifacts(projectId))
   ipcMain.handle('artifact:files', (_e, artifactId: string) => getArtifactFiles(artifactId))
@@ -119,6 +183,10 @@ export function registerIpc(): void {
   ipcMain.handle('storage:set-config', (_e, input: StorageConfigInput) => setStorageConfig(input))
   ipcMain.handle('storage:test', (_e, input: StorageConfigInput) => testStorage(input))
   ipcMain.handle('storage:import-asset', (_e, filePath: string) => importAsset(filePath))
+  // 拖拽 / 粘贴 / 选文件三种来源统一走字节:粘贴的截图根本没有路径
+  ipcMain.handle('storage:import-image', (_e, input: ImportImageInput) =>
+    importImage({ name: input.name, mime: input.mime, data: Buffer.from(input.data) })
+  )
 
   ipcMain.handle('sync:get-config', () => dataBackendView())
   ipcMain.handle('sync:set-config', (_e, input: DataBackendInput) => setDataBackendConfig(input))
@@ -134,6 +202,14 @@ export function registerIpc(): void {
   ipcMain.handle('mcp:import-json', (_e, json: string) => importMcpJson(json))
 
   ipcMain.handle('skill:list', () => listSkills())
+  ipcMain.handle('skill:list-builtin', () =>
+    BUILTIN_SKILLS.map(({ id, name, description, alwaysOn }) => ({
+      id,
+      name,
+      description,
+      alwaysOn
+    }))
+  )
   ipcMain.handle('skill:create', (_e, input: SkillInput) => createSkill(input))
   ipcMain.handle(
     'skill:update',

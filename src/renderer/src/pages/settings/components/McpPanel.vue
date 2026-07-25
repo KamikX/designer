@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { message, Modal, theme } from 'antdv-next'
+import { App, theme } from 'antdv-next'
 import { ImportOutlined, PlusOutlined } from '@antdv-next/icons'
 import type { McpServer, McpTransport } from '@shared/types'
+
+// 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
+// 上下文,主题、语言、z-index 全用的是默认值
+const { message, modal } = App.useApp()
 
 /**
  * MCP 服务配置。支持两种录入方式:
@@ -181,7 +185,7 @@ async function toggle(s: McpServer, enabled: boolean): Promise<void> {
 }
 
 function confirmRemove(s: McpServer): void {
-  Modal.confirm({
+  modal.confirm({
     title: `删除 MCP 服务「${s.name}」?`,
     okType: 'danger',
     onOk: async () => {

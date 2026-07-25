@@ -1,3 +1,13 @@
+/* 由 scripts/prepare-preview-vendor.mjs 生成,勿手改 */
+
+const __module__ = { exports: {} }
+function __require__(id) {
+
+  throw new Error('预览运行时缺少依赖: ' + id)
+}
+// call(globalThis):ESM 里 this 是 undefined,而 UMD 头部拿 this 当全局对象。
+// 这里走的是 CommonJS 分支用不到它,但别留一个 undefined 在那儿等着炸
+;(function (module, exports, require) {
 /**
  * @license React
  * react.production.min.js
@@ -29,3 +39,8 @@ render:a}};c.isValidElement=M;c.lazy=function(a){return{$$typeof:Aa,_payload:{_s
 c.useEffect=function(a,b){return g.current.useEffect(a,b)};c.useId=function(){return g.current.useId()};c.useImperativeHandle=function(a,b,c){return g.current.useImperativeHandle(a,b,c)};c.useInsertionEffect=function(a,b){return g.current.useInsertionEffect(a,b)};c.useLayoutEffect=function(a,b){return g.current.useLayoutEffect(a,b)};c.useMemo=function(a,b){return g.current.useMemo(a,b)};c.useReducer=function(a,b,c){return g.current.useReducer(a,b,c)};c.useRef=function(a){return g.current.useRef(a)};
 c.useState=function(a){return g.current.useState(a)};c.useSyncExternalStore=function(a,b,c){return g.current.useSyncExternalStore(a,b,c)};c.useTransition=function(){return g.current.useTransition()};c.version="18.3.1"});
 })();
+
+}).call(globalThis, __module__, __module__.exports, __require__)
+const __default__ = __module__.exports
+export default __default__
+export const { Children, Component, Fragment, Profiler, PureComponent, StrictMode, Suspense, __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED, act, cloneElement, createContext, createElement, createFactory, createRef, forwardRef, isValidElement, lazy, memo, startTransition, unstable_act, useCallback, useContext, useDebugValue, useDeferredValue, useEffect, useId, useImperativeHandle, useInsertionEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, useTransition, version } = __default__

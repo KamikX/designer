@@ -19,3 +19,13 @@ export function createAssetRecord(input: {
 export function getAssetRecord(id: string): AssetRow | null {
   return getDb().select().from(assets).where(eq(assets.id, id)).get() ?? null
 }
+
+/**
+ * 按内容哈希查已有资源。
+ *
+ * 同一张图被拖进来两次不该变成两条记录、两份存储——sha256 本来就在算,
+ * 只是之前没用它去重。
+ */
+export function findAssetBySha256(sha256: string): AssetRow | null {
+  return getDb().select().from(assets).where(eq(assets.sha256, sha256)).get() ?? null
+}

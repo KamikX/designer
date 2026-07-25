@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useProviderStore } from '@renderer/stores/provider'
 import { useChatStore } from '@renderer/stores/chat'
+import { isChoiceAlive } from '@renderer/stores/selection'
 
 /**
  * 模型选择器。value 形如 `${providerId}:${modelRowId}`,选择结果写进
@@ -26,16 +27,29 @@ const value = computed<string | undefined>({
   set: (v) => {
     if (!v) return
     const [providerId, modelId] = v.split(':')
-    chatStore.selected = { providerId, modelId }
+    chatStore.selectModel(providerId, modelId)
   }
 })
 
-// 首次进入时自动选第一个可用模型;没有任何可用模型时保持空,由外层提示
+/**
+ * 兜底选第一个可用模型。
+ *
+ * 判据是"当前选择还在不在列表里",不是"选没选过"——项目存档里的模型
+ * 完全可能已经被删掉或停用了。只判空的话,那种情况下选择器会显示成一个
+ * 认不出的空值,而且发出去必然报错。
+ *
+ * 兜底结果**不写回存档**(persist=false):供应商可能只是临时停用,回头
+ * 启用了这个项目还该是用户原来选的那个。
+ */
 watchEffect(() => {
-  if (!chatStore.selected && providerStore.chatModels.length > 0) {
-    const group = providerStore.chatModels[0]
-    chatStore.selected = { providerId: group.provider.id, modelId: group.models[0].id }
-  }
+  const groups = providerStore.chatModels
+  // 还没加载完就别动——此刻列表为空不代表用户的选择失效了
+  if (groups.length === 0) return
+
+  if (isChoiceAlive(chatStore.selected, groups)) return
+
+  const group = groups[0]
+  chatStore.selectModel(group.provider.id, group.models[0].id, false)
 })
 </script>
 
@@ -45,7 +59,7 @@ watchEffect(() => {
     :options="options"
     size="small"
     class="model-select"
-    style="min-width: 150px; max-width: 220px"
+    style="min-width: 128px; max-width: 200px"
     placeholder="选择模型"
     variant="borderless"
     :popup-match-select-width="false"

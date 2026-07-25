@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { ulid } from 'ulid'
+import type { ProjectSettings } from '../../shared/types'
 
 /**
  * 表结构的唯一事实来源。
@@ -41,6 +42,14 @@ export const projects = sqliteTable(
     stack: text('stack').notNull().default('html'),
     designMode: text('design_mode').notNull().default('design'),
     description: text('description').notNull().default(''),
+    /**
+     * 工作台的"上次选了什么":模型、技能、MCP。
+     *
+     * 用 JSON 而不是拆成列,是因为这一类"记住上次的选择"注定会继续加
+     * (已经从模型长到技能和 MCP),每加一样都开一次迁移不划算;而它永远
+     * 只按 project id 整取整存,没有查询需求,拆列换不来任何好处。
+     */
+    settings: text('settings', { mode: 'json' }).$type<ProjectSettings>(),
     ...timestamps
   },
   (table) => [index('idx_projects_updated_at').on(table.updatedAt)]
@@ -100,15 +109,24 @@ export const conversations = sqliteTable(
   'conversations',
   {
     id: id(),
-    projectId: text('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
+    /**
+     * 设计会话挂在项目下；纯聊天没有项目，这里为 NULL。
+     *
+     * 聊天不是"没有产物的项目"——它没有版本、没有文件树、没有导出。
+     * 硬塞一个哨兵项目会让项目列表、导出、同步每一处都要记得把它过滤掉，
+     * 漏一处就漏出来了。可空更诚实。
+     */
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     title: text('title').notNull().default(''),
-    // 'design' 主设计会话；二期问答模式复用本表，kind='qa'
+    /** 'design' 项目里的设计会话 | 'chat' 独立的纯聊天 */
     kind: text('kind').notNull().default('design'),
     ...timestamps
   },
-  (table) => [index('idx_conversations_project').on(table.projectId)]
+  (table) => [
+    index('idx_conversations_project').on(table.projectId),
+    // 聊天列表按 kind 过滤 + 按时间倒序，这两列一起建索引
+    index('idx_conversations_kind').on(table.kind, table.updatedAt)
+  ]
 )
 
 export const messages = sqliteTable(
@@ -247,3 +265,34 @@ export type ArtifactFileRow = typeof artifactFiles.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
 export type McpServerRow = typeof mcpServers.$inferSelect
 export type SkillRow = typeof skills.$inferSelect
+
+/**
+ * 用户授权给某个项目的本地目录。
+ *
+ * 本地文件工具的**唯一权限来源**:用户主动选一个目录才产生一行,工具只
+ * 能在这些目录的子树里活动。没有这张表里的记录,读本地文件的工具连注册
+ * 都不注册——AI 拿不到一个可以试探的入口。
+ */
+/**
+ * 授权范围。两种归属**恰好有一个非空**:
+ *
+ * - projectId:设计项目的授权,跟着项目走
+ * - conversationId:纯聊天的授权,跟着这次会话走,会话删了就回收
+ *
+ * 不做成一个通用的 ownerId:那样就没有外键级联了,删项目/删会话时要靠
+ * 应用代码记得清理,迟早漏。两个各自带级联的可空外键更省心。
+ */
+export const workspaceRoots = sqliteTable('workspace_roots', {
+  id: id(),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  conversationId: text('conversation_id').references(() => conversations.id, {
+    onDelete: 'cascade'
+  }),
+  /** 绝对路径,已 realpath 解析过 */
+  path: text('path').notNull(),
+  /** 显示名,默认取目录名 */
+  name: text('name').notNull(),
+  ...timestamps
+})
+
+export type WorkspaceRootRow = typeof workspaceRoots.$inferSelect

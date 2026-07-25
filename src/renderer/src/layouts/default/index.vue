@@ -35,11 +35,22 @@ import { DRAG_BAR_HEIGHT } from './use-layout'
   flex: none;
 }
 
-/* 顶部不留 padding，上面那条拖拽条已经是那段留白了 */
+/*
+ * 内容区不再统一加内边距，改由每个页面自己实现。
+ *
+ * 原因是通用 padding 只能管住"页面外框到窗口边"，管不到页面内部：对话面板
+ * 的输入框左边距来自这里、右边距来自面板自己，两个来源永远对不齐。边距由
+ * 页面自己从左到右一次排完，才可能对称。
+ *
+ * 值放在这里作为自定义属性：CSS 变量沿 DOM 继承，不受 scoped 限制，
+ * 各页面引用同一个来源，改一处全体跟着走。
+ */
 .layout-content__inner {
+  --page-pad: 16px;
   flex: 1;
   min-height: 0;
-  padding: 0 16px 16px;
+  /* 顶部不留白：上面那条拖拽条已经是那段留白了 */
+  padding: 0;
   overflow: auto;
 }
 </style>
