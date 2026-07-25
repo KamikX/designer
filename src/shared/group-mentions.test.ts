@@ -158,6 +158,18 @@ describe('tokenizeGroupMentions', () => {
     expect(firstMention(listed, MEMBERS)).toBe(UI_ID)
   })
 
+  it('列表 fence 的无缩进空行不会结束容器，后续段落仍是代码', () => {
+    const text = ['- ```md', '  @产品经理', '', '  第二段 @UI 设计师', '  ```', '@产品'].join('\n')
+
+    expect(firstMention(text, MEMBERS)).toBe(FE_ID)
+  })
+
+  it('tab 可按下一个四列制表位满足列表 continuation 与关闭缩进', () => {
+    const text = ['- ```md', '\t@UI 设计师', '\t```', '@产品'].join('\n')
+
+    expect(firstMention(text, MEMBERS)).toBe(FE_ID)
+  })
+
   it('inline backtick 不能把合法 fence delimiter 当作关闭 run', () => {
     const text = ['prefix ```', '```md', '@UI 设计师'].join('\n')
 

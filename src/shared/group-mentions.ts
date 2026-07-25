@@ -17,7 +17,7 @@ interface MentionOccurrence {
   member: GroupMentionMember
 }
 
-type MarkdownContainerToken = { type: 'blockquote' } | { type: 'list'; continuationIndent: number }
+type MarkdownContainerToken = { type: 'blockquote' } | { type: 'list'; continuationColumns: number }
 
 interface MarkdownContainer {
   content: string
@@ -62,6 +62,14 @@ function decodeCanonicalLabel(label: string): string {
   return label.replace(/\\([\\`])/g, '$1')
 }
 
+function markdownColumnAfter(text: string, initialColumn: number): number {
+  let column = initialColumn
+  for (const character of text) {
+    column = character === '\t' ? column + (4 - (column % 4)) : column + 1
+  }
+  return column
+}
+
 function indexBacktickRuns(text: string): Map<number, BacktickRun> {
   const runs: BacktickRun[] = []
   const fenceDelimiterStarts = findFenceDelimiterStarts(text)
@@ -98,6 +106,7 @@ function indexBacktickRuns(text: string): Map<number, BacktickRun> {
 function parseMarkdownContainer(line: string): MarkdownContainer {
   const tokens: MarkdownContainerToken[] = []
   let offset = 0
+  let column = 0
 
   while (true) {
     const content = line.slice(offset)
@@ -105,13 +114,16 @@ function parseMarkdownContainer(line: string): MarkdownContainer {
     if (blockquote) {
       tokens.push({ type: 'blockquote' })
       offset += blockquote[0].length
+      column = markdownColumnAfter(blockquote[0], column)
       continue
     }
 
     const list = content.match(/^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/)
     if (list) {
-      tokens.push({ type: 'list', continuationIndent: list[0].length })
+      const nextColumn = markdownColumnAfter(list[0], column)
+      tokens.push({ type: 'list', continuationColumns: nextColumn - column })
       offset += list[0].length
+      column = nextColumn
       continue
     }
 
@@ -151,6 +163,8 @@ function contentInMarkdownContainer(
   tokens: readonly MarkdownContainerToken[]
 ): string | null {
   let offset = 0
+  let column = 0
+  let requiredColumn = 0
 
   for (const token of tokens) {
     const content = line.slice(offset)
@@ -158,12 +172,19 @@ function contentInMarkdownContainer(
       const blockquote = content.match(/^ {0,3}>[ \t]?/)
       if (!blockquote) return null
       offset += blockquote[0].length
+      column = markdownColumnAfter(blockquote[0], column)
+      requiredColumn = column
       continue
     }
 
-    const indentation = content.match(/^ */)?.[0].length ?? 0
-    if (indentation < token.continuationIndent) return null
-    offset += token.continuationIndent
+    if (/^[ \t]*$/.test(content)) return ''
+    requiredColumn += token.continuationColumns
+    while (column < requiredColumn) {
+      const character = line[offset]
+      if (character !== ' ' && character !== '\t') return null
+      column = markdownColumnAfter(character, column)
+      offset++
+    }
   }
 
   return line.slice(offset)
