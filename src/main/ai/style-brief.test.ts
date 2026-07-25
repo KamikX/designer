@@ -31,8 +31,8 @@ describe('renderStyleBriefPrompt', () => {
     expect(out).not.toContain('兜底风格')
   })
 
-  it('首次无文件且没有视觉方向时，要求先确认，跳过后才使用独立 fallback', () => {
-    const out = renderStyleBriefPrompt(project(''), false)
+  it('tools 首次无文件且没有视觉方向时，要求调用 ask_user，跳过后才使用独立 fallback', () => {
+    const out = renderStyleBriefPrompt(project(''), false, 'tools')
 
     expect(out).toContain('第一次写文件前')
     expect(out).toContain('ask_user')
@@ -44,6 +44,18 @@ describe('renderStyleBriefPrompt', () => {
     expect(out).toContain('几何')
     expect(out).toContain('表面')
     expect(out).toContain('导航')
+  })
+
+  it('markers 首次无文件时只要求在正文给出方向并等待下一轮回答', () => {
+    const out = renderStyleBriefPrompt(project(''), false, 'markers')
+
+    expect(out).not.toContain('ask_user')
+    expect(out).toContain('2–3 个具体方向')
+    expect(out).toContain('本轮不输出文件')
+    expect(out).toContain('等待用户下一轮回答')
+    expect(out).toContain('<antdFile>')
+    expect(out).toContain('<antdDelete>')
+    expect(out).toContain('下一轮明确跳过')
   })
 
   it('已有文件但没有视觉方向时，只延续当前视觉语言', () => {

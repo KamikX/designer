@@ -9,6 +9,8 @@ export interface StyleFallback {
   navigation: string
 }
 
+export type StyleBriefPromptMode = 'tools' | 'markers'
+
 const FALLBACK_OPTIONS: Record<keyof StyleFallback, readonly string[]> = {
   color: ['石墨中性', '靛青冷色', '森林绿', '绛红暖色', '青碧', '琥珀'],
   brightness: ['浅色', '深色', '深浅分层'],
@@ -69,7 +71,11 @@ function renderFallback(projectId: string): string {
  * 把项目已有的视觉方向转换为稳定 prompt 段。空方向时的行为取决于是否已有设计稿：
  * 第一次生成先确认，已有文件则只延续当前视觉语言。
  */
-export function renderStyleBriefPrompt(project: Project, hasFiles = false): string {
+export function renderStyleBriefPrompt(
+  project: Project,
+  hasFiles = false,
+  mode: StyleBriefPromptMode = 'tools'
+): string {
   const styleBrief = project.styleBrief?.trim() ?? ''
   if (styleBrief) {
     return `## 项目视觉方向
@@ -87,6 +93,14 @@ ${escapeMarkdownFence(styleBrief)}
 
 项目尚未记录视觉方向，但已有设计稿。**延续当前文件的视觉语言**，不要重新确认风格、不要主动重做主题，
 也不要启用首次生成时的兜底选择；只有用户明确提出整体风格变化时才调整。`
+  }
+
+  if (mode === 'markers') {
+    return `## 首次风格确认
+
+项目尚未记录视觉方向，也还没有设计稿。本轮只在正文给出 2–3 个具体方向并允许自由输入，
+**本轮不输出文件**：不得输出任何 <antdFile> 或 <antdDelete>，等待用户下一轮回答后再继续。
+用户下一轮明确跳过时，才可使用下面项目内稳定、维度彼此独立的兜底风格；不要把它写回项目 StyleBrief。\n\n${renderFallback(project.id)}`
   }
 
   return `## 首次风格确认

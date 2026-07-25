@@ -344,7 +344,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             previewError,
             slopLint,
             skillCatalog: catalog,
-            styleBriefPrompt: renderStyleBriefPrompt(project, currentFiles.length > 0),
+            styleBriefPrompt: renderStyleBriefPrompt(project, currentFiles.length > 0, useTools ? 'tools' : 'markers'),
             targetContract: targetContractPrompt(targets),
             targetTemplates: renderTargetTemplates(targetTemplates)
           })
