@@ -1,3 +1,4 @@
+import { parse } from 'comark'
 import { describe, expect, it } from 'vitest'
 import {
   createGroupMention,
@@ -117,6 +118,18 @@ describe('提及转换', () => {
       `[@产品经理](group-member:${PM_ID}) 和 [@UI 设计师](group-member:${UI_ID})`
     )
     expect(markdown).not.toContain('<')
+  })
+
+  it('合法名称中的 HTML 标签只生成文本 AST，同时保留显示语义', async () => {
+    const member = { id: PM_ID, name: '<img src=x onerror=evil>' }
+    const markdown = mentionsToMarkdown(`@${member.name}`, [member])
+    const tree = await parse(markdown)
+    const nodes = JSON.stringify(tree.nodes)
+
+    expect(markdown).toBe(`[@\\<img src=x onerror=evil\\>](group-member:${PM_ID})`)
+    expect(nodes).toContain('@<img src=x onerror=evil>')
+    expect(nodes).not.toContain('"html":1')
+    expect(nodes).not.toContain('"onerror"')
   })
 })
 

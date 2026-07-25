@@ -271,7 +271,7 @@ export function mentionsToMarkdown(text: string, members: readonly GroupMentionM
   return tokenizeGroupMentions(text, members)
     .map((token) => {
       if (token.type === 'text') return token.text
-      const safeName = token.name.replace(/([\\[\]])/g, '\\$1')
+      const safeName = token.name.replace(/([\\[\]<>])/g, '\\$1')
       return `[@${safeName}](group-member:${token.memberId})`
     })
     .join('')
