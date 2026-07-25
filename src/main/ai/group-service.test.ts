@@ -462,6 +462,32 @@ describe('legacy 群组兼容', () => {
 })
 
 describe('链路停止与清理', () => {
+  it('技能扫描失败时报告链级错误、正常收链并清理 running', async () => {
+    const configured = member(0)
+    mocks.conversation = configuredConversation([configured])
+    mocks.models.set(configured.modelRowId, model(configured.modelRowId))
+    mocks.scanSkills.mockImplementationOnce(() => {
+      throw new Error('技能目录损坏')
+    })
+    mocks.outputs.push('@用户 完成')
+
+    sendGroupMessage(sender() as never, input(mention(configured)))
+    await vi.waitFor(() => {
+      expect(mocks.events.some((event) => event.type === 'error')).toBe(true)
+    })
+    expect(mocks.events.find((event) => event.type === 'error')).toEqual({
+      conversationId: 'group-1',
+      type: 'error',
+      message: '技能目录损坏'
+    })
+    expect((await waitForTerminal()).type).toBe('chain-done')
+    await Promise.resolve()
+
+    mocks.events.length = 0
+    expect(() => sendGroupMessage(sender() as never, input(mention(configured)))).not.toThrow()
+    expect((await waitForTerminal()).type).toBe('chain-done')
+  })
+
   it('重复有向边发 cycle-detected，不再执行被拒绝的一棒', async () => {
     const [a, b] = [member(0), member(1)]
     mocks.conversation = configuredConversation([a, b])

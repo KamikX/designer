@@ -89,7 +89,14 @@ async function runChain(
   const conversationId = input.conversationId
   const membersById = new Map(members.map((member) => [memberId(member), member]))
   const mentionMembers = members.map(memberMention)
-  const installedSkills = scanSkills()
+  let installedSkills: ReturnType<typeof scanSkills>
+  try {
+    installedSkills = scanSkills()
+  } catch (err) {
+    emit({ conversationId, type: 'error', message: errorMessage(err) })
+    emit({ conversationId, type: 'chain-done' })
+    return
+  }
   const guard = new GroupChainGuard()
   let current: string | null = firstMemberId
 
