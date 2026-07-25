@@ -88,19 +88,25 @@ File Tools ──► AnchorRegistry ──► MagicString Batch Editor ──►
 
 ### `ai_runs`
 
-每条 assistant 生成对应一行：
+每次语言模型 run 对应一行。`message_id`、`conversation_id` 和 `project_id` 都允许为空：
+设计/聊天/群组 run 关联消息，后台摘要、内置助手和 provider 连通性测试没有消息也必须计量。
+所有语言模型入口统一经一个 tracer 包装，调用场景枚举为
+`design | chat | group | assistant | document_summary | provider_test`。provider 连通性测试
+是真实计费请求，计入长期用量，但用量页可按场景排除。
 
 - `id`
-- `message_id`
-- `conversation_id`
-- `project_id`，纯聊天可空
+- `message_id`，可空
+- `conversation_id`，可空
+- `project_id`，可空
 - provider ID、provider slug 快照、model ID
-- 调用场景：`design | chat | group | assistant`
+- 调用场景：
+  `design | chat | group | assistant | document_summary | provider_test`
 - `status`：`running | complete | error | aborted | interrupted`
 - 开始、结束、首个输出、首个文件变化时间
 - 总模型调用次数、工具调用次数、工具失败次数
 - 累计 token 汇总
 - 是否触发工具、token 或错误熔断
+- `usage_run_counted_at`，第一次成功记录 step 时原子设置，保证日聚合中的 run 数只加一次
 
 应用启动时把遗留的 `running` 更新为 `interrupted`。
 
@@ -151,11 +157,23 @@ File Tools ──► AnchorRegistry ──► MagicString Batch Editor ──►
 - `output_tokens`
 - `output_text_tokens`
 - `reasoning_tokens`
-- provider 报告的 `total_tokens`
+- AI SDK 归一化的 `sdk_total_tokens`
+- 适配器白名单提取的 `provider_total_tokens`
 - 每个可选字段的 `reported_calls`
 
 `reported_calls` 用于区分明确为 0、完全未报告和部分报告。不能用 0 填充 provider 未返回的
 缓存字段。
+
+SQLite 的可空列不能直接参与可靠的唯一 upsert，因为多个 `NULL` 不冲突。聚合表因此使用
+非空规范化维度键：
+
+- `provider_key`：调用时的 provider ID；没有持久 provider 的内部调用使用稳定场景键；
+- `project_key`：`project:<id>` 或固定字符串 `none`；
+- 唯一键：`date + provider_key + model_id + scene + project_key`。
+
+provider/project 的显示 ID 和名称另存快照，不对业务表建外键。provider 或 project 删除后，
+长期用量仍保留并显示为“已删除的 provider/项目”，不会因 `SET NULL` 改变唯一维度或产生
+重复行。诊断明细可以关联 message/project 并按业务删除策略级联；长期聚合绝不级联。
 
 ### 留存与同步
 
@@ -163,15 +181,26 @@ File Tools ──► AnchorRegistry ──► MagicString Batch Editor ──►
 - `model_usage_daily` 长期保留，用户可单独清除。
 - 诊断清理每日启动后执行一次，每轮结束后可异步触发一次幂等清理。
 - 四张表都是本机数据，不进入 `change_log`，不参与项目同步或 artifact 导出。
-- 删除项目时诊断明细级联删除；长期用量保留 provider/model 快照并把 project ID 置空。
+- 删除项目时诊断明细级联删除；长期用量没有业务外键，保留调用时的 project/provider
+  快照和规范化维度键。
 
 ### 隐私
 
-- 设计稿内部相对路径可以保存。
-- 本地绝对路径只保存不可逆哈希、扩展名和 basename 是否存在，不保存正文路径。
-- URL 只保存 host。
-- 搜索词只保存长度和结果数量。
-- 错误摘要统一经过路径、URL、密钥和高熵字符串脱敏。
+追踪不能从任意工具输入中自动挑字段或序列化对象，必须经过按工具名注册的
+`ToolTraceSanitizer` 白名单：
+
+- 设计稿文件工具：只保存通过 VFS `assertPath` 的设计稿相对路径、操作/文件数量和字符数；
+- 本地 workspace 工具：路径只保存不可逆哈希和扩展名，不保存绝对路径、workspace 相对
+  路径或 basename；
+- Web/Browser：URL 只保存 host，查询只保存长度和结果数；
+- skill：允许保存技能名；
+- ask_user：只保存题目/选项数量，不保存题目、选项和回答；
+- MCP：默认只保存 server/tool 名、输入/输出字符数，不保存任何字段值；
+- 未注册工具：只保存工具名、大小、耗时和固定错误码，没有目标摘要。
+
+不能依赖“高熵检测”识别密钥，因为低熵口令同样敏感。provider 和未知工具的原始 error
+message/body 不落库；只保存 HTTP 状态、已知错误映射或固定的“工具执行失败”。所有可保存的
+错误摘要再经过路径、URL、email 和常见凭证形态脱敏，作为第二道防线。
 
 ## 用量采集
 
@@ -194,8 +223,17 @@ totalTokens
 2. upsert 当日 `model_usage_daily`；
 3. 更新 `ai_runs` 汇总。
 
+事务先用条件更新把 `ai_runs.usage_run_counted_at` 从 `NULL` 设为当前时间；只有受影响行数为
+1 时才给当日维度的 `run_count` 加一。后续 step 只增加 `step_count` 和 token，避免多 step
+run 被重复算成多个 run。run 跨越 UTC 日期时，run_count 归开始日，step/token 归实际发生日。
+
 不能只用整轮 `result.usage`，否则中途失败的多 step 调用可能漏记，也无法按 step 查看缓存
 命中和性能。provider 未报告的字段保持 `null`，同时不增加对应 `reported_calls`。
+
+`usage.totalTokens` 保存为 `sdk_total_tokens`。如果 `usage.raw` 中存在适配器明确白名单映射的
+数值总量（例如 OpenAI `total_tokens`），另存 `provider_total_tokens`；绝不把整个 raw usage
+写进 SQLite，也不把 SDK 归一化合计冒充 provider 原始值。每个 adapter 的提取器独立测试，
+未认识的形状保持未报告。
 
 现有 `messages.usage` 扩展为可选的详细字段，但仍只承担消息展示，不作为长期统计的唯一
 事实来源。历史消息可以回填 input/output 和 provider/model；缓存、reasoning 和真实 step
@@ -277,8 +315,17 @@ revision；不长期保存 MagicString 实例，不生成 sourcemap。
 搜索预览仍可截断，但必须明确标记“不可作为旧文本锚点”。模型直接用 `matchId` 修改，不复制
 预览内容。
 
-新增 `capture_range`，用于搜索无法表达的任意代码块。它返回精确、不截断的正文和
-`anchorId`；主进程记录相同的 revision、offset 和 hash。
+新增 `capture_range`，用于搜索无法表达的任意代码块。输入契约与现有读取工具对齐：
+
+- `path`；
+- `start_line` / `end_line`：1 起、两端行均包含，`end_line` 缺省等于开始行；
+- `start_column` / `end_column`：1 起，以 JavaScript UTF-16 code unit 计数，结束列包含；
+- 列缺省时取起始行行首到结束行行尾；
+- `include_trailing_newline` 缺省 false，需要整行删除时可显式包含结束行后的换行。
+
+内部统一转换成 UTF-16 字符偏移的半开区间 `[startOffset, endOffset)`。工具返回精确、不截断
+的正文和 `anchorId`；主进程记录相同的 revision、offset 和 hash。越界、位于 surrogate pair
+中间或不存在的 trailing newline 都返回结构化错误。
 
 ### 字符串操作
 
@@ -315,6 +362,18 @@ type StringEditOperation =
 
 任何失败都会回滚整个批次，并返回具体 operation 索引、文件、错误码和恢复动作。JavaScript
 UTF-16 索引、emoji/surrogate pair 和 CRLF/LF 必须纳入测试。
+
+区间组合规则必须确定：
+
+- replace/remove 使用非空半开区间；相邻区间允许，部分或完全重叠禁止；
+- 同一 anchor 最多一个 replace 或 remove；
+- insert 是零宽操作，只能发生在其 anchor 的 start（before）或 end（after）；
+- 同一 anchor 可组合 `insert_before + replace/remove + insert_after`；
+- 同一边界多个 insert 按请求数组顺序拼接成一个字符串后只调用一次 MagicString，避免
+  `prependLeft` 的同点顺序语义导致反转；
+- 其他 anchor 的 insert 落在 replace/remove 内部时禁止，恰好位于边界时允许；
+- 同一批次先把组合操作规范化和冲突检测完，再调用 MagicString，不能依赖库抛错决定业务
+  语义。
 
 ### 旧工具定位
 
@@ -404,6 +463,21 @@ interface RunContextLedger {
 `compactToolHistory` 纯函数并以假模型做多 step 集成测试，而不是在 `chat-service.ts`
 临时拼接。
 
+合法消息形态固定如下：
+
+1. 按 `toolCallId` 选出需要压缩的已完成调用；
+2. 从可能包含并行调用和普通文本的 assistant message 中只移除对应 `tool-call` part；
+3. 从 tool message 中移除同 ID 的 `tool-result` / approval part；
+4. 保留同一消息里未被选中的并行调用、结果、文本和 reasoning；
+5. 移除过滤后为空的 assistant/tool message；
+6. 把全部已压缩事实合并为唯一、可替换的 `<tool_ledger>` 文本消息，放在被压缩序列之后；
+7. 下一次压缩更新既有 ledger，不重复追加；
+8. 调用 AI SDK `modelMessageSchema` 验证，再交给下一 step。
+
+ledger 使用 provider 最兼容的 user-role 系统注记形态，并明确标注“运行时工具账本，不是用户
+新要求”。不能保留伪造或 schema 不匹配的 tool-call 输入。实现可复用/对照 AI SDK
+`pruneMessages` 的配对逻辑，但需要支持按 call ID 替换事实摘要。
+
 ### 目标模板路由
 
 多端项目每轮只为活动目标注入完整模板：
@@ -424,6 +498,16 @@ interface RunContextLedger {
 - 40 次：硬上限，保存已完成修改并结束；
 - 累计输入达到 `3 × contextWindow`：强压缩；
 - 达到 `5 × contextWindow`：保存当前完整成果并结束。
+
+`stopWhen` 只能阻止下一 step，挡不住单个 step 一次返回超过剩余额度的并行工具调用。因此
+所有工具 execute 外层共用同步的 `ToolBudgetGate.reserve(callId)`：按调用到达顺序预留名额，
+只允许前 40 个真正执行，超出的调用返回 `TOOL_BUDGET_EXCEEDED`，不得产生副作用。step 结束
+后立即停止模型循环。参数生成已经发生的 token 仍计入用量。
+
+provider 未报告 input token 时，预算使用本地保守估算：对当 step 最终发送的
+instructions、messages 和 tool schema 序列化字符数按 `ceil(chars / 2)` 估算输入 token，并
+标记 `usage_estimated=true`。已报告字段永远优先；估算只用于熔断和诊断展示，不能写入长期
+“provider 报告”字段。若连消息构造都失败，仍以工具调用 40 次硬闸门兜底。
 
 工具集合在一轮内尽量保持稳定，以维持 provider 的 prompt cache；只有能力本来未启用、
 新项目无文件或发生熔断时才缩减。缓存效果由真实 cache read/write 数据验证。
@@ -446,6 +530,8 @@ interface RunContextLedger {
 - 操作顺序不改变原始坐标；
 - 重叠区间整批回滚；
 - revision/hash 失效；
+- capture_range 的 1 起坐标、包含端点、trailing newline 和 UTF-16 边界；
+- 零宽插入、同边界多次插入顺序、相邻范围、包含/部分重叠和组合操作；
 - 800～1700 字符超长行；
 - 中文、emoji、surrogate pair；
 - CRLF/LF；
@@ -457,7 +543,10 @@ interface RunContextLedger {
 - 旧 revision 读取被清理，当前 anchor 不被提前清理；
 - 技能只加载一次；
 - 工具调用/结果保持配对；
+- 混合文本 + 多个并行工具调用的部分压缩、空消息清理和 ledger 幂等更新；
 - 20/30/40 次与 3x/5x 阈值；
+- 单 step 超过剩余额度时只有已预留工具有副作用；
+- provider usage 缺失时的本地估算与 estimated 标记；
 - 相同错误和调用指纹熔断；
 - 压缩后模型仍知道成功写入和恢复动作。
 
@@ -467,6 +556,9 @@ interface RunContextLedger {
 - 多 step 累加和中途错误；
 - 未报告、明确 0、部分报告；
 - provider/model/project/场景聚合；
+- `NULL` 维度规范化、provider/project 删除后唯一键稳定；
+- 多 step run 的 run_count 只加一次；
+- SDK total 与 allowlist 提取的 provider total 分离；
 - 7 天清理不删除长期用量；
 - 历史回填不伪造缓存和 step。
 
@@ -475,6 +567,7 @@ interface RunContextLedger {
 - 参数生成与工具执行耗时分开；
 - 刷新恢复 7 天内时间线；
 - 路径、URL、搜索词、密钥和错误脱敏；
+- 每类内置工具的 sanitizer 白名单、未知/MCP 工具不保存字段值；
 - SQLite 中不存在 prompt、reasoning、文件和补丁正文；
 - 可恢复错误最终成功、上游错误和致命错误的不同展示。
 
