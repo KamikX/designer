@@ -141,17 +141,19 @@ export function lintArtifact(path: string, source: string): Finding[] {
   }
 
   /*
-   * 种子占位色原样交付。
-   *
-   * design-seed 的 #c96442 是**占位**,不是"调好的默认"——不换它的话,
-   * 所有项目都长一个样,单一默认从 Tailwind 靛蓝换成暖橙,单一本身没变。
+   * 旧设计种子是一整套母版，不是一枚暖橙色。用户可以合理地指定暖橙；只有同一文件
+   * 同时继承了至少三类旧值，才值得判定为没有按项目生成主题。
    */
-  hit(/#c96442|#b45a3b/i, {
-    rule: 'seed-default-brand',
-    severity: 'P1',
-    message: '品牌色还是设计种子的占位默认值(#c96442)。',
-    fix: '按用户给的方向或 brief 的气质换成本项目自己的品牌色;种子 SKILL.md 里有色板家族表可选。'
-  })
+  const legacySeedFeatures = collectLegacySeedFeatures(source)
+  if (legacySeedFeatures.length >= 3) {
+    findings.push({
+      rule: 'legacy-seed-fingerprint',
+      severity: 'P1',
+      message: `同时出现 ${legacySeedFeatures.length} 类旧设计种子特征，像是整套母版被原样沿用。`,
+      fix: '回到 StyleBrief，重新生成本项目的字体、表面、尺度和组件几何；保留语义 token 接口，不复制旧视觉取值。',
+      snippet: clip(legacySeedFeatures.map((feature) => feature.snippet).join(' ; '))
+    })
+  }
 
   /*
    * 全大写没加字距。
@@ -224,4 +226,34 @@ ${body}
 function clip(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > 80 ? `${flat.slice(0, 80)}…` : flat
+}
+
+interface LegacySeedFeature {
+  snippet: string
+}
+
+/** 旧主题的判定必须是组合信号，避免把用户明确指定的单一颜色误报为模板。 */
+function collectLegacySeedFeatures(source: string): LegacySeedFeature[] {
+  const features: LegacySeedFeature[] = []
+  const warmBackground = /#faf9f7/i.exec(source)?.[0]
+  const warmSurface = /#fdfcfa/i.exec(source)?.[0]
+  if (warmBackground && warmSurface) {
+    features.push({ snippet: `${warmBackground} / ${warmSurface}` })
+  }
+
+  const sourceSerif = /Source Serif Pro/i.exec(source)?.[0]
+  if (sourceSerif) features.push({ snippet: sourceSerif })
+
+  const sectionSpacing = /(?:spacing-section|section)[^;{}]*:\s*96px/i.exec(source)?.[0]
+  const blockSpacing = /(?:spacing-block|block)[^;{}]*:\s*56px/i.exec(source)?.[0]
+  const gutterSpacing = /(?:spacing-gutter|gutter)[^;{}]*:\s*32px/i.exec(source)?.[0]
+  if (sectionSpacing && blockSpacing && gutterSpacing) {
+    features.push({ snippet: `${sectionSpacing} / ${blockSpacing} / ${gutterSpacing}` })
+  }
+
+  const buttonHeight = /height\s*:\s*44px/i.exec(source)?.[0]
+  const baseRadius = /(?:radius-base|border-radius)\s*:\s*10px/i.exec(source)?.[0]
+  if (buttonHeight && baseRadius) features.push({ snippet: `${buttonHeight} / ${baseRadius}` })
+
+  return features
 }

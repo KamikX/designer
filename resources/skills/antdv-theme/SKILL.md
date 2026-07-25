@@ -7,9 +7,12 @@ metadata:
 
 # antdv-next 主题定制
 
-组件库的默认蓝(#1677ff)原样交付 = 没做设计。antdv-next 的主题体系
-(与 ant-design v5 同源:token 算法 + 语义化结构)能做到"随心所欲"——
-用它,别让所有项目的控件长一个样。
+组件库的默认蓝原样交付 = 没做设计。antdv-next 的主题体系
+(与 ant-design v5 同源:token 算法 + 语义化结构)应把项目的 StyleBrief 翻译为组件语言，
+而不是让所有项目的控件长一个样。
+
+StyleBrief 高于本文示例。先从其中识别明暗、密度、几何、字体、色温、表面和品牌信号，
+再映射为 algorithm、seed token 与 component token；不存在必须套用的默认配方。
 
 ## 用法:App.vue 最外层包 a-config-provider
 
@@ -17,13 +20,18 @@ metadata:
 <script setup lang="ts">
 import { theme } from 'antdv-next'
 
+const resolved = readProjectThemeTokens() // 从项目自己的 theme.css 读取已确认的语义 token
+
 const themeConfig = {
+  algorithm: resolved.algorithms,
   token: {
-    colorPrimary: '#2f7d5c',        // 必须 = theme.css 的 --color-brand-500
-    borderRadius: 8,                 // 必须 = --radius-base 同档
-    fontFamily: 'inherit'            // 跟页面字体,别让控件换一副面孔
+    colorPrimary: resolved.brand, // 必须 = theme.css 的 --color-brand-500
+    colorBgBase: resolved.background,
+    colorTextBase: resolved.text,
+    borderRadius: resolved.radius, // 必须 = --radius-base 同档
+    fontFamily: resolved.fontFamily
   },
-  algorithm: theme.defaultAlgorithm  // 或 [theme.darkAlgorithm, theme.compactAlgorithm] 组合
+  components: resolved.components
 }
 </script>
 
@@ -34,32 +42,20 @@ const themeConfig = {
 </template>
 ```
 
-## 三层定制,从粗到细
+`readProjectThemeTokens` 是项目内的转换函数：它只读取本项目已生成的 `theme.css`，再按需要
+把 CSS 值转换为 antdv-next 所需的字符串或数字。不要把示例中的任何 token 组合抄成默认。
 
-| 层 | 改什么 | 例 |
-| --- | --- | --- |
-| algorithm 算法 | 整体风格骨架,可数组组合 | `defaultAlgorithm` / `darkAlgorithm` / `compactAlgorithm` |
-| token(Seed Token) | 设计意图源头,派生一整族 | `colorPrimary` `borderRadius` `fontSize` `colorBgBase` `colorTextBase` `wireframe` |
-| components 组件变量 | 单组件定向覆盖,互不影响 | `components: { Button: { controlHeight: 40 }, Table: { headerBg: '#f7f6f3' } }` |
+## 三层开放翻译,从信号到组件
 
-常用 Seed Token:`colorPrimary`(主色)、`borderRadius`(圆角基准)、
-`fontSize`(基准字号,默认 14)、`fontFamily`、`colorBgBase` / `colorTextBase`
-(底色与文字的基调,冷暖色温在这里对齐页面)、`wireframe: true`(线框风,
-填充变描边,整体立刻安静下来)。改 Seed 会自动派生梯度色,不用手调每一级。
+| 层              | 改什么                     | StyleBrief 信号到实现的示例                                                                   |
+| --------------- | -------------------------- | --------------------------------------------------------------------------------------------- |
+| algorithm 算法  | 整体明暗与密度骨架，可组合 | 深色信号可映射 `darkAlgorithm`；密集工作流可叠加 `compactAlgorithm`；其余情况由项目主题决定。 |
+| seed token      | 设计意图源头，派生一整族   | 品牌色映射 `colorPrimary`；字体、圆角、字号、背景和文字基调映射对应 seed token。              |
+| component token | 单组件定向覆盖，互不影响   | 表格表头、按钮高度、菜单表面或输入边界只在 StyleBrief 需要时，从同一份语义 token 映射。       |
 
-## 风格配方:选一组,判读时说出来
-
-**用户给了方向听用户的**;没给就按 brief 气质从下表选,
-**连续两个项目不许选同一组**:
-
-| 配方 | token / algorithm 组合 | 气质 |
-| --- | --- | --- |
-| 锐利工具 | `borderRadius: 2` + `compactAlgorithm` | 开发者工具、专业软件 |
-| 线框极简 | `wireframe: true` + `borderRadius: 4` | 内容工具、极简品牌 |
-| 圆润消费 | `borderRadius: 10` + `controlHeight: 40`(components.Button) | 生活方式、C 端产品 |
-| 暗色控制台 | `[darkAlgorithm, compactAlgorithm]` + `colorBgBase` 微调色温 | 监控、数据密集 |
-| 大字松弛 | `fontSize: 15` + `borderRadius: 8` | 教育、阅读向 |
-| 品牌浸染 | 深色导航区整条用品牌色调(components.Menu 的 darkItemBg 系) | 品牌感强的中后台 |
+常用 Seed Token 包括 `colorPrimary`、`borderRadius`、`fontSize`、`fontFamily`、
+`colorBgBase`、`colorTextBase` 与 `wireframe`。改 Seed 会自动派生色阶，但每一个输入值都
+必须追溯到 StyleBrief 和 `theme.css`，而非示例或组件库习惯。
 
 ## 硬规则
 
@@ -67,10 +63,8 @@ const themeConfig = {
   控件另一套,是两套语言在打架——这条没有例外。
 - 圆角、字体同理对齐 theme.css:`borderRadius` 与 `--radius-base` 同档,
   `fontFamily: 'inherit'` 跟页面。
-- 暗色不换 CSS 文件,用 `darkAlgorithm`;页面侧的暗色(theme.css)要同步,
-  别出现"控件黑了页面还白着"。
-- 状态色(success/warning/error)保持默认,除非品牌明确要求——它们承担
-  语义,乱调会让"危险"看起来不危险。
-- 每个项目的 themeConfig 都该和上一个不一样:配方、圆角档、算法组合至少
-  一项有差异。判读一行写清:「组件主题〈配方名〉,colorPrimary 对齐 brand,
-  圆角〈N〉,算法〈组合〉」。
+- 明暗 algorithm 与页面侧 `theme.css` 同步，别出现控件和页面处于相反主题的情况。
+- 状态色(success/warning/error)必须保持清晰语义、足够对比度和非色彩辅助线索；品牌需求
+  不能牺牲“危险”“成功”等含义。
+- 判读一行写清：StyleBrief 的哪些信号分别映射到 algorithm、seed token、component token，
+  并确认它们和 `theme.css` 一致。

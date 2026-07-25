@@ -1,3 +1,8 @@
+# 历史落地页版面参考
+
+这是历史落地页参考，**通用 design-seed 不会加载它**。只有目标页面或用户明确需要落地页
+结构时才按需阅读；页面信息架构以对应的 `target-*` 技能为准。
+
 # 版面库
 
 **别从零写区块。挑最接近的一个,粘贴,换文案。**
@@ -15,9 +20,7 @@
   <div class="container">
     <p class="eyebrow">面向工程团队</p>
     <h1>把评审留在写代码的地方</h1>
-    <p class="lead mt-6">
-      不必在编辑器和网页之间来回切。评论、建议、批准都在同一处完成。
-    </p>
+    <p class="lead mt-6">不必在编辑器和网页之间来回切。评论、建议、批准都在同一处完成。</p>
     <div class="mt-10 flex gap-3">
       <a class="btn btn-primary">开始使用</a>
       <a class="btn btn-ghost">看演示</a>
@@ -44,7 +47,9 @@
 <section class="section">
   <div class="container grid grid-cols-3 gap-8">
     <div>
-      <svg class="w-6 h-6 text-ink-muted" fill="none" stroke="currentColor" stroke-width="1.7">…</svg>
+      <svg class="w-6 h-6 text-ink-muted" fill="none" stroke="currentColor" stroke-width="1.7">
+        …
+      </svg>
       <h3 class="mt-4">增量同步</h3>
       <p class="mt-2 text-ink-muted">只传改动的那部分,不是整棵树。</p>
     </div>

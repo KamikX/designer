@@ -84,6 +84,38 @@ describe('不该报的', () => {
     const few = Array.from({ length: 8 }, (_, i) => `#00000${i}`).join(' ')
     expect(lintArtifact('a.html', few).map((x) => x.rule)).not.toContain('raw-hex')
   })
+
+  it('用户指定暖橙时不把单个颜色当成旧种子', () => {
+    const findings = lintArtifact('brand.css', '.brand { color: #c96442; }')
+    expect(findings.filter((finding) => finding.severity === 'P1')).toEqual([])
+  })
+})
+
+describe('旧设计种子的组合指纹', () => {
+  it('多个旧母版特征同时出现才报告，而不是只凭一个色值', () => {
+    const source = `
+      @theme {
+        --color-bg: #faf9f7;
+        --color-surface: #fdfcfa;
+        --font-display: 'Source Serif Pro', Georgia, serif;
+        --spacing-section: 96px;
+        --spacing-block: 56px;
+        --spacing-gutter: 32px;
+        --radius-base: 10px;
+      }
+      .btn { height: 44px; }
+    `
+
+    const finding = lintArtifact('theme.css', source).find(
+      (candidate) => candidate.rule === 'legacy-seed-fingerprint'
+    )
+
+    expect(finding).toMatchObject({
+      severity: 'P1',
+      message: expect.stringContaining('旧设计种子')
+    })
+    expect(finding?.snippet).toContain('#faf9f7')
+  })
 })
 
 describe('给模型的措辞', () => {
