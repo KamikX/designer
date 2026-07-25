@@ -21,6 +21,8 @@ import { getProject, touchProject } from '../db/repo/project'
 import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/repo/artifact'
 import { buildHistory } from './context'
 import { buildSystemPrompt } from './prompts'
+import { lintArtifact } from './slop-lint'
+import { pendingLint, recordLint } from './lint-store'
 import { buildChatPrompt } from './prompts/chat'
 import { buildTimeTools } from './time-tools'
 import { scanSkills, skillRoots } from '../skills/scan'
@@ -141,6 +143,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const previewError = project
     ? previewErrorPrompt(pendingPreviewError(project.id, base?.id ?? null))
     : ''
+  // 上一版产物的反 AI 味检查结果。和预览报错同理:按版本失效
+  const slopLint = project ? pendingLint(project.id, base?.id ?? null) : ''
 
   const attachments = toImageParts(input.attachments ?? [])
   if (attachments.length > 0 && !model.abilities.includes('vision')) {
@@ -278,6 +282,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             skills: enabledSkills,
             localScope: localScopePrompt(userRoots, detected.missing),
             previewError,
+            slopLint,
             skillCatalog: catalog
           })
         : buildChatPrompt({
@@ -484,6 +489,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         summary: narration.slice(0, 200)
       })
       artifactId = artifact.id
+
+      /*
+       * 检查本轮产物,结果留到下一轮进提示词。
+       *
+       * 提示词里写"不要用靛蓝"只是倾向,模型仍然会用;而"你第 12 行有 #6366f1"
+       * 是事实,绕不过去。这条回流是我们相对纯提示词方案唯一的结构性优势。
+       */
+      const findings = [...writes].flatMap(([path, content]) => lintArtifact(path, content))
+      if (findings.length) recordLint(project!.id, artifact.id, findings)
     }
 
     // 顺序:解说 → 问答 → 文件。回放时不完全等于流式当时的先后,但

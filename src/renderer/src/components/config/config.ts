@@ -93,11 +93,66 @@ const GLASS_ALPHA = { rail: 0.55, container: 0.72 }
 const alpha = (color: string, a: number): string =>
   `color-mix(in srgb, ${color} ${Math.round(a * 100)}%, transparent)`
 
-/** ConfigProvider 用的 theme，同时也喂给 getDesignToken 算页面底色 */
+/**
+ * ConfigProvider 用的 theme,同时也喂给 getDesignToken 算页面底色。
+ *
+ * ## 为什么要覆盖这么多
+ *
+ * 只改 colorPrimary 的话,剩下 32 个 seed token 全是 antd 默认值——**所有用
+ * antd 的应用会长成同一个样子**,换个主色也救不回来。真正拉开差距的是中性色的
+ * 色温、字体、圆角、控件密度和动效曲线。
+ *
+ * ## 中性色靠 seed 带偏,不是逐个覆盖
+ *
+ * colorBgBase / colorTextBase 是算法的输入。把它们设成暖色(色相 ~40°),整条
+ * 中性色阶就会跟着暖起来;然后**只把描边单独扳回冷色**(~215°)。
+ * 暖纸配冷发丝线,这是"贵"和"廉价"之间最大的一个差别,而改动只有几行。
+ *
+ * 具体值见 assets/tokens.css 的说明。
+ */
 const buildTheme = (dark: boolean, primaryColor: string): ThemeConfig => ({
   algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
   token: {
-    colorPrimary: primaryColor
+    colorPrimary: primaryColor,
+
+    // 中性色的色温:暖底暖字
+    colorBgBase: dark ? '#1a1917' : '#faf9f7',
+    colorTextBase: dark ? '#e8e4dc' : '#1a1916',
+
+    // 描边扳回冷色。亮色下用实色,暗色下用半透明白——暗底上实色描边会显脏
+    colorBorder: dark ? '#46433c' : '#c9d0da',
+    colorBorderSecondary: dark ? 'rgba(255,255,255,0.08)' : '#e1e5eb',
+
+    /*
+     * 字体。标题用衬线是在别处(见 base.css 的 h1-h3),这里定的是界面字体。
+     * 不引 webfont:11-13px 这个尺寸上系统字体的渲染比任何下载来的字体都好,
+     * 而且是 0 字节。
+     */
+    fontFamily:
+      "-apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', 'Noto Sans CJK SC', Roboto, sans-serif",
+    fontFamilyCode: "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace",
+
+    // 密度:界面文字压到 13px,控件 28px。桌面工具的信息密度本来就该比网页高
+    fontSize: 13,
+    controlHeight: 28,
+    borderRadius: 8,
+
+    /*
+     * 动效:**一条曲线用到底**。
+     * antd 默认那几条各不相同,混在一起会让界面显得"没有统一手感"。
+     * 进场 200ms、出场 140ms——用户已经决定关掉它了,不该再等。
+     */
+    motionEaseInOut: 'cubic-bezier(0.23, 1, 0.32, 1)',
+    motionEaseOut: 'cubic-bezier(0.23, 1, 0.32, 1)',
+    motionDurationFast: '0.12s',
+    motionDurationMid: '0.2s',
+    motionDurationSlow: '0.28s'
+  },
+  components: {
+    // 组件级微调:让卡片默认扁平,阴影留给悬停和浮层
+    Card: { boxShadowTertiary: 'none' },
+    Button: { primaryShadow: 'none', defaultShadow: 'none' },
+    Segmented: { itemSelectedBg: 'var(--bg-elevated)' }
   }
 })
 

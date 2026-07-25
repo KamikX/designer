@@ -33,12 +33,13 @@ const fileSkills = ref<InstalledSkill[]>([])
  * 改它会影响 Claude Code、Codex 里的使用;本应用那份只影响这里。
  */
 const SOURCE_LABEL: Record<InstalledSkill['source'], { title: string; hint: string }> = {
+  builtin: { title: '内置', hint: '随应用发布 · 手艺规则与设计种子' },
   app: { title: '本应用', hint: '~/.antd-designer/skills · 只在这里生效' },
   agents: { title: '全局', hint: '~/.agents/skills · 其他 AI 工具共享' },
   claude: { title: 'Claude', hint: '~/.claude/skills · 兼容位置' }
 }
 const grouped = computed(() =>
-  (['app', 'agents', 'claude'] as const)
+  (['builtin', 'app', 'agents', 'claude'] as const)
     .map((source) => ({
       source,
       ...SOURCE_LABEL[source],

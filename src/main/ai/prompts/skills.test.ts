@@ -22,18 +22,19 @@ function userSkill(over: Partial<Skill> = {}): Skill {
   }
 }
 
-describe('内置技能一定注入', () => {
-  it('强制技能在没有任何用户技能时也在', () => {
-    const out = skillsPrompt([])
-    for (const skill of BUILTIN_SKILLS.filter((s) => s.alwaysOn)) {
-      expect(out).toContain(skill.name)
-    }
-    expect(out).toContain('第一步永远是设计体系')
+describe('内置技能不再常驻', () => {
+  /*
+   * 这几条以前钉的是"内置技能一定注入"。**行为是有意改掉的**:那两条内置技能
+   * 的内容已经搬进 resources/skills/(craft-* 与 design-seed),由渐进披露按需
+   * 加载。常驻注入四千字设计规范正是要解决的问题——不管这轮是在改一个按钮
+   * 还是从头设计,都塞同样一坨,既贵又吵。
+   */
+  it('没有用户技能时返回空串,不再强塞设计规范', () => {
+    expect(skillsPrompt([])).toBe('')
   })
 
-  it('内置排在用户技能前面——骨架不该被补充顶掉', () => {
-    const out = skillsPrompt([userSkill()])
-    expect(out.indexOf('UI 设计体系规范')).toBeLessThan(out.indexOf('品牌规范'))
+  it('BUILTIN_SKILLS 里已经没有常驻项', () => {
+    expect(BUILTIN_SKILLS.filter((s) => s.alwaysOn)).toEqual([])
   })
 
   it('用户技能的正文进得去', () => {
@@ -55,8 +56,8 @@ describe('标题层级', () => {
   })
 
   it('组装后不出现层级倒挂', () => {
-    const out = skillsPrompt([])
-    // 技能名是 ###,正文里就不该再冒出 # 或 ##
+    // 有用户技能时才有输出;技能名是 ###,正文里就不该再冒出 # 或 ##
+    const out = skillsPrompt([userSkill({ content: '# 一级\n## 二级\n正文' })])
     const headings = out.split('\n').filter((l) => /^#{1,2} /.test(l))
     expect(headings).toEqual(['## 必须遵守的规范'])
   })
@@ -75,8 +76,7 @@ describe('预算', () => {
     expect(skillsPrompt(many).length).toBeLessThan(30000)
   })
 
-  it('没有任何技能时(内置全关)返回空串,不留空标题', () => {
-    // 内置目前都是 alwaysOn,这里直接验证渲染函数对空输入的行为
-    expect(skillsPrompt([]).startsWith('## 必须遵守的规范')).toBe(true)
+  it('没有任何技能时返回空串,不留一个孤零零的标题', () => {
+    expect(skillsPrompt([])).toBe('')
   })
 })

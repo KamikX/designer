@@ -65,19 +65,24 @@ const INTERACTION_SKILL = `
 - 可点区域放大到 44×44
 `.trim()
 
+/**
+ * 这两条的**内容已经搬进 resources/skills/**(craft-* 与 design-seed),由渐进
+ * 披露按需加载。这里保留条目只为兼容旧的勾选状态,`alwaysOn` 一律关掉——
+ * 常驻注入四千字设计规范正是我们要解决的问题。
+ */
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   {
     id: 'builtin:design-system',
     name: 'UI 设计体系规范',
     description: '强制先建立设计 token 再做页面;颜色、排版、间距、可访问性的统一标准',
     content: DESIGN_SYSTEM_SKILL,
-    alwaysOn: true
+    alwaysOn: false
   },
   {
     id: 'builtin:interaction',
     name: '交互完备性',
     description: '空态 / 加载 / 出错 / 边界数量 / 响应式,逐条兜住理想路径之外的情况',
     content: INTERACTION_SKILL,
-    alwaysOn: true
+    alwaysOn: false
   }
 ]

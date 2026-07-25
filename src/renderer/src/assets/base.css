@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './tokens.css';
 @import '@antdv-next/tailwind/theme.css';
 @import '@antdv-next/tailwind/compat.css';
 
@@ -33,4 +34,135 @@ body {
 
 .app-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * 以下是与组件库无关的通用打磨。每一条都便宜,但少了就显得糙。
+ * ══════════════════════════════════════════════════════════════════ */
+
+/*
+ * 标题走衬线。
+ *
+ * 衬线标题 + 系统无衬线正文,是"编辑器气质"的整个来源,而且零字体下载。
+ * 字号越大字重越轻、行高越紧——这是排印的常识,但 AI 产出几乎从不这么做。
+ */
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  /* 大字必须收紧字距,否则看着松垮无力 */
+  letter-spacing: -0.015em;
+}
+
+h1 {
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+}
+
+h2 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+h3 {
+  font-size: 16px;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+/*
+ * 数字一律等宽。
+ *
+ * 一行代价,换来所有计数、时间、用量在变化时不再左右跳动。
+ */
+.tabular,
+time,
+code,
+kbd {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 滚动条:8px 轨道里浮着一根 4px 的条。
+ *
+ * 靠 2px 透明边框 + background-clip 实现——直接设 4px 宽的话,可点区域也只有
+ * 4px,很难抓住。悬停变深用的是**容器**悬停而不是滑块悬停:滑块太细,
+ * 等鼠标精确压上去才变色,那个反馈基本用不上。
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 18%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background-clip: padding-box;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 28%, transparent);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
+ * 半像素发丝线。
+ *
+ * 1px 的边在 retina 上其实是 2 个物理像素,粗。用 scaleY(0.5) 压成真正的
+ * 0.5px——界面上那些分隔线会立刻"退后"一层,不再和内容抢注意力。
+ */
+.hairline-b {
+  position: relative;
+}
+
+.hairline-b::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 64%, transparent);
+  transform: scaleY(0.5);
+  transform-origin: center bottom;
+  pointer-events: none;
+}
+
+/*
+ * 焦点环:一个样式,两种偏移。
+ * 按钮用 2px(要跳出来),卡片用 1px(贴着边框走)。
+ */
+:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
+}
+
+/*
+ * 尊重"减少动态效果"。
+ * 这类动画是前庭不适的常见触发源,不是可选的礼貌。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

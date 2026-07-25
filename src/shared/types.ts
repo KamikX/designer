@@ -477,8 +477,8 @@ export interface Skill {
 export interface InstalledSkill {
   name: string
   description: string
-  /** app 本应用 | agents 跨工具共享 | claude 兼容位置 */
-  source: 'app' | 'agents' | 'claude'
+  /** app 本应用 | agents 跨工具共享 | claude 兼容位置 | builtin 随应用发布 */
+  source: 'app' | 'agents' | 'claude' | 'builtin'
   dir: string
   /** 格式上的问题,界面上标出来但不影响加载 */
   warning?: string

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'f
 import { homedir } from 'os'
 import { join } from 'path'
 import { parse as parseYaml } from 'yaml'
+import electron from 'electron'
 import { DATA_DIR } from '../paths'
 import type { WorkspaceRoot } from '../../shared/types'
 
@@ -22,7 +23,7 @@ import type { WorkspaceRoot } from '../../shared/types'
  * 不可能的。
  */
 
-export type SkillSource = 'app' | 'agents' | 'claude'
+export type SkillSource = 'app' | 'agents' | 'claude' | 'builtin'
 
 export interface FileSkill {
   name: string
@@ -48,8 +49,29 @@ function sources(): { source: SkillSource; root: string }[] {
     // 跨工具约定,规范推荐的位置
     { source: 'agents', root: join(home, '.agents', 'skills') },
     // 兼容:大量现存技能装在这里
-    { source: 'claude', root: join(home, '.claude', 'skills') }
+    { source: 'claude', root: join(home, '.claude', 'skills') },
+    // 随应用发布的手艺规则与设计种子。**排最后**:用户想覆盖同名的那份时,
+    // 放到前面任何一个目录里就行,不用改我们的代码
+    { source: 'builtin', root: builtinRoot() }
   ]
+}
+
+/**
+ * 内置技能目录。
+ *
+ * 打包后 resources 会被解包到 asar 之外(见 electron-builder.yml 的 asarUnpack),
+ * 所以直接按路径读即可。开发时就是仓库里的 resources/skills。
+ *
+ * 拿不到 app 时退回 cwd:electron.app.getAppPath() 在 ready 之前不可用,单测里更是根本
+ * 没有 electron。扫描技能这件事不该因为宿主环境不齐就整个失败——退回去的路径
+ * 存不存在由 scanRoot 自己判断。
+ */
+function builtinRoot(): string {
+  try {
+    return join(electron.app.getAppPath(), 'resources', 'skills')
+  } catch {
+    return join(process.cwd(), 'resources', 'skills')
+  }
 }
 
 export function scanSkills(): FileSkill[] {

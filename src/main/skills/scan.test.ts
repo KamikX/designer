@@ -16,6 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let home: string
 let dataDir: string
+/** 内置技能的根。指向一个空的临时目录,把随应用发布的那几个隔离掉 */
+let builtinHome: string
 
 vi.mock('os', async (orig) => {
   const actual = await orig<typeof import('os')>()
@@ -24,6 +26,18 @@ vi.mock('os', async (orig) => {
 vi.mock('../paths', () => ({
   get DATA_DIR() {
     return dataDir
+  }
+}))
+/*
+ * 内置技能也要隔离掉。不 mock 的话 builtinRoot() 会退回 cwd,把仓库里真实的
+ * resources/skills 扫进来——用例断言"只有 1 个技能"就会莫名其妙地变成 7 个,
+ * 而且看不出和内置技能有关。
+ */
+vi.mock('electron', () => ({
+  default: {
+    app: {
+      getAppPath: () => builtinHome
+    }
   }
 }))
 
@@ -38,6 +52,7 @@ let agents: string
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'skills-home-'))
   dataDir = mkdtempSync(join(tmpdir(), 'skills-data-'))
+  builtinHome = mkdtempSync(join(tmpdir(), 'skills-builtin-'))
   agents = join(home, '.agents', 'skills')
   mkdirSync(agents, { recursive: true })
   vi.resetModules()
@@ -46,6 +61,7 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(home, { recursive: true, force: true })
   rmSync(dataDir, { recursive: true, force: true })
+  rmSync(builtinHome, { recursive: true, force: true })
 })
 
 async function scan(): Promise<import('./scan').FileSkill[]> {

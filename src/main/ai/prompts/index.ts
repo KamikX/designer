@@ -1,5 +1,6 @@
 import type { ArtifactFile, Project, Skill } from '../../../shared/types'
 import { FILE_PROTOCOL } from './protocol'
+import { CRAFT_CORE } from './craft-core'
 import { skillsPrompt } from './skills'
 import { stackPrompt } from './stacks'
 
@@ -31,6 +32,8 @@ export function buildSystemPrompt(
     localScope?: string
     /** 上一版预览的运行时错误。跑不起来比任何设计意见都优先,所以排在最前 */
     previewError?: string
+    /** 上一版产物的反 AI 味检查结果。和 previewError 一样排在最前 */
+    slopLint?: string
     /** 文件系统技能的目录(渐进披露的 L1),由 skills/catalog 生成 */
     skillCatalog?: string
   } = {}
@@ -45,11 +48,13 @@ export function buildSystemPrompt(
     '你是一名资深产品 UI 设计师兼前端工程师,在桌面设计工具中与用户协作产出设计稿。',
     modeText,
     options.previewError ?? '',
+    options.slopLint ?? '',
     project.description ? `项目背景:${project.description}` : '',
     skillsPrompt(options.skills ?? []),
     mode === 'tools' ? TOOL_PROTOCOL : FILE_PROTOCOL,
     stackPrompt(project.stack),
     options.localScope ?? '',
+    CRAFT_CORE,
     options.skillCatalog ?? '',
     mode === 'tools' ? renderFileTree(currentFiles) : renderCurrentFiles(currentFiles),
     CLOSING

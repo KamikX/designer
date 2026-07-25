@@ -1,0 +1,127 @@
+/*
+ * 设计 token。
+ *
+ * ## 为什么中性色要分冷暖
+ *
+ * 界面看着廉价,九成不是因为主色选得不好,而是因为**所有灰都在同一根色相轴上**。
+ * 把它们拆开:
+ *
+ * - **抬起来的表面和所有文字走暖**(色相 ~40°)
+ * - **凹下去的填充和所有描边走冷**(色相 ~215°)
+ *
+ * 暖纸配冷发丝线,这个对比撑起了大半"贵"的感觉。
+ *
+ * ## 没有纯黑纯白
+ *
+ * 最亮 #fffefc(99.4%),最暗 #0d0c0a(4.5%)。纯白纯黑在屏幕上会"震",
+ * 长时间看眼睛累。
+ *
+ * ## 暗色是另一套手调的值,不是把亮色反过来
+ *
+ * 暗色下**全部走暖**(色相 30–49°),没有冷的部分——冷灰在暗背景上会发青发脏。
+ * 而且表面的层级顺序会反过来:亮色下 elevated 最亮,暗色下反而要比 muted 暗一点,
+ * 因为暗色里"抬起"靠的是更小的对比而不是更大的。
+ */
+
+:root {
+  /* ── 表面:暖 ───────────────────────────────────────────── */
+  --bg: #faf9f7;
+  --bg-panel: #fdfcfa;
+  --bg-elevated: #fffefc;
+
+  /* ── 凹陷与描边:冷 ─────────────────────────────────────── */
+  --bg-subtle: #f4f5f7;
+  --bg-muted: #eef1f5;
+  --border-soft: #edf0f4;
+  --border: #e1e5eb;
+  --border-strong: #c9d0da;
+
+  /* 半透明填充。一个类名在明暗两套主题下都对,靠的是这里翻转极性 */
+  --fill-subtle: rgba(0, 0, 0, 0.03);
+  --fill: rgba(0, 0, 0, 0.06);
+  --fill-strong: rgba(0, 0, 0, 0.12);
+
+  /* ── 文字:暖 ───────────────────────────────────────────── */
+  --text-strong: #0d0c0a;
+  --text: #1a1916;
+  --text-muted: #74716b;
+  --text-soft: #989590;
+  --text-faint: #b3b0a8;
+
+  /* ── 阴影 ──────────────────────────────────────────────
+   * 用的是暖近黑(28,27,26)而不是纯黑,和文字同一个色温。
+   * 最常用的是"没有阴影",其次是 xs 那条发丝线——不是光晕。 */
+  --shadow-xs: 0 1px 0 rgba(28, 27, 26, 0.04);
+  --shadow-sm:
+    0 1px 2px rgba(28, 27, 26, 0.05), 0 1px 3px rgba(28, 27, 26, 0.04);
+  --shadow-md:
+    0 6px 24px rgba(28, 27, 26, 0.07), 0 2px 6px rgba(28, 27, 26, 0.04);
+  --shadow-lg:
+    0 24px 60px rgba(28, 27, 26, 0.16), 0 8px 16px rgba(28, 27, 26, 0.07);
+
+  /* 遮罩用暖近黑,不是 rgba(0,0,0,.5) */
+  --scrim: rgba(28, 27, 26, 0.42);
+
+  /* ── 圆角 ─────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /*
+   * ── 动效 ──────────────────────────────────────────────
+   * **一条曲线用到底。** 内置的 ease 太软;ease-in 在界面上是禁用的,
+   * 因为它起步慢,点下去像卡了一下。
+   *
+   * 进场慢、出场快:用户已经决定要关掉它了,拖泥带水只会烦人。
+   */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-quick: 120ms;
+  --dur-enter: 200ms;
+  --dur-exit: 140ms;
+
+  /* ── 字体 ─────────────────────────────────────────────
+   * 标题衬线、正文系统无衬线。零字体下载,而且立刻不像模板。
+   * 中文标题用思源宋体一类,回退到系统宋。 */
+  --font-serif:
+    'Source Serif Pro', 'Iowan Old Style', Charter, 'Songti SC', 'Noto Serif CJK SC', Georgia, serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei UI', 'Noto Sans CJK SC', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/*
+ * 暗色:全暖,并且表面层级的对比更小。
+ * 描边改用半透明白——暗底上实色描边会显脏,而 8% 的白只读作"结构"。
+ */
+:root.dark {
+  --bg: #1a1917;
+  --bg-panel: #222120;
+  --bg-elevated: #2a2825;
+  --bg-subtle: #252321;
+  --bg-muted: #2e2c29;
+
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --border: #333128;
+  --border-strong: #46433c;
+
+  --fill-subtle: rgba(255, 255, 255, 0.06);
+  --fill: rgba(255, 255, 255, 0.1);
+  --fill-strong: rgba(255, 255, 255, 0.16);
+
+  --text-strong: #f2ede4;
+  --text: #e8e4dc;
+  --text-muted: #a5a099;
+  --text-soft: #837e76;
+  --text-faint: #635f59;
+
+  /* 暗色下阴影几乎没用(没有光源),靠的是描边和底色差 */
+  --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.36), 0 2px 6px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.3);
+  --scrim: rgba(0, 0, 0, 0.6);
+}
