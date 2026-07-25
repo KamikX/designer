@@ -20,6 +20,18 @@ const MEMBERS: GroupMentionMember[] = [
   { id: FE_ID, name: '产品' }
 ]
 
+function collectComarkNodeTypes(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const ownType =
+    typeof value[0] === 'string' &&
+    value[1] != null &&
+    typeof value[1] === 'object' &&
+    !Array.isArray(value[1])
+      ? [value[0]]
+      : []
+  return [...ownType, ...value.flatMap(collectComarkNodeTypes)]
+}
+
 describe('createGroupMention', () => {
   it('为新成员生成带稳定 ULID 的规范提及', () => {
     expect(createGroupMention(MEMBERS[1])).toBe(`@[UI 设计师](member:${UI_ID})`)
@@ -27,6 +39,23 @@ describe('createGroupMention', () => {
 
   it('旧内置成员只生成名称提及', () => {
     expect(createGroupMention({ id: 'pm', name: '产品经理' })).toBe('@产品经理')
+  })
+
+  it('含反引号的名称可在规范提及中可逆往返', async () => {
+    const member = { id: PM_ID, name: '前`端`' }
+    const mention = createGroupMention(member)
+
+    expect(mention).toBe('@[前\\`端\\`](member:' + PM_ID + ')')
+    expect(tokenizeGroupMentions(mention, [member])).toEqual([
+      { type: 'member', memberId: PM_ID, name: member.name }
+    ])
+    expect(mentionsToModelText(mention, [member])).toBe('@前`端`')
+
+    const markdown = mentionsToMarkdown(mention, [member])
+    expect(markdown).toBe('[@前\\`端\\`](group-member:' + PM_ID + ')')
+    await expect(parse(markdown)).resolves.toMatchObject({
+      nodes: [['p', {}, ['a', { href: `group-member:${PM_ID}` }, '@前`端`']]]
+    })
   })
 })
 
@@ -100,6 +129,22 @@ describe('tokenizeGroupMentions', () => {
       { type: 'member', memberId: FE_ID, name: '产品' }
     ])
   })
+
+  it('不同 Markdown 容器中的围栏不能互相关闭', () => {
+    const quotedOpen = ['> ```md', '> @产品经理', '```', '@UI 设计师'].join('\n')
+    const plainOpen = ['```md', '@产品经理', '> ```', '@UI 设计师'].join('\n')
+
+    expect(tokenizeGroupMentions(quotedOpen, MEMBERS)).toEqual([{ type: 'text', text: quotedOpen }])
+    expect(tokenizeGroupMentions(plainOpen, MEMBERS)).toEqual([{ type: 'text', text: plainOpen }])
+  })
+
+  it('大量不同长度的反引号 run 不会反复扫描文本后缀', () => {
+    const text = Array.from({ length: 350 }, (_, index) => `${'`'.repeat(index + 1)}x`).join('')
+    const startedAt = performance.now()
+
+    expect(tokenizeGroupMentions(text, MEMBERS)).toEqual([{ type: 'text', text }])
+    expect(performance.now() - startedAt).toBeLessThan(1_500)
+  })
 })
 
 describe('提及转换', () => {
@@ -124,12 +169,13 @@ describe('提及转换', () => {
     const member = { id: PM_ID, name: '<img src=x onerror=evil>' }
     const markdown = mentionsToMarkdown(`@${member.name}`, [member])
     const tree = await parse(markdown)
-    const nodes = JSON.stringify(tree.nodes)
 
     expect(markdown).toBe(`[@\\<img src=x onerror=evil\\>](group-member:${PM_ID})`)
-    expect(nodes).toContain('@<img src=x onerror=evil>')
-    expect(nodes).not.toContain('"html":1')
-    expect(nodes).not.toContain('"onerror"')
+    expect(collectComarkNodeTypes(tree.nodes)).toContain('a')
+    expect(collectComarkNodeTypes(tree.nodes)).not.toContain('img')
+    expect(tree.nodes).toEqual([
+      ['p', {}, ['a', { href: `group-member:${PM_ID}` }, '@<img src=x onerror=evil>']]
+    ])
   })
 })
 

@@ -17,6 +17,19 @@ interface MentionOccurrence {
   member: GroupMentionMember
 }
 
+type MarkdownContainerToken = { type: 'blockquote' } | { type: 'list'; continuationIndent: number }
+
+interface MarkdownContainer {
+  content: string
+  tokens: MarkdownContainerToken[]
+}
+
+interface BacktickRun {
+  start: number
+  end: number
+  closingStart: number | null
+}
+
 const LEGACY_MEMBER_IDS = new Set(['pm', 'ui', 'be', 'fe', 'qa'])
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
 const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}_]/u
@@ -29,24 +42,92 @@ function isConfiguredMemberId(id: string): boolean {
   return ULID_PATTERN.test(id)
 }
 
-function withoutMarkdownContainerPrefix(line: string): string {
-  let content = line
+function isBackslashEscaped(text: string, index: number): boolean {
+  let backslashes = 0
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === '\\'; cursor--) backslashes++
+  return backslashes % 2 === 1
+}
+
+function escapeCanonicalLabel(name: string): string {
+  return name.replace(/([\\`])/g, '\\$1')
+}
+
+function decodeCanonicalLabel(label: string): string {
+  return label.replace(/\\([\\`])/g, '$1')
+}
+
+function indexBacktickRuns(text: string): Map<number, BacktickRun> {
+  const runs: BacktickRun[] = []
+  let index = 0
+
+  while (index < text.length) {
+    if (text[index] !== '`' || isBackslashEscaped(text, index)) {
+      index++
+      continue
+    }
+
+    const start = index
+    index++
+    while (text[index] === '`') index++
+    runs.push({ start, end: index, closingStart: null })
+  }
+
+  const nextByLength = new Map<number, number>()
+  for (let index = runs.length - 1; index >= 0; index--) {
+    const run = runs[index]
+    const length = run.end - run.start
+    run.closingStart = nextByLength.get(length) ?? null
+    nextByLength.set(length, run.start)
+  }
+
+  return new Map(runs.map((run) => [run.start, run]))
+}
+
+function parseMarkdownContainer(line: string): MarkdownContainer {
+  const tokens: MarkdownContainerToken[] = []
+  let offset = 0
 
   while (true) {
+    const content = line.slice(offset)
     const blockquote = content.match(/^ {0,3}>[ \t]?/)
     if (blockquote) {
-      content = content.slice(blockquote[0].length)
+      tokens.push({ type: 'blockquote' })
+      offset += blockquote[0].length
       continue
     }
 
     const list = content.match(/^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/)
     if (list) {
-      content = content.slice(list[0].length)
+      tokens.push({ type: 'list', continuationIndent: list[0].length })
+      offset += list[0].length
       continue
     }
 
-    return content
+    return { content, tokens }
   }
+}
+
+function contentInMarkdownContainer(
+  line: string,
+  tokens: readonly MarkdownContainerToken[]
+): string | null {
+  let offset = 0
+
+  for (const token of tokens) {
+    const content = line.slice(offset)
+    if (token.type === 'blockquote') {
+      const blockquote = content.match(/^ {0,3}>[ \t]?/)
+      if (!blockquote) return null
+      offset += blockquote[0].length
+      continue
+    }
+
+    const indentation = content.match(/^ */)?.[0].length ?? 0
+    if (indentation < token.continuationIndent) return null
+    offset += token.continuationIndent
+  }
+
+  return line.slice(offset)
 }
 
 /**
@@ -55,6 +136,7 @@ function withoutMarkdownContainerPrefix(line: string): string {
  */
 function proseRanges(text: string): TextRange[] {
   const ranges: TextRange[] = []
+  const backtickRuns = indexBacktickRuns(text)
   let proseStart = 0
   let index = 0
 
@@ -68,7 +150,8 @@ function proseRanges(text: string): TextRange[] {
       const lineEnd = text.indexOf('\n', index)
       const contentEnd = lineEnd === -1 ? text.length : lineEnd
       const line = text.slice(index, contentEnd).replace(/\r$/, '')
-      const opening = withoutMarkdownContainerPrefix(line).match(/^ {0,3}(`{3,}|~{3,})/)
+      const container = parseMarkdownContainer(line)
+      const opening = container.content.match(/^ {0,3}(`{3,}|~{3,})/)
 
       if (opening) {
         pushProse(index)
@@ -81,7 +164,8 @@ function proseRanges(text: string): TextRange[] {
           const closingLineEnd = text.indexOf('\n', cursor)
           const closingContentEnd = closingLineEnd === -1 ? text.length : closingLineEnd
           const closingLine = text.slice(cursor, closingContentEnd).replace(/\r$/, '')
-          const closing = withoutMarkdownContainerPrefix(closingLine).match(/^ {0,3}(`+|~+)[ \t]*$/)
+          const closingContent = contentInMarkdownContainer(closingLine, container.tokens)
+          const closing = closingContent?.match(/^ {0,3}(`+|~+)[ \t]*$/)
 
           if (closing && closing[1][0] === marker && closing[1].length >= minimumLength) {
             codeEnd = closingLineEnd === -1 ? text.length : closingLineEnd + 1
@@ -96,22 +180,12 @@ function proseRanges(text: string): TextRange[] {
       }
     }
 
-    if (text[index] === '`') {
-      let runEnd = index + 1
-      while (text[runEnd] === '`') runEnd++
-      const marker = text.slice(index, runEnd)
-      let closing = text.indexOf(marker, runEnd)
-
-      while (
-        closing !== -1 &&
-        (text[closing - 1] === '`' || text[closing + marker.length] === '`')
-      ) {
-        closing = text.indexOf(marker, closing + marker.length)
-      }
-
-      if (closing !== -1) {
+    const openingRun = backtickRuns.get(index)
+    if (openingRun?.closingStart != null) {
+      const closingRun = backtickRuns.get(openingRun.closingStart)
+      if (closingRun) {
         pushProse(index)
-        index = closing + marker.length
+        index = closingRun.end
         proseStart = index
         continue
       }
@@ -164,7 +238,8 @@ function findMentions(
         .match(/^@\[([^\]\r\n]+)\]\(member:([0-9A-Z]+)\)/)
       if (canonical) {
         const member = membersById.get(canonical[2])
-        if (member && isConfiguredMemberId(canonical[2]) && member.name === canonical[1]) {
+        const name = decodeCanonicalLabel(canonical[1])
+        if (member && isConfiguredMemberId(canonical[2]) && member.name === name) {
           mentions.push({ start: index, end: index + canonical[0].length, member })
           index += canonical[0].length
           continue
@@ -234,7 +309,9 @@ function hasUserMention(text: string, startAt: number): boolean {
 }
 
 export function createGroupMention(member: GroupMentionMember): string {
-  if (isConfiguredMemberId(member.id)) return `@[${member.name}](member:${member.id})`
+  if (isConfiguredMemberId(member.id)) {
+    return `@[${escapeCanonicalLabel(member.name)}](member:${member.id})`
+  }
   if (LEGACY_MEMBER_IDS.has(member.id)) return `@${member.name}`
   throw new Error('群组成员 ID 必须是 ULID 或内置角色 ID')
 }
@@ -271,7 +348,7 @@ export function mentionsToMarkdown(text: string, members: readonly GroupMentionM
   return tokenizeGroupMentions(text, members)
     .map((token) => {
       if (token.type === 'text') return token.text
-      const safeName = token.name.replace(/([\\[\]<>])/g, '\\$1')
+      const safeName = token.name.replace(/([\\[\]<>`])/g, '\\$1')
       return `[@${safeName}](group-member:${token.memberId})`
     })
     .join('')
