@@ -38,6 +38,7 @@ const VERB: Record<string, string> = {
   ask_user: '向你提问',
   view_image: '查看参考图',
   note_image: '记录参考图要点',
+  get_current_time: '查看当前时间',
   // 本地文件
   list_local_dir: '浏览目录',
   check_local_path: '检查路径',

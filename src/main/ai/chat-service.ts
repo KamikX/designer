@@ -21,6 +21,7 @@ import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/r
 import { buildHistory } from './context'
 import { buildSystemPrompt } from './prompts'
 import { buildChatPrompt } from './prompts/chat'
+import { buildTimeTools } from './time-tools'
 import { buildWebTools } from '../web/tools'
 import { closeBrowserSession } from '../web/session'
 import { FileStreamParser } from './file-stream-parser'
@@ -212,6 +213,9 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                   onDelete: (path) => emit({ streamId, type: 'file-delete', path })
                 })
               : {}),
+            // 无条件内置:模型对"今天是几号"只有训练截止时的印象,而且它
+            // 意识不到这一点——不给它这个,涉及日期的输出会自信地错
+            ...buildTimeTools(),
             ...buildWebTools(input.webSearch === true, streamId),
             ...buildAskUserTool({
               streamId,
