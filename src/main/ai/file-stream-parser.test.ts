@@ -153,6 +153,7 @@ describe('FileStreamParser', () => {
     const { parser } = feed('<antdStyleBrief>\n绝不能出现在用户消息里', 3)
 
     expect(parser.pendingStyleBrief).toBeUndefined()
+    expect(parser.sawStyleProtocol).toBe(true)
     expect(parser.narration).toBe('')
   })
 

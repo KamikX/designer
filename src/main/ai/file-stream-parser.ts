@@ -69,6 +69,8 @@ export class FileStreamParser {
   hadUnclosedFile = false
   /** 新样式协议若晚于任一文件/删除语义，整轮提交必须拒绝。 */
   styleProtocolAfterFile = false
+  /** 已见到新样式协议起始标记；未闭合 StyleBrief 也必须算入。 */
+  sawStyleProtocol = false
 
   private pending = ''
   /** pending 中已作为 text 放行的前缀长度(仅 text 态使用) */
@@ -142,12 +144,14 @@ export class FileStreamParser {
         return
       }
       if (STYLE_BRIEF_START.test(line)) {
+        this.sawStyleProtocol = true
         if (this.hasSeenFileSemantic) this.styleProtocolAfterFile = true
         this.collectingStyleBrief = true
         this.styleBriefLines = []
         return
       }
       if (STYLE_FALLBACK.test(line)) {
+        this.sawStyleProtocol = true
         if (this.hasSeenFileSemantic) this.styleProtocolAfterFile = true
         this.useStyleFallback = true
         return

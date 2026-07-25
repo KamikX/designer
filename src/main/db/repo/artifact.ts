@@ -68,26 +68,6 @@ export function createArtifactVersion(input: {
 }): Artifact {
   const db = getDb()
 
-  // version 取当前最大值 +1;主进程单线程处理 IPC,无并发竞争
-  const maxVersion =
-    db
-      .select({ v: sql<number>`COALESCE(MAX(${artifacts.version}), 0)` })
-      .from(artifacts)
-      .where(eq(artifacts.projectId, input.projectId))
-      .get()?.v ?? 0
-
-  const artifact = db
-    .insert(artifacts)
-    .values({
-      projectId: input.projectId,
-      messageId: input.messageId,
-      version: maxVersion + 1,
-      baseArtifactId: input.baseArtifactId,
-      summary: input.summary
-    })
-    .returning()
-    .get()
-
   // 合并:新写入的文件优先;父版本文件除被删除/被覆盖外全部继承
   const merged = new Map<string, string>()
   if (input.baseArtifactId) {
@@ -97,9 +77,31 @@ export function createArtifactVersion(input: {
   }
   for (const [path, content] of input.writes) merged.set(path, content)
 
-  for (const [path, content] of merged) {
-    db.insert(artifactFiles).values({ artifactId: artifact.id, path, content }).run()
-  }
+  return db.transaction((tx) => {
+    // version 取当前最大值 +1;主进程单线程处理 IPC,无并发竞争
+    const maxVersion =
+      tx
+        .select({ v: sql<number>`COALESCE(MAX(${artifacts.version}), 0)` })
+        .from(artifacts)
+        .where(eq(artifacts.projectId, input.projectId))
+        .get()?.v ?? 0
 
-  return toView(artifact)
+    const artifact = tx
+      .insert(artifacts)
+      .values({
+        projectId: input.projectId,
+        messageId: input.messageId,
+        version: maxVersion + 1,
+        baseArtifactId: input.baseArtifactId,
+        summary: input.summary
+      })
+      .returning()
+      .get()
+
+    for (const [path, content] of merged) {
+      tx.insert(artifactFiles).values({ artifactId: artifact.id, path, content }).run()
+    }
+
+    return toView(artifact)
+  })
 }

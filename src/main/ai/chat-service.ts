@@ -29,12 +29,15 @@ import { skillCatalog } from '../skills/catalog'
 import { loadTargetTemplates } from '../skills/targets'
 import { renderTargetTemplates, targetContractPrompt } from './prompts/targets'
 import {
+  awaitMarkerUsageBeforeCommit,
   buildStyleBriefTools,
   commitMarkerStyleBrief,
   createInitialStyleWriteGate,
   markerCompletionOutcome,
+  restoreMarkerStyleIfArtifactFailed,
   renderStyleBriefPrompt
 } from './style-brief'
+import type { MarkerStyleCommitResult } from './style-brief'
 import { connectMcpTools } from '../mcp/tools'
 import type { McpSession } from '../mcp/tools'
 import { buildSkillTools } from '../skills/tools'
@@ -230,6 +233,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const parser = new FileStreamParser()
   /** 正常完成的 markers 提交若被风格事务拒绝，catch 不得把同一批文件重新灌入。 */
   let markerCommitRejected = false
+  /** 一旦开始等待 usage 或提交 markers，catch 绝不对同一轮二次提交。 */
+  let markerCommitAttempted = false
+  let markerCommit: MarkerStyleCommitResult | null = null
+  let markerArtifactCreated = false
+  let markerCompensationAttempted = false
   /** tools 路的解说自己累计;markers 路用 parser.narration */
   let toolNarration = ''
   /** 本回合的问答,按发生顺序;finalize 时连答案一起存进消息 */
@@ -548,9 +556,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         throw streamError
       }
 
+      let markerUsage: Awaited<typeof result.usage> | null = null
       if (!useTools) {
+        markerCommitAttempted = true
         try {
-          await commitMarkers(markerCompletionOutcome(modelAborted))
+          const settled = await awaitMarkerUsageBeforeCommit(result.usage, () =>
+            commitMarkers(markerCompletionOutcome(modelAborted))
+          )
+          markerUsage = settled.usage
+          markerCommit = settled.commit
         } catch (err) {
           markerCommitRejected = true
           throw err
@@ -563,7 +577,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         (await result.finishReason) === 'tool-calls' &&
         countToolCalls(await result.steps) >= MAX_TOOL_CALLS
 
-      const usage = await result.usage
+      const usage = markerUsage ?? (await result.usage)
       if (cappedOut) {
         const note = `\n\n(已达单轮工具调用上限 ${MAX_TOOL_CALLS} 次,先停在这里。改动已保存,可以继续让我接着改。)`
         toolNarration += note
@@ -574,8 +588,20 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         outputTokens: usage.outputTokens ?? 0
       })
     } catch (err) {
-      if (!useTools && !markerCommitRejected) {
+      if (!useTools && !markerCommitAttempted && !markerCommitRejected) {
         await commitMarkers(abort.signal.aborted ? 'aborted' : 'error')
+      }
+      if (!markerCompensationAttempted) {
+        markerCompensationAttempted = true
+        try {
+          await restoreMarkerStyleIfArtifactFailed({
+            commit: markerCommit,
+            artifactCreated: markerArtifactCreated,
+            restore: (styleBrief) => setProjectStyleBrief(project!.id, styleBrief)
+          })
+        } catch (restoreError) {
+          console.error('[ai] 设计稿版本失败后未能恢复项目视觉方向:', restoreError)
+        }
       }
       if (abort.signal.aborted) {
         // 中止不算错误:已执行的工具调用 / 已解析完成的文件照常成版本
@@ -596,13 +622,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     }
   }
 
-  async function commitMarkers(outcome: 'complete' | 'aborted' | 'error'): Promise<void> {
+  async function commitMarkers(
+    outcome: 'complete' | 'aborted' | 'error'
+  ): Promise<MarkerStyleCommitResult | null> {
     relay(parser.finish())
     if (!project) {
       vfs.ingest(parser.files, parser.deleted)
-      return
+      return null
     }
-    await commitMarkerStyleBrief({
+    return commitMarkerStyleBrief({
       parser,
       vfs,
       initialStyleBrief: project.styleBrief ?? '',
@@ -642,6 +670,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         summary: narration.slice(0, 200)
       })
       artifactId = artifact.id
+      if (!useTools) markerArtifactCreated = true
 
       /*
        * 检查本轮产物,结果留到下一轮进提示词。

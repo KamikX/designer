@@ -4,9 +4,11 @@ import { CRAFT_CORE } from './prompts/craft-core'
 import { FILE_PROTOCOL } from './prompts/protocol'
 import {
   buildStyleBriefTools,
+  awaitMarkerUsageBeforeCommit,
   commitMarkerStyleBrief,
   createInitialStyleWriteGate,
   markerCompletionOutcome,
+  restoreMarkerStyleIfArtifactFailed,
   renderStyleBriefPrompt,
   styleFallback
 } from './style-brief'
@@ -301,7 +303,7 @@ describe('commitMarkerStyleBrief', () => {
       ingest(...args)
     }
 
-    await commitMarkerStyleBrief({
+    const result = await commitMarkerStyleBrief({
       parser,
       vfs,
       initialStyleBrief: '',
@@ -315,6 +317,11 @@ describe('commitMarkerStyleBrief', () => {
 
     expect(order).toEqual(['save:冷灰数据台', 'ingest'])
     expect(vfs.writes.get('index.html')).toBe('<main />\n')
+    expect(result).toEqual({
+      styleSaved: true,
+      previousStyleBrief: '',
+      hasFileOutput: true
+    })
   })
 
   it('保存失败时既不灌入也不保留文件改动', async () => {
@@ -422,6 +429,25 @@ describe('commitMarkerStyleBrief', () => {
     })
 
     expect(saves).toBe(0)
+    expect(vfs.hasChanges).toBe(false)
+  })
+
+  it('文件后未闭合视觉方向遇到中止时不灌入文件', async () => {
+    const parser = marker(
+      '<antdFile path="index.html">\n<main />\n</antdFile>\n<antdStyleBrief>\n冷灰'
+    )
+    const vfs = new SessionVfs([])
+
+    await commitMarkerStyleBrief({
+      parser,
+      vfs,
+      initialStyleBrief: '',
+      initialHasFiles: false,
+      outcome: markerCompletionOutcome(true),
+      save: () => project('unexpected')
+    })
+
+    expect(parser.sawStyleProtocol).toBe(true)
     expect(vfs.hasChanges).toBe(false)
   })
 
@@ -542,6 +568,59 @@ describe('commitMarkerStyleBrief', () => {
   it('模型 abort 会把 markers 提交结果映射为 aborted', () => {
     expect(markerCompletionOutcome(true)).toBe('aborted')
     expect(markerCompletionOutcome(false)).toBe('complete')
+  })
+
+  it('先等待 usage 成功，再提交 markers', async () => {
+    const order: string[] = []
+
+    const result = await awaitMarkerUsageBeforeCommit(
+      Promise.resolve().then(() => {
+        order.push('usage')
+        return { inputTokens: 1 }
+      }),
+      async () => {
+        order.push('commit')
+        return 'committed'
+      }
+    )
+
+    expect(order).toEqual(['usage', 'commit'])
+    expect(result).toEqual({ usage: { inputTokens: 1 }, commit: 'committed' })
+  })
+
+  it('artifact 尚未创建时会恢复带文件的已保存视觉方向', async () => {
+    const restored: string[] = []
+
+    await expect(
+      restoreMarkerStyleIfArtifactFailed({
+        commit: { styleSaved: true, previousStyleBrief: '旧方向', hasFileOutput: true },
+        artifactCreated: false,
+        restore: (value) => {
+          restored.push(value)
+          return project(value)
+        }
+      })
+    ).resolves.toBe(true)
+    expect(restored).toEqual(['旧方向'])
+  })
+
+  it('纯样式更新或版本已创建时不回滚视觉方向', async () => {
+    const restore = (): Project => project('不应调用')
+
+    await expect(
+      restoreMarkerStyleIfArtifactFailed({
+        commit: { styleSaved: true, previousStyleBrief: '旧方向', hasFileOutput: false },
+        artifactCreated: false,
+        restore
+      })
+    ).resolves.toBe(false)
+    await expect(
+      restoreMarkerStyleIfArtifactFailed({
+        commit: { styleSaved: true, previousStyleBrief: '旧方向', hasFileOutput: true },
+        artifactCreated: true,
+        restore
+      })
+    ).resolves.toBe(false)
   })
 })
 

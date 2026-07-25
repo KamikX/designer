@@ -52,6 +52,36 @@ export function markerCompletionOutcome(modelAborted: boolean): 'complete' | 'ab
   return modelAborted ? 'aborted' : 'complete'
 }
 
+export interface MarkerStyleCommitResult {
+  styleSaved: boolean
+  previousStyleBrief: string
+  hasFileOutput: boolean
+}
+
+/** 先确认 usage 可用，再让 markers 保存视觉方向或写入文件。 */
+export async function awaitMarkerUsageBeforeCommit<Usage, Commit>(
+  usage: PromiseLike<Usage>,
+  commit: () => Promise<Commit>
+): Promise<{ usage: Usage; commit: Commit }> {
+  return { usage: await usage, commit: await commit() }
+}
+
+/**
+ * 版本未创建即失败时，恢复伴随文件输出的 StyleBrief，避免项目偏好领先于设计稿。
+ */
+export async function restoreMarkerStyleIfArtifactFailed(input: {
+  commit: MarkerStyleCommitResult | null
+  artifactCreated: boolean
+  restore: (styleBrief: string) => Project | null | Promise<Project | null>
+}): Promise<boolean> {
+  if (!input.commit?.styleSaved || !input.commit.hasFileOutput || input.artifactCreated) {
+    return false
+  }
+  const restored = await input.restore(input.commit.previousStyleBrief)
+  if (!restored) throw new Error('未能恢复项目视觉方向。')
+  return true
+}
+
 /**
  * markers 协议的视觉方向提交边界。
  *
@@ -66,16 +96,21 @@ export async function commitMarkerStyleBrief(input: {
   initialHasFiles: boolean
   outcome: 'complete' | 'aborted' | 'error'
   save: (styleBrief: string) => Project | null | Promise<Project | null>
-}): Promise<void> {
+}): Promise<MarkerStyleCommitResult> {
   const { parser, vfs } = input
   const hasStyleMarker = parser.pendingStyleBrief !== undefined
-  const hasStyleProtocol = hasStyleMarker || parser.useStyleFallback
+  const hasStyleProtocol = parser.sawStyleProtocol
+  const result: MarkerStyleCommitResult = {
+    styleSaved: false,
+    previousStyleBrief: input.initialStyleBrief,
+    hasFileOutput: parser.hasChanges
+  }
 
   // 新协议的中止/出错输出不是完整事务，连同已解析的文件一并丢弃。
   // 没有相关标记时仍走旧逻辑，保持此前 markers 回合的兼容语义。
   if (input.outcome !== 'complete') {
     if (!hasStyleProtocol) vfs.ingest(parser.files, parser.deleted)
-    return
+    return result
   }
 
   if (hasStyleProtocol && parser.hadUnclosedFile) {
@@ -85,7 +120,7 @@ export async function commitMarkerStyleBrief(input: {
     throw new Error('视觉方向或兜底风格标记必须先于文件输出，已拒绝保存和文件改动。')
   }
 
-  const hasFileOutput = parser.hasChanges
+  const hasFileOutput = result.hasFileOutput
   const isInitialProject = !input.initialStyleBrief.trim() && !input.initialHasFiles
   const hasNonemptyStyleBrief = Boolean(parser.pendingStyleBrief)
   const clearsStyleBrief = hasStyleMarker && !hasNonemptyStyleBrief
@@ -108,12 +143,14 @@ export async function commitMarkerStyleBrief(input: {
     try {
       const saved = await input.save(parser.pendingStyleBrief!)
       if (!saved) throw new Error('项目不存在或未能保存。')
+      result.styleSaved = true
     } catch {
       throw new Error('未能保存项目视觉方向，已丢弃本轮文件改动。')
     }
   }
 
   vfs.ingest(parser.files, parser.deleted)
+  return result
 }
 
 /**
