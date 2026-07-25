@@ -97,9 +97,7 @@ describe('项目视觉方向', () => {
   it('创建时去除视觉方向首尾空白', () => {
     const created = createProject(projectInput('  温暖的手作杂志感  '))
 
-    expect(state.creates).toEqual([
-      expect.objectContaining({ styleBrief: '温暖的手作杂志感' })
-    ])
+    expect(state.creates).toEqual([expect.objectContaining({ styleBrief: '温暖的手作杂志感' })])
     expect(created.styleBrief).toBe('温暖的手作杂志感')
   })
 
@@ -121,9 +119,7 @@ describe('项目视觉方向', () => {
     state.updateRows.push(project(''))
 
     expect(setProjectStyleBrief('project-1', '   ')).toMatchObject({ styleBrief: '' })
-    expect(state.updates.at(-1)).toEqual(
-      expect.objectContaining({ styleBrief: '' })
-    )
+    expect(state.updates.at(-1)).toEqual(expect.objectContaining({ styleBrief: '' }))
   })
 
   it('不存在的项目返回 null', () => {
