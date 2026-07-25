@@ -60,6 +60,27 @@ export function listChats(): Conversation[] {
     .map(toView)
 }
 
+/** 协作群组:kind='group',成员角色存在 settings.members 里 */
+export function listGroups(): Conversation[] {
+  return getDb()
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.kind, 'group'), isNull(conversations.projectId)))
+    .orderBy(desc(conversations.updatedAt))
+    .all()
+    .map(toView)
+}
+
+export function createGroup(name: string, members: string[]): Conversation {
+  return toView(
+    getDb()
+      .insert(conversations)
+      .values({ projectId: null, kind: 'group', title: name, settings: { members } })
+      .returning()
+      .get()
+  )
+}
+
 export function createChat(title = ''): Conversation {
   return toView(
     getDb().insert(conversations).values({ projectId: null, kind: 'chat', title }).returning().get()

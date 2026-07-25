@@ -124,6 +124,36 @@ export function lintArtifact(path: string, source: string): Finding[] {
   })
 
   /*
+   * 用了组件库却没定制主题。
+   *
+   * 只查 App.vue:config-provider 的正确位置就是根组件最外层,包在别处
+   * 说明结构也有问题。子组件出现 <a- 标签而 App.vue 没包,控件就是默认蓝
+   * ——所有项目长一个样的另一个源头。
+   */
+  if (/App\.vue$/.test(path) && /<a-[a-z]/.test(source) && !/config-provider/i.test(source)) {
+    findings.push({
+      rule: 'antd-unthemed',
+      severity: 'P1',
+      message: '用了 antdv-next 组件,但 App.vue 没有 a-config-provider 定制主题,控件是默认蓝。',
+      fix: '最外层包 <a-config-provider :theme>,colorPrimary 对齐 theme.css 的 brand;配方见 antdv-theme 技能。',
+      snippet: 'App.vue'
+    })
+  }
+
+  /*
+   * 种子占位色原样交付。
+   *
+   * design-seed 的 #c96442 是**占位**,不是"调好的默认"——不换它的话,
+   * 所有项目都长一个样,单一默认从 Tailwind 靛蓝换成暖橙,单一本身没变。
+   */
+  hit(/#c96442|#b45a3b/i, {
+    rule: 'seed-default-brand',
+    severity: 'P1',
+    message: '品牌色还是设计种子的占位默认值(#c96442)。',
+    fix: '按用户给的方向或 brief 的气质换成本项目自己的品牌色;种子 SKILL.md 里有色板家族表可选。'
+  })
+
+  /*
    * 全大写没加字距。
    *
    * 要把 letter-spacing 和 text-transform 放在同一条规则里看——分开查的话,

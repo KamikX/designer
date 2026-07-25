@@ -155,10 +155,22 @@ const summary = computed(() => {
   overflow-wrap: anywhere;
 }
 
+/*
+ * 摘要多数是「没问题」「12 行」这种短句,但也有长句——比如 glob 没命中时的
+ * 「没有匹配 **&#47;{package.json,...} 的文件。」。之前这里是 flex-shrink:0 +
+ * nowrap,长摘要寸步不让,把旁边 flex:1 的 label 合法地挤成一条竖排窄柱。
+ *
+ * 改法:label 保底(见上),detail 只拿剩余空间,放不下就省略号。
+ * max-width 兜底是为了短 label 的场景——那时剩余空间很大,一条 200 字符的
+ * 摘要会横穿整行,盖过它本该衬托的主句。
+ */
 .activity-detail {
-  flex-shrink: 0;
-  font-size: 11px;
-  /* 摘要都是「没问题」「12 行」这种短句,不该被折断 */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
 }
 </style>

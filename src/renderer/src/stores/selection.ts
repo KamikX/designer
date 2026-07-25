@@ -8,25 +8,19 @@ import type { ProjectSettings } from '@shared/types'
  * 组件里塞不下测试,这里可以。
  */
 
-/** 有 id 和启用开关的东西——技能和 MCP 服务在这件事上形状一样 */
-export interface Toggleable {
-  id: string
-  enabled: boolean
-}
-
 /**
- * 把存档里的 id 集合与当前真实存在的条目对齐。
+ * 把存档里的名字集合与当前真实存在的条目对齐。
  *
- * - `null`(这个项目没选过)→ 用全局启用的那些当默认
- * - 有值(**包括空数组**)→ 保留用户的选择,只剔掉已经不存在的 id
+ * 技能与 MCP 的身份都是**名字**(目录名 / mcp.json 的键),没有数据库 id。
  *
- * 空数组必须原样返回:那是用户明确"一个都不要"。要是当成"没选过"去补
- * 默认值,用户取消勾选的操作一重启就被撤销了。
+ * - `null`(没选过)→ 空数组。**默认零勾选**:不勾就什么都不加载,
+ *   这是"手动选择"模式的立身之本,没有"按全局启用兜底"这条路
+ * - 有值(包括空数组)→ 保留用户的选择,只剔掉已经不存在的名字
  */
-export function reconcileIds(saved: string[] | null, available: Toggleable[]): string[] {
-  if (saved == null) return available.filter((x) => x.enabled).map((x) => x.id)
-  const alive = new Set(available.map((x) => x.id))
-  return saved.filter((id) => alive.has(id))
+export function reconcileNames(saved: string[] | null, available: { name: string }[]): string[] {
+  if (saved == null) return []
+  const alive = new Set(available.map((x) => x.name))
+  return saved.filter((name) => alive.has(name))
 }
 
 export interface ModelChoice {

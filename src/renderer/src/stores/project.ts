@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { CreateProjectInput, Project } from '@shared/types'
+import type { CreateProjectInput, PreviewLib, Project } from '@shared/types'
 
 export const useProjectStore = defineStore('project', {
   state: () => ({
@@ -26,6 +26,15 @@ export const useProjectStore = defineStore('project', {
       const project = await window.api.project.create(input)
       this.projects.unshift(project)
       return project
+    },
+
+    /** 修改依赖包(创建后可改;影响预览装配与提示词,不牵动文件树) */
+    async setLibs(id: string, libs: PreviewLib[]): Promise<void> {
+      const updated = await window.api.project.setLibs(id, libs)
+      if (!updated) return
+      const at = this.projects.findIndex((p) => p.id === id)
+      if (at >= 0) this.projects[at] = updated
+      if (this.current?.id === id) this.current = updated
     },
 
     async remove(id: string): Promise<void> {

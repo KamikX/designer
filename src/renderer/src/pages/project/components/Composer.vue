@@ -11,7 +11,7 @@ import {
   PictureOutlined,
   PlusOutlined,
   SettingOutlined,
-  StopOutlined
+  PauseOutlined
 } from '@antdv-next/icons'
 import { useRouter } from 'vue-router'
 import { App } from 'antdv-next'
@@ -20,10 +20,10 @@ import { useProviderStore } from '@renderer/stores/provider'
 import ModelSelect from './ModelSelect.vue'
 import WorkspaceRoots from './WorkspaceRoots.vue'
 import type { ChatAttachment } from '@renderer/stores/chat'
-import { reconcileIds } from '@renderer/stores/selection'
+import { reconcileNames } from '@renderer/stores/selection'
 import { MAX_FILES_AT_ONCE } from '@shared/limits'
 import { composeMessageBody, planAttachment } from '../attach'
-import type { BuiltinSkillView, GrantedRoot, McpServer, RootScope, Skill } from '@shared/types'
+import type { GrantedRoot, InstalledSkill, McpServerView, RootScope } from '@shared/types'
 
 /**
  * 一体化输入框:无边框多行输入 + 底部工具条。
@@ -235,42 +235,82 @@ function onEnter(e: KeyboardEvent): void {
 
 /* ---------------- MCP / 技能 选择器 ---------------- */
 
-const mcpServers = ref<McpServer[]>([])
-const skills = ref<Skill[]>([])
+/**
+ * 技能与 MCP 都是**手动勾选制,默认零加载**。
+ *
+ * 技能按来源分三组:
+ * - 内置(builtin):设计会话里按项目勾选的端自动生效,这里只展示不勾选——
+ *   关不掉才更该让用户看见,否则模型行为里有一大块来源不明;
+ * - 我的(app,~/.antd-designer/skills):勾了才可用;
+ * - 全局(agents/claude,跨工具共享目录):同上。
+ *
+ * MCP 来自 ~/.antd-designer/mcp.json,勾了才连接。
+ */
+const mcpServers = ref<McpServerView[]>([])
+const mcpProblem = ref('')
+const fileSkills = ref<InstalledSkill[]>([])
 
 /**
- * 内置技能。它们由主进程无条件注入,用户关不掉——**正因为关不掉才更该让他
- * 看见**:否则模型的行为里有一大块来源不明,用户会以为是模型自己的脾气。
- *
- * 只在设计模式下生效(纯聊天要的是一个干净的模型),所以列表也跟着模式走。
+ * 弹层内搜索。全局技能目录动辄几十个,不搜没法找。
+ * 按名字 + 描述匹配——用户经常记得"是干什么的"但想不起叫什么。
  */
-const builtinSkills = ref<BuiltinSkillView[]>([])
-const activeBuiltins = computed(() =>
-  chatStore.projectId ? builtinSkills.value.filter((s) => s.alwaysOn) : []
+const skillFilter = ref('')
+const mcpFilter = ref('')
+
+function matches(filter: string, ...texts: (string | undefined)[]): boolean {
+  const q = filter.trim().toLowerCase()
+  if (!q) return true
+  return texts.some((t) => t?.toLowerCase().includes(q))
+}
+
+const filteredMcpServers = computed(() =>
+  mcpServers.value
+    .filter((s) => matches(mcpFilter.value, s.name))
+    // 能操作的在前:已停用的勾不了,沉到底部,和技能弹层同一套排序原则
+    .sort((a, b) => Number(b.enabled) - Number(a.enabled))
+)
+
+const isDesign = computed(() => !!chatStore.projectId)
+const builtinSkills = computed(() =>
+  isDesign.value
+    ? fileSkills.value.filter(
+        (s) => s.source === 'builtin' && matches(skillFilter.value, s.name, s.description)
+      )
+    : []
+)
+/** 可勾选的技能:内置之外的全部,分「我的」和「全局」两组 */
+const mySkills = computed(() =>
+  fileSkills.value.filter(
+    (s) => s.source === 'app' && matches(skillFilter.value, s.name, s.description)
+  )
+)
+const globalSkills = computed(() =>
+  fileSkills.value.filter(
+    (s) =>
+      (s.source === 'agents' || s.source === 'claude') &&
+      matches(skillFilter.value, s.name, s.description)
+  )
 )
 
 async function loadToolbox(): Promise<void> {
-  const [m, s, b] = await Promise.all([
-    window.api.mcp.list(),
-    window.api.skill.list(),
-    window.api.skill.listBuiltin()
-  ])
-  mcpServers.value = m
-  skills.value = s
-  builtinSkills.value = b
-  // null = 这个项目还没选过,按全局启用状态给默认值;
-  // 已有值(含空数组)是项目存档恢复出来的,只清掉其中已被删除的 id
-  // 只在内存里对齐,不写回存档:用户可能只是暂时把某个技能移走了,
-  // 再装回来时这个项目还该记得它
-  chatStore.mcpIds = reconcileIds(chatStore.mcpIds, m)
-  chatStore.skillIds = reconcileIds(chatStore.skillIds, s)
+  const [m, s] = await Promise.all([window.api.mcp.list(), window.api.market.installedSkills()])
+  mcpServers.value = m.servers
+  mcpProblem.value = m.problem ?? ''
+  fileSkills.value = s
+  // 只在内存里对齐(剔掉已不存在的名字),不写回存档:用户可能只是暂时
+  // 把某个技能移走了,再装回来时这个会话还该记得它
+  chatStore.mcpIds = reconcileNames(chatStore.mcpIds, m.servers)
+  chatStore.skillIds = reconcileNames(
+    chatStore.skillIds,
+    s.filter((x) => x.source !== 'builtin')
+  )
 }
 
 // 换项目时 store 里的选择被重置成新项目的存档,工具箱要跟着重新对齐
 watch(() => chatStore.projectId, loadToolbox, { immediate: true })
 
 const mcpCount = computed(() => chatStore.mcpIds?.length ?? 0)
-const skillCount = computed(() => (chatStore.skillIds?.length ?? 0) + activeBuiltins.value.length)
+const skillCount = computed(() => (chatStore.skillIds?.length ?? 0) + builtinSkills.value.length)
 
 function toggleId(list: string[] | null, id: string): string[] {
   const set = new Set(list ?? [])
@@ -394,7 +434,6 @@ function toggleId(list: string[] | null, id: string): string[] {
             @click="chatStore.setWebSearch(!chatStore.webSearch)"
           >
             <GlobalOutlined />
-            <span>联网</span>
           </button>
         </a-tooltip>
 
@@ -402,49 +441,120 @@ function toggleId(list: string[] | null, id: string): string[] {
         <a-popover trigger="click" placement="topLeft">
           <template #content>
             <div class="toolbox-pop">
-              <div class="toolbox-pop-title">本会话使用的 MCP 服务</div>
+              <div class="toolbox-pop-title">本会话使用的 MCP 服务(勾选才连接)</div>
+              <div
+                v-if="mcpProblem"
+                class="toolbox-pop-warn"
+                :style="{ color: token.colorWarning }"
+              >
+                {{ mcpProblem }}
+              </div>
+              <a-input
+                v-if="mcpServers.length > 5"
+                v-model:value="mcpFilter"
+                size="small"
+                allow-clear
+                placeholder="搜索服务名"
+                class="toolbox-pop-search"
+              />
               <a-empty
                 v-if="mcpServers.length === 0"
                 description="还没有配置 MCP 服务"
                 :image-style="{ height: '48px' }"
               />
-              <label v-for="s in mcpServers" :key="s.id" class="toolbox-pop-row">
+              <a-empty
+                v-else-if="filteredMcpServers.length === 0"
+                description="没有匹配的服务"
+                :image-style="{ height: '48px' }"
+              />
+              <label v-for="s in filteredMcpServers" :key="s.name" class="toolbox-pop-row">
                 <a-checkbox
-                  :checked="chatStore.mcpIds?.includes(s.id)"
-                  @change="chatStore.setMcpIds(toggleId(chatStore.mcpIds, s.id))"
+                  :checked="chatStore.mcpIds?.includes(s.name)"
+                  :disabled="!s.enabled"
+                  @change="chatStore.setMcpIds(toggleId(chatStore.mcpIds, s.name))"
                 />
                 <span class="toolbox-pop-name">{{ s.name }}</span>
-                <span class="toolbox-pop-meta">{{ s.transport }}</span>
+                <span class="toolbox-pop-meta">
+                  {{ s.transport
+                  }}{{ s.missingEnv?.length ? ` · 缺 ${s.missingEnv.join(', ')}` : ''
+                  }}{{ s.enabled ? '' : ' · 已停用' }}
+                </span>
               </label>
-              <a class="toolbox-pop-manage" @click="router.push('/settings')">
+              <a class="toolbox-pop-manage" @click="router.push('/market')">
                 <SettingOutlined /> 管理 MCP 服务
               </a>
             </div>
           </template>
-          <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
-            <ApiOutlined />
-            <span>MCP</span>
-            <span v-if="mcpCount" class="toolbox-badge" :style="{ background: token.colorPrimary }">
-              {{ mcpCount }}
-            </span>
-          </button>
+          <!-- 工具条只放图标,名字进 tooltip:tooltip 套在 popover 的触发器上,
+               悬停出名字、点击出面板,两者不打架 -->
+          <a-tooltip title="MCP 服务">
+            <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
+              <ApiOutlined />
+              <span
+                v-if="mcpCount"
+                class="toolbox-badge"
+                :style="{ background: token.colorPrimary }"
+              >
+                {{ mcpCount }}
+              </span>
+            </button>
+          </a-tooltip>
         </a-popover>
 
         <!-- 技能选择 -->
         <a-popover trigger="click" placement="topLeft">
           <template #content>
             <div class="toolbox-pop">
-              <div class="toolbox-pop-title">本会话使用的技能</div>
+              <div class="toolbox-pop-title">本会话使用的技能(勾选才可用)</div>
 
-              <!-- 内置技能:关不掉,但必须让用户看见。否则模型行为里有一大块
-                   来源不明,他会以为是模型自己的脾气 -->
-              <template v-if="activeBuiltins.length">
+              <a-input
+                v-if="fileSkills.length > 5"
+                v-model:value="skillFilter"
+                size="small"
+                allow-clear
+                placeholder="搜索技能名或描述"
+                class="toolbox-pop-search"
+              />
+
+              <!-- 能操作的分组在前:用户打开弹层是来勾选的,别让一屏只读项
+                   把可勾的挤到折叠线以下 -->
+              <template v-if="mySkills.length">
                 <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
-                  内置(自动生效)
+                  我的技能
+                </div>
+                <label v-for="s in mySkills" :key="s.name" class="toolbox-pop-row">
+                  <a-checkbox
+                    :checked="chatStore.skillIds?.includes(s.name)"
+                    @change="chatStore.setSkillIds(toggleId(chatStore.skillIds, s.name))"
+                  />
+                  <span class="toolbox-pop-name">{{ s.name }}</span>
+                  <span class="toolbox-pop-meta">{{ s.description }}</span>
+                </label>
+              </template>
+
+              <template v-if="globalSkills.length">
+                <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
+                  全局技能
+                </div>
+                <label v-for="s in globalSkills" :key="s.name" class="toolbox-pop-row">
+                  <a-checkbox
+                    :checked="chatStore.skillIds?.includes(s.name)"
+                    @change="chatStore.setSkillIds(toggleId(chatStore.skillIds, s.name))"
+                  />
+                  <span class="toolbox-pop-name">{{ s.name }}</span>
+                  <span class="toolbox-pop-meta">{{ s.description }}</span>
+                </label>
+              </template>
+
+              <!-- 内置技能放最后:关不掉也取消不了,但必须让用户看见——否则
+                   模型行为里有一大块来源不明,他会以为是模型自己的脾气 -->
+              <template v-if="builtinSkills.length">
+                <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
+                  内置(设计会话自动生效)
                 </div>
                 <label
-                  v-for="s in activeBuiltins"
-                  :key="s.id"
+                  v-for="s in builtinSkills"
+                  :key="s.name"
                   class="toolbox-pop-row toolbox-pop-row--fixed"
                 >
                   <a-checkbox :checked="true" disabled />
@@ -453,56 +563,43 @@ function toggleId(list: string[] | null, id: string): string[] {
                 </label>
               </template>
 
-              <div
-                v-if="skills.length"
-                class="toolbox-pop-group"
-                :style="{ color: token.colorTextTertiary }"
-              >
-                自定义
-              </div>
               <a-empty
-                v-if="skills.length === 0 && activeBuiltins.length === 0"
-                description="还没有配置技能"
+                v-if="!builtinSkills.length && !mySkills.length && !globalSkills.length"
+                :description="fileSkills.length ? '没有匹配的技能' : '还没有任何技能'"
                 :image-style="{ height: '48px' }"
               />
-              <label v-for="s in skills" :key="s.id" class="toolbox-pop-row">
-                <a-checkbox
-                  :checked="chatStore.skillIds?.includes(s.id)"
-                  @change="chatStore.setSkillIds(toggleId(chatStore.skillIds, s.id))"
-                />
-                <span class="toolbox-pop-name">{{ s.name }}</span>
-                <span class="toolbox-pop-meta">{{ s.description }}</span>
-              </label>
-              <a class="toolbox-pop-manage" @click="router.push('/settings')">
+              <a class="toolbox-pop-manage" @click="router.push('/market')">
                 <SettingOutlined /> 管理技能
               </a>
             </div>
           </template>
-          <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
-            <BulbOutlined />
-            <span>技能</span>
-            <span
-              v-if="skillCount"
-              class="toolbox-badge"
-              :style="{ background: token.colorPrimary }"
-            >
-              {{ skillCount }}
-            </span>
-          </button>
+          <a-tooltip title="技能">
+            <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
+              <BulbOutlined />
+              <span
+                v-if="skillCount"
+                class="toolbox-badge"
+                :style="{ background: token.colorPrimary }"
+              >
+                {{ skillCount }}
+              </span>
+            </button>
+          </a-tooltip>
         </a-popover>
       </div>
 
       <!-- 发送 / 停止 -->
       <a-tooltip :title="chatStore.streaming ? '停止生成' : 'Enter 发送,Shift+Enter 换行'">
+        <!-- 流式中是"暂停"而不是红色警告:停止生成是常规操作,已产出的内容
+             会照常保留成版本,不该用危险色吓用户 -->
         <a-button
           v-if="chatStore.streaming"
           class="composer-send"
-          danger
           type="primary"
           shape="circle"
           @click="chatStore.abort()"
         >
-          <template #icon><StopOutlined /></template>
+          <template #icon><PauseOutlined /></template>
         </a-button>
         <a-button
           v-else
@@ -741,13 +838,31 @@ function toggleId(list: string[] | null, id: string): string[] {
   padding: 0 4px;
 }
 
+/*
+ * 高度必须封顶。技能按分组列出来之后(内置 + 我的 + 全局)条目轻松过二十条,
+ * 不封顶的话 popover 会长过视口,把整个页面顶出滚动条——弹层内部自己滚,
+ * 页面不动。360px 约容得下 9-10 行,再多就滚。
+ */
 .toolbox-pop {
   width: 260px;
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .toolbox-pop-group {
   font-size: 11px;
   padding: 6px 4px 2px;
+}
+
+/* mcp.json 解析出问题时的提示行 */
+.toolbox-pop-warn {
+  font-size: 12px;
+  padding: 2px 4px 6px;
+}
+
+.toolbox-pop-search {
+  margin-bottom: 8px;
 }
 
 /* 内置项不可勾选,压暗一点表明"看得见但动不了" */

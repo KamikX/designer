@@ -52,6 +52,8 @@ export function createMessage(input: {
   status?: Message['status']
   providerSlug?: string
   modelId?: string
+  /** 群组会话的发言者(角色 id / 'user') */
+  author?: string
 }): Message {
   return toView(
     getDb()
@@ -62,7 +64,8 @@ export function createMessage(input: {
         parts: JSON.stringify(input.parts),
         status: input.status ?? 'complete',
         providerSlug: input.providerSlug,
-        modelId: input.modelId
+        modelId: input.modelId,
+        author: input.author
       })
       .returning()
       .get()

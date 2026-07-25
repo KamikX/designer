@@ -10,6 +10,7 @@ import { useAppConfig, PROVIDER_OPTIONS } from './config'
  * message / modal / notification 读不到主题 token。
  */
 const { antdLocale, themeConfig } = useAppConfig()
+console.log(antdLocale)
 
 /**
  * 给「组件外的命令式调用」兜底。

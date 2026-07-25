@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { ulid } from 'ulid'
-import type { SessionSettings } from '../../shared/types'
+import type { DesignTarget, PreviewLib, SessionSettings } from '../../shared/types'
 
 /**
  * 表结构的唯一事实来源。
@@ -41,6 +41,13 @@ export const projects = sqliteTable(
     // 不如引导用户新建项目
     stack: text('stack').notNull().default('html'),
     designMode: text('design_mode').notNull().default('design'),
+    /**
+     * 勾选的端类型(mobile/web/landing/admin),JSON 数组。
+     * null 表示没选过——老项目和跳过勾选的都落在这里,提示词层不注入端契约。
+     */
+    targets: text('targets', { mode: 'json' }).$type<DesignTarget[]>(),
+    /** 勾选的组件库(antdv-next 等),JSON 数组。null = 纯 Tailwind */
+    libs: text('libs', { mode: 'json' }).$type<PreviewLib[]>(),
     description: text('description').notNull().default(''),
     /**
      * 工作台的"上次选了什么":模型、技能、MCP。
@@ -156,6 +163,11 @@ export const messages = sqliteTable(
     modelId: text('model_id'),
     // 该条 assistant 消息产出的设计稿版本
     artifactId: text('artifact_id'),
+    /**
+     * 群组会话里的发言者(角色 id,如 'pm' / 'ui';用户消息为 'user')。
+     * 普通对话为 NULL——role 列只分 user/assistant,群里要知道是哪个 agent 说的。
+     */
+    author: text('author'),
     ...timestamps
   },
   (table) => [index('idx_messages_conversation').on(table.conversationId)]
@@ -198,33 +210,9 @@ export const artifactFiles = sqliteTable(
   (table) => [uniqueIndex('uniq_artifact_files_path').on(table.artifactId, table.path)]
 )
 
-/**
- * MCP 服务配置。transport 决定连接方式:stdio 本地起进程(command/args/env),
- * sse|http 连远程端点(url/headers)。args/env/headers 都是 JSON 文本。
- * 只存配置;连接与工具发现在对话链路接入时实现。
- */
-export const mcpServers = sqliteTable('mcp_servers', {
-  id: id(),
-  name: text('name').notNull(),
-  transport: text('transport').notNull().default('stdio'),
-  command: text('command'),
-  args: text('args').notNull().default('[]'),
-  env: text('env').notNull().default('{}'),
-  url: text('url'),
-  headers: text('headers').notNull().default('{}'),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  ...timestamps
-})
-
-/** 技能:可复用的提示词包,启用后注入设计对话的 system prompt。 */
-export const skills = sqliteTable('skills', {
-  id: id(),
-  name: text('name').notNull(),
-  description: text('description').notNull().default(''),
-  content: text('content').notNull(),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
-  ...timestamps
-})
+// mcp_servers 与 skills 两张表已退役:MCP 收敛到 ~/.antd-designer/mcp.json,
+// 技能收敛到 ~/.antd-designer/skills 文件目录。双事实来源(DB + 文件)并存了
+// 一段时间,市场装进 DB、AI 装进文件、两边互相看不见——按约定直接删表不迁移。
 
 /**
  * 二进制资源索引（图片等）。实体不进库：backend='local' 时 location 是
@@ -270,8 +258,6 @@ export type MessageRow = typeof messages.$inferSelect
 export type ArtifactRow = typeof artifacts.$inferSelect
 export type ArtifactFileRow = typeof artifactFiles.$inferSelect
 export type AssetRow = typeof assets.$inferSelect
-export type McpServerRow = typeof mcpServers.$inferSelect
-export type SkillRow = typeof skills.$inferSelect
 
 /**
  * 用户授权给某个项目的本地目录。

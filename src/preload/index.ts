@@ -21,6 +21,7 @@ const api: DesignerApi = {
     get: (id) => ipcRenderer.invoke('project:get', id),
     create: (input) => ipcRenderer.invoke('project:create', input),
     rename: (id, name) => ipcRenderer.invoke('project:rename', id, name),
+    setLibs: (id, libs) => ipcRenderer.invoke('project:set-libs', id, libs),
     remove: (id) => ipcRenderer.invoke('project:delete', id),
     saveSettings: (id, patch) => ipcRenderer.invoke('project:save-settings', id, patch)
   },
@@ -29,6 +30,7 @@ const api: DesignerApi = {
   },
   market: {
     skills: () => ipcRenderer.invoke('market:skills'),
+    status: () => ipcRenderer.invoke('market:status'),
     installedSkills: () => ipcRenderer.invoke('market:installed-skills'),
     mcp: () => ipcRenderer.invoke('market:mcp')
   },
@@ -53,6 +55,22 @@ const api: DesignerApi = {
     list: (providerId) => ipcRenderer.invoke('model:list', providerId),
     setSelection: (providerId, selections) =>
       ipcRenderer.invoke('model:set-selection', providerId, selections)
+  },
+  group: {
+    roles: () => ipcRenderer.invoke('group:roles'),
+    list: () => ipcRenderer.invoke('group:list'),
+    create: (name, members) => ipcRenderer.invoke('group:create', name, members),
+    rename: (id, name) => ipcRenderer.invoke('group:rename', id, name),
+    remove: (id) => ipcRenderer.invoke('group:delete', id),
+    messages: (id) => ipcRenderer.invoke('group:messages', id),
+    send: (input) => ipcRenderer.invoke('group:send', input),
+    abort: (id) => ipcRenderer.invoke('group:abort', id),
+    onStream: (cb) => {
+      const listener = (_e: Electron.IpcRendererEvent, event: Parameters<typeof cb>[0]): void =>
+        cb(event)
+      ipcRenderer.on('group:stream', listener)
+      return () => ipcRenderer.removeListener('group:stream', listener)
+    }
   },
   chat: {
     listMessages: (conversationId) => ipcRenderer.invoke('chat:list-messages', conversationId),
@@ -105,19 +123,22 @@ const api: DesignerApi = {
   },
   mcp: {
     list: () => ipcRenderer.invoke('mcp:list'),
-    create: (input) => ipcRenderer.invoke('mcp:create', input),
-    update: (id, patch) => ipcRenderer.invoke('mcp:update', id, patch),
-    remove: (id) => ipcRenderer.invoke('mcp:delete', id),
+    upsert: (name, input) => ipcRenderer.invoke('mcp:upsert', name, input),
+    setEnabled: (name, enabled) => ipcRenderer.invoke('mcp:set-enabled', name, enabled),
+    remove: (name) => ipcRenderer.invoke('mcp:delete', name),
     importJson: (json) => ipcRenderer.invoke('mcp:import-json', json)
   },
   skill: {
-    list: () => ipcRenderer.invoke('skill:list'),
-    listBuiltin: () => ipcRenderer.invoke('skill:list-builtin'),
-    create: (input) => ipcRenderer.invoke('skill:create', input),
-    update: (id, patch) => ipcRenderer.invoke('skill:update', id, patch),
-    remove: (id) => ipcRenderer.invoke('skill:delete', id),
+    create: (name) => ipcRenderer.invoke('skill:create', name),
+    installMarket: (id) => ipcRenderer.invoke('skill:install-market', id),
+    remove: (name) => ipcRenderer.invoke('skill:delete', name),
     // 可选 zipPath 供自动化测试直传,UI 侧不传则由主进程弹文件框
-    importPackage: (zipPath?: string) => ipcRenderer.invoke('skill:import-package', zipPath)
+    importPackage: (zipPath?: string) => ipcRenderer.invoke('skill:import-package', zipPath),
+    tree: (name) => ipcRenderer.invoke('skill:tree', name),
+    readFile: (name, path) => ipcRenderer.invoke('skill:read-file', name, path),
+    writeFile: (name, path, content) => ipcRenderer.invoke('skill:write-file', name, path, content),
+    mkdir: (name, path) => ipcRenderer.invoke('skill:mkdir', name, path),
+    removeEntry: (name, path) => ipcRenderer.invoke('skill:remove-entry', name, path)
   }
 }
 

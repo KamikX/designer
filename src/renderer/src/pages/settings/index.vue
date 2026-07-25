@@ -2,17 +2,13 @@
 import { theme } from 'antdv-next'
 import {
   ApiOutlined,
-  BulbOutlined,
   CloudSyncOutlined,
   DatabaseOutlined,
-  DeploymentUnitOutlined,
   SettingOutlined
 } from '@antdv-next/icons'
 import { useProviderStore } from '@renderer/stores/provider'
 import GeneralPanel from './components/GeneralPanel.vue'
 import ProviderPanel from './components/ProviderPanel.vue'
-import McpPanel from './components/McpPanel.vue'
-import SkillPanel from './components/SkillPanel.vue'
 import DataBackendPanel from './components/DataBackendPanel.vue'
 import StoragePanel from './components/StoragePanel.vue'
 
@@ -28,8 +24,6 @@ store.load()
 const SECTIONS = [
   { key: 'general', label: '通用', icon: SettingOutlined, component: GeneralPanel },
   { key: 'providers', label: 'AI 供应商', icon: ApiOutlined, component: ProviderPanel },
-  { key: 'mcp', label: 'MCP 服务', icon: DeploymentUnitOutlined, component: McpPanel },
-  { key: 'skills', label: '技能', icon: BulbOutlined, component: SkillPanel },
   { key: 'data', label: '数据与同步', icon: CloudSyncOutlined, component: DataBackendPanel },
   { key: 'storage', label: '对象存储', icon: DatabaseOutlined, component: StoragePanel }
 ] as const

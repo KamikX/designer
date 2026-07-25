@@ -47,7 +47,12 @@ const NOISE = [
 export const EXTRACT_ARTICLE = `(async () => {
   if (typeof Defuddle === 'function') {
     try {
-      const r = await new Defuddle(document, { url: location.href, markdown: true }).parse()
+      // 页内看门狗:defuddle 在个别巨型页面上会跑不完。8 秒没出结果就放弃,
+      // 落到下面的启发式兜底——拿到次优正文,好过外层超时后什么都没有
+      const r = await Promise.race([
+        new Defuddle(document, { url: location.href, markdown: true }).parse(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('defuddle timeout')), 8000))
+      ])
       const body = (r.contentMarkdown || r.content || '').trim()
       // 词数少得不合理时判为提取失败,交给下面的兜底。空字符串同理
       if (body && (r.wordCount == null || r.wordCount >= 50)) {

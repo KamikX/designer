@@ -1,38 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { isChoiceAlive, reconcileIds, restoreModelChoice } from './selection'
+import { isChoiceAlive, reconcileNames, restoreModelChoice } from './selection'
 
 /**
  * 这些规则错了不会当场报错,要等到"重启之后"才看得见——正是最该有测试的
  * 那一类。
  */
 
-const skills = [
-  { id: 'a', enabled: true },
-  { id: 'b', enabled: false },
-  { id: 'c', enabled: true }
-]
+const skills = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
 
-describe('reconcileIds', () => {
-  it('没选过(null)→ 用全局启用的那些当默认', () => {
-    expect(reconcileIds(null, skills)).toEqual(['a', 'c'])
+describe('reconcileNames', () => {
+  it('没选过(null)→ 空数组。默认零勾选,没有"按全局启用兜底"', () => {
+    expect(reconcileNames(null, skills)).toEqual([])
   })
 
-  it('空数组是"明确一个都不要",不能当成没选过', () => {
-    // 写成 `saved || defaults` 就会在这里翻车:用户的取消勾选一重启就没了
-    expect(reconcileIds([], skills)).toEqual([])
+  it('空数组保持为空', () => {
+    expect(reconcileNames([], skills)).toEqual([])
   })
 
-  it('保留用户的选择,哪怕它跟全局启用状态相反', () => {
-    // b 全局是关的,用户在这个项目里特意开了——不能被"默认值"覆盖掉
-    expect(reconcileIds(['b'], skills)).toEqual(['b'])
+  it('保留用户勾选的名字', () => {
+    expect(reconcileNames(['b'], skills)).toEqual(['b'])
   })
 
-  it('剔掉已经删掉的 id', () => {
-    expect(reconcileIds(['a', '已删除', 'c'], skills)).toEqual(['a', 'c'])
+  it('剔掉已经不存在的名字', () => {
+    expect(reconcileNames(['a', '已删除', 'c'], skills)).toEqual(['a', 'c'])
   })
 
-  it('全被删光后仍是空数组,不会退回默认值', () => {
-    expect(reconcileIds(['已删除'], skills)).toEqual([])
+  it('全被删光后仍是空数组', () => {
+    expect(reconcileNames(['已删除'], skills)).toEqual([])
   })
 })
 

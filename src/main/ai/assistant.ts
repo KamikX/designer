@@ -61,7 +61,10 @@ export async function condenseIfLong(text: string, hint?: string): Promise<Summa
     const result = await generateText({
       model: getLanguageModel(assistant.providerId, assistant.modelId),
       system,
-      messages: [{ role: 'user', content: user }]
+      messages: [{ role: 'user', content: user }],
+      // 辅助模型挂了不该拖死主流程:上面的 catch 会退回原文继续走。
+      // 没有这个超时,一次网络黑洞就是"web_fetch 永远没反应"
+      abortSignal: AbortSignal.timeout(90_000)
     })
     return result.text
   }

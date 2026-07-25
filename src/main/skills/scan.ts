@@ -33,6 +33,11 @@ export interface FileSkill {
   /** 技能根目录 */
   dir: string
   source: SkillSource
+  /**
+   * 用户在更高优先级目录放了同名技能,盖掉了内置版。
+   * 设计会话里"内置自动可用"要认这份覆盖版,不能因为它 source 变了就要求勾选。
+   */
+  coversBuiltin?: boolean
   /** 不影响加载但值得在界面上标出来的问题 */
   warning?: string
 }
@@ -84,6 +89,8 @@ export function scanSkills(): FileSkill[] {
     for (const skill of scanRoot(root, source, visited)) {
       // 先到先得 = 前面的源优先
       if (!found.has(skill.name)) found.set(skill.name, skill)
+      // builtin 排最后:走到这里说明有更高优先级的同名技能盖掉了内置版
+      else if (source === 'builtin') found.get(skill.name)!.coversBuiltin = true
     }
   }
   return [...found.values()].sort((a, b) => a.name.localeCompare(b.name))

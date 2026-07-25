@@ -3,6 +3,7 @@ import type { ToolSet } from 'ai'
 import { z } from 'zod'
 import { condenseIfLong } from '../ai/assistant'
 import { withPage } from './browser'
+import { ssrfProblem } from './ssrf'
 import { EXTRACT_ARTICLE, FALLBACK_EXTRACT } from './extract'
 import { readVendor } from './vendor'
 import { webSearch } from './search'
@@ -172,6 +173,9 @@ export function buildWebTools(enabled: boolean, streamId?: string): ToolSet {
         if (!/^https?:\/\//i.test(input.url)) {
           return `错误:只支持 http/https 链接,收到的是「${input.url}」。`
         }
+        // URL 来自模型,而模型读过的网页可能带提示注入。内网与元数据端点一律拒
+        const blocked = await ssrfProblem(input.url)
+        if (blocked) return `错误:${blocked}。`
         try {
           const page = await withPage<RenderedPage>(input.url, EXTRACT_ARTICLE, {
             inject: [readVendor('defuddle.js'), FALLBACK_EXTRACT]
@@ -179,9 +183,26 @@ export function buildWebTools(enabled: boolean, streamId?: string): ToolSet {
           if (!page.text.trim()) {
             return `打开了 ${page.url},但没有提取到正文。可能是纯图片页、需要登录,或内容在 iframe 里。`
           }
+          /*
+           * 反爬墙和死链必须区分(cloud-mcp-go 验证过的经验):把验证码页
+           * 当成"打开了但没内容",模型会误判成死链而放弃或反复重试。
+           * 说清"这不是死链",它才知道该换信息源。
+           */
+          if (looksLikeAntiBot(page.text)) {
+            return (
+              `${page.url} 返回的是人机验证/反爬拦截页,不是死链。` +
+              `这个站点拿不到正文,换一个信息源(比如搜索结果里的其他链接)。`
+            )
+          }
+          /*
+           * 正文大小上限:提取脚本可能在超长页面(巨型文档单页、日志页)上
+           * 返回几 MB 文本,先截断再交给辅助模型压缩,别让一个页面吃掉整个
+           * 上下文预算。截断点选在段落边界,尾部加说明。
+           */
+          const capped = capText(page.text, 200_000)
           // 长文交给辅助模型压缩,而不是硬截断——截断会把结论切掉,
           // 而结论往往在文章末尾。没配辅助模型时它原样返回,不会失败
-          const condensed = await condenseIfLong(page.text, input.intent)
+          const condensed = await condenseIfLong(capped, input.intent)
           const meta = [
             `来源:${page.url}`,
             page.author ? `作者:${page.author}` : '',
@@ -199,4 +220,23 @@ export function buildWebTools(enabled: boolean, streamId?: string): ToolSet {
   }
 
   return tools
+}
+
+/** 只扫开头一段——验证码页都很短,长正文不可能是拦截页,别白扫几百 KB */
+function looksLikeAntiBot(text: string): boolean {
+  const head = text.slice(0, 4000).toLowerCase()
+  return (
+    text.length < 4000 &&
+    /captcha|just a moment|attention required|verify you are human|unusual traffic|安全验证|人机验证|访问验证|滑动验证|请完成验证/.test(
+      head
+    )
+  )
+}
+
+/** 按段落边界截断,尾部注明截了多少 */
+function capText(text: string, max: number): string {
+  if (text.length <= max) return text
+  const cut = text.lastIndexOf('\n', max)
+  const kept = text.slice(0, cut > max / 2 ? cut : max)
+  return `${kept}\n\n(正文过长,已截断:保留 ${kept.length} / 共 ${text.length} 字符)`
 }

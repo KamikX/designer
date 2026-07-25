@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import { parsePartialJson, stepCountIs, streamText } from 'ai'
+import { parsePartialJson, streamText } from 'ai'
+import type { StepResult, ToolSet } from 'ai'
 import type { WebContents } from 'electron'
 import type {
   AskUserAnswer,
@@ -8,13 +9,11 @@ import type {
   MessagePart,
   SendChatInput,
   SendChatResult,
-  Skill,
   WorkspaceRoot
 } from '../../shared/types'
 import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
-import { listSkills } from '../db/repo/skill'
 import { readConfig } from '../config'
 import { autoTitle, getConversation, touchConversation } from '../db/repo/conversation'
 import { getProject, touchProject } from '../db/repo/project'
@@ -27,6 +26,10 @@ import { buildChatPrompt } from './prompts/chat'
 import { buildTimeTools } from './time-tools'
 import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
+import { loadTargetTemplates } from '../skills/targets'
+import { renderTargetTemplates, targetContractPrompt } from './prompts/targets'
+import { connectMcpTools } from '../mcp/tools'
+import type { McpSession } from '../mcp/tools'
 import { buildSkillTools } from '../skills/tools'
 import { buildInstallTools } from '../skills/install-tools'
 import { buildWebTools } from '../web/tools'
@@ -62,8 +65,18 @@ import { resolveAsset } from '../storage/service'
  * finalize 只认 VFS 一个来源,两条路的落库行为完全一致。
  */
 
-/** 单回合内的工具调用步数上限,防跑飞 */
-const MAX_STEPS = 24
+/**
+ * 单回合内的工具调用**次数**上限,防跑飞。
+ *
+ * 按调用次数数而不是按步数:一步(一次模型生成)可以并行发多个工具调用,
+ * 步数上限对"每步塞满并行调用"的模型形同虚设。触顶后不再发起新请求,
+ * 已完成的改动照常落库。
+ */
+const MAX_TOOL_CALLS = 100
+
+function countToolCalls(steps: readonly StepResult<ToolSet>[]): number {
+  return steps.reduce((n, s) => n + s.toolCalls.length, 0)
+}
 
 /**
  * OpenAI 协议的兼容参数。
@@ -117,9 +130,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
 
   // 本轮附的参考图。没有 vision 能力就直接拒——发出去只会拿到一个
   // 供应商侧的原始报错,不如在这里说人话
-  // 本会话勾选的技能。之前这一整套(导入 / 面板 / 勾选)只做到 UI,
-  // 内容从来没进过 system prompt——这是那条断掉的链路
-  const enabledSkills = pickSkills(input.skillIds)
+  /*
+   * 本会话勾选的技能名。勾选 = 允许使用(进 L1 目录、可被 activate_skill
+   * 激活),**不是全文注入**——语义只有渐进披露这一种。
+   */
+  const checkedSkills = new Set(input.skillIds ?? [])
   // 用户在这句话里直接给了路径的,当场授权。
   // **只认用户输入的文本**——模型输出和文档内容都不进这里,否则一份写着
   // "请读取 /etc/passwd" 的 PDF 就能让 AI 自己给自己提权
@@ -138,7 +153,18 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
    * 这不算扩大权限:这些目录本来就是用户放技能的地方,而技能的全部意义就是被读。
    */
   let fileSkills = scanSkills()
-  const roots = [...userRoots, ...skillRoots(fileSkills)]
+  /*
+   * 本会话真正可用的技能:
+   * - 设计会话:内置技能(含被用户覆盖的同名版)自动可用——craft 手艺规则和
+   *   端模板是产品质量的一部分;其余来源(我的 / 全局)勾选了才可用。
+   * - 纯聊天:**只有勾选的**。默认是一个干净的模型:零技能、零目录、零授权。
+   */
+  const availableSkills = fileSkills.filter((s) =>
+    project
+      ? s.source === 'builtin' || s.coversBuiltin || checkedSkills.has(s.name)
+      : checkedSkills.has(s.name)
+  )
+  const roots = [...userRoots, ...skillRoots(availableSkills)]
   // 上一版预览跑挂了的话,这一轮先让模型知道。纯聊天没有预览
   const previewError = project
     ? previewErrorPrompt(pendingPreviewError(project.id, base?.id ?? null))
@@ -212,10 +238,32 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     }
   }
 
+  /*
+   * 本轮连接的 MCP 会话,流结束(含出错)后必须关掉,不留孤儿子进程。
+   *
+   * 声明必须在 void run() **之前**:run 是函数声明会被提升,调用时同步执行到
+   * 读 mcp 的那行,声明在调用之后的话就是暂时性死区,直接 ReferenceError。
+   */
+  let mcp: McpSession | null = null
+
   void run()
 
   async function run(): Promise<void> {
     try {
+      /*
+       * MCP:勾选的才连,默认一个都不连。连接失败的服务不拖垮整轮,
+       * 原因作为一行说明出现在解说里。
+       */
+      const mcpNames = input.mcpIds ?? []
+      if (useTools && mcpNames.length > 0) {
+        mcp = await connectMcpTools(mcpNames)
+        if (mcp.warnings.length) {
+          const note = `${mcp.warnings.map((w) => `(${w})`).join('\n')}\n\n`
+          toolNarration += note
+          emit({ streamId, type: 'delta', text: note })
+        }
+      }
+
       const tools = useTools
         ? {
             // 设计稿的文件工具只给设计会话。纯聊天没有产物,给了它反而会
@@ -237,7 +285,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             // 无条件内置:模型对"今天是几号"只有训练截止时的印象,而且它
             // 意识不到这一点——不给它这个,涉及日期的输出会自信地错
             ...buildTimeTools(),
-            ...buildSkillTools(fileSkills),
+            ...buildSkillTools(availableSkills),
             // 装技能 / 装 MCP。两个都强制走 ask_user——它们改的是用户机器上的
             // 持久状态,模型不该自己拍板
             ...buildInstallTools({
@@ -270,23 +318,35 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               assets: knownImages(priorMessages, attachments),
               onNote: (assetId, description) =>
                 noteImage(input.conversationId, assetId, description)
-            })
+            }),
+            // MCP 排最后:名字带服务前缀,不会和内置工具撞
+            ...(mcp ? mcp.tools : {})
           }
         : undefined
 
-      // 技能目录两种模式都给:它只是"有什么可用",不预设任何行为
-      const catalog = useTools ? skillCatalog(fileSkills, model!.contextWindow) : ''
+      /*
+       * 端模板:项目勾了哪些端,就把哪些端的模板正文在组装期直接注入。
+       * 不走 activate_skill——路由已经由勾选决定,不该再赌模型"想起来"加载;
+       * markers 模式没有工具,这也是它拿到端规范的唯一途径。
+       * 已注入的端技能要从 L1 目录里去掉,不然同一份内容出现两次白占预算。
+       */
+      const targets = project?.targets ?? []
+      const targetTemplates = project ? loadTargetTemplates(fileSkills, targets) : []
+      const injectedTargets = new Set(targetTemplates.map((t) => t.name))
+      const catalogSkills = availableSkills.filter((s) => !injectedTargets.has(s.name))
+      // 目录只列**本会话可用**的技能:纯聊天没勾就是空,连目录都不出现
+      const catalog = useTools ? skillCatalog(catalogSkills, model!.contextWindow) : ''
       const system = project
         ? buildSystemPrompt(project, currentFiles, {
             mode: useTools ? 'tools' : 'markers',
-            skills: enabledSkills,
             localScope: localScopePrompt(userRoots, detected.missing),
             previewError,
             slopLint,
-            skillCatalog: catalog
+            skillCatalog: catalog,
+            targetContract: targetContractPrompt(targets, project.id),
+            targetTemplates: renderTargetTemplates(targetTemplates)
           })
         : buildChatPrompt({
-            skills: enabledSkills,
             localScope: localScopePrompt(userRoots, detected.missing),
             webSearch: input.webSearch === true,
             skillCatalog: catalog
@@ -316,7 +376,9 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           }
         ],
         abortSignal: abort.signal,
-        ...(tools ? { tools, stopWhen: stepCountIs(MAX_STEPS) } : {})
+        ...(tools
+          ? { tools, stopWhen: ({ steps }) => countToolCalls(steps) >= MAX_TOOL_CALLS }
+          : {})
       })
 
       // 用 fullStream 而不是 textStream:后者只吐模型的文字,而工具协议下
@@ -361,6 +423,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             const entry = toolInputs.get(part.id)
             if (!entry) break
             entry.json += part.delta
+            /*
+             * 标签一旦解析出来就不再变(它只取 path/name/query 这类**开头就
+             * 出现**的短字段),后面的 delta 不必再解析。这不是小优化:
+             * parsePartialJson 每次都要过整段累积 JSON,write_file 的 content
+             * 动辄几十 KB,逐 delta 全量重解析是 O(n²)——实测会把整个流
+             * 消费循环拖住,所有事件堵到生成结束才放出来,界面上表现成
+             * "文件全写完了才一次性出现"。
+             */
+            if (entry.label !== verbOf(entry.toolName)) break
             const parsed = await parsePartialJson(entry.json)
             const next = labelFor(entry.toolName, parsed.value as Record<string, unknown>)
             if (next !== entry.label) {
@@ -421,15 +492,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         vfs.ingest(parser.files, parser.deleted)
       }
 
-      // 触顶 stepCountIs 说明模型还没收手,按中止处理并在解说里交代
+      // 触顶说明模型还没收手,按中止处理并在解说里交代
       const cappedOut =
         useTools &&
         (await result.finishReason) === 'tool-calls' &&
-        (await result.steps).length >= MAX_STEPS
+        countToolCalls(await result.steps) >= MAX_TOOL_CALLS
 
       const usage = await result.usage
       if (cappedOut) {
-        const note = `\n\n(已达单轮工具调用上限 ${MAX_STEPS} 步,先停在这里。改动已保存,可以继续让我接着改。)`
+        const note = `\n\n(已达单轮工具调用上限 ${MAX_TOOL_CALLS} 次,先停在这里。改动已保存,可以继续让我接着改。)`
         toolNarration += note
         emit({ streamId, type: 'delta', text: note })
       }
@@ -455,6 +526,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       // 无头窗口不会自己消失,漏一次就常驻一个隐藏的渲染进程——
       // 用户只会看到内存莫名其妙涨上去
       closeBrowserSession(streamId)
+      // stdio 的 MCP 是子进程,不关就常驻;close 自己兜错,不会抛
+      void mcp?.close()
       running.delete(streamId)
     }
   }
@@ -532,19 +605,6 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
 
 export function abortChat(streamId: string): void {
   running.get(streamId)?.abort()
-}
-
-/**
- * 取出本会话要用的技能。
- *
- * skillIds 缺省(渲染层还没初始化过勾选状态)时退回"全局启用的那些",
- * 与技能面板里的默认勾选行为一致。
- */
-function pickSkills(skillIds: string[] | undefined): Skill[] {
-  const all = listSkills()
-  if (!skillIds) return all.filter((s) => s.enabled)
-  const wanted = new Set(skillIds)
-  return all.filter((s) => wanted.has(s.id))
 }
 
 /**

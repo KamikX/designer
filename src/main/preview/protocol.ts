@@ -6,6 +6,8 @@ import { getProject } from '../db/repo/project'
 import { resolveAsset } from '../storage/service'
 import { buildBootstrapHtml, injectHtmlRuntime } from './bootstrap'
 import { compilePreviewFile, isCompilable } from './compile'
+import { resolveModuleFile } from './resolve'
+import { libSetupSource } from './lib-setup'
 import type { Compiled } from './compile'
 
 /**
@@ -127,12 +129,25 @@ function serveArtifact(pathname: string): Response {
 
   // vue3 / react:入口出引导页,其余文件按名直出(引导页里 fetch 用)
   if (isEntry && project.stack !== 'html') {
-    return html(buildBootstrapHtml(project.stack, theme))
+    return html(buildBootstrapHtml(project.stack, theme, project.libs ?? []))
   }
 
-  const entryName = filePath === '' ? 'index.html' : filePath
-  const file = files.find((f) => f.path === entryName)
+  const requested = filePath === '' ? 'index.html' : filePath
+
+  // 依赖包的 setup 虚拟模块:不在产物文件树里,按项目勾选直出;没勾就 404,守边界
+  if (requested.startsWith('__setup__/')) {
+    const code = libSetupSource(requested.slice('__setup__/'.length), project.libs ?? [])
+    if (!code) return new Response('Not Found', { status: 404 })
+    return new Response(code, {
+      headers: { 'content-type': JS_MIME, 'cache-control': 'no-cache' }
+    })
+  }
+
+  const file = resolveModuleFile(files, requested)
   if (!file) return new Response('Not Found', { status: 404 })
+  // 后续一律用**解析到的真实路径**:编译模式、MIME、缓存键都取决于它,
+  // 而不是浏览器请求里那个可能没有后缀的名字
+  const entryName = file.path
 
   // html 栈的 html 文件注入 Tailwind 运行时与错误上抛
   if (project.stack === 'html' && entryName.endsWith('.html')) {

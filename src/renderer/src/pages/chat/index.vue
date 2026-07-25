@@ -5,6 +5,7 @@ import {
   FileTextOutlined,
   FolderOpenOutlined,
   GlobalOutlined,
+  LoadingOutlined,
   MessageOutlined,
   PlusOutlined,
   SelectOutlined
@@ -186,7 +187,13 @@ function scrollToBottom(smooth: boolean): void {
         "
         @click="open(chat.id)"
       >
-        <MessageOutlined />
+        <!-- 有流在跑就转圈:后台会话也一样,让用户一眼看到哪条在干活 -->
+        <LoadingOutlined
+          v-if="chatStore.streams[chat.id]"
+          spin
+          :style="{ color: token.colorPrimary }"
+        />
+        <MessageOutlined v-else />
         <span class="chat-item-title">{{ chat.title || '新对话' }}</span>
         <button class="chat-item-remove" type="button" @click.stop="remove(chat)">
           <DeleteOutlined />

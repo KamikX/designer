@@ -1,4 +1,5 @@
-import type { Stack } from '../../shared/types'
+import type { PreviewLib, Stack } from '../../shared/types'
+import { LIB_VERSIONS, libSetupPaths } from './lib-setup'
 
 /**
  * vue3 / react 技术栈的 iframe 引导 HTML(html 栈直出用户文件,不走这里)。
@@ -43,6 +44,49 @@ export function buildImportMap(extra?: Record<string, string>): string {
   return `<script type="importmap">${JSON.stringify({ imports })}</script>`
 }
 
+/* ------------------------------------------------------------------ */
+/* 项目勾选的组件库(CDN)。接入模式与新增清单见 docs/preview-libs.md    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 版本**锁死**,不用 latest:预览产物要可复现,CDN 上的 latest 会让上个月的
+ * 版本今天打不开。升级 = 改这里 + 按 docs/preview-libs.md 回归验收。
+ *
+ * 依赖闭包(实测自 antdv-next-playground 调研):
+ * - antd.esm.js 唯一的裸导入是 "vue"——dayjs 及其 6 个插件、cssinjs、
+ *   @v-c/util 全部内联在 bundle 里,import map **不需要也不应该**补 dayjs
+ *   (补了会出现第二个 dayjs 实例,locale/插件状态不互通);
+ * - vue 必须 >= 3.5(bundle 里用了 onWatcherCleanup),且必须与页面同一份
+ *   实例——正好复用我们 vendor 的 vue 映射,天然满足;
+ * - antdv-next >= 1.0.4 才有 dist/antd.esm.js;
+ * - icons 的依赖(@ant-design/colors 等)同样全内联,零额外条目。
+ */
+const LIB_CDN = 'https://cdn.jsdelivr.net/npm/'
+
+function libImports(libs: PreviewLib[]): Record<string, string> {
+  const imports: Record<string, string> = {}
+  if (libs.includes('antdv-next')) {
+    const base = `${LIB_CDN}antdv-next@${LIB_VERSIONS['antdv-next']}`
+    imports['antdv-next'] = `${base}/dist/antd.esm.js`
+    // 尾斜杠前缀映射:让 antdv-next/dist/locale/zh_CN.js 这类子路径也能解析。
+    // 注意它只做字符串替换,不补扩展名——不带 .js 的子路径照样 404
+    imports['antdv-next/'] = `${base}/`
+  }
+  if (libs.includes('@antdv-next/icons')) {
+    const base = `${LIB_CDN}@antdv-next/icons@${LIB_VERSIONS['@antdv-next/icons']}`
+    imports['@antdv-next/icons'] = `${base}/dist/antd-icons.esm.js`
+    imports['@antdv-next/icons/'] = `${base}/`
+  }
+  return imports
+}
+
+/*
+ * 样式与 app.use 的装配不在这里:每个依赖包一个 setup 虚拟模块
+ * (`__setup__/<名字>.js`,见 lib-setup.ts),引导脚本按勾选依次 await。
+ * CSS 在 setup 里用 <link> + load/error 事件加载——CDN 挂了能报出
+ * 具体 URL,而不是无声裸奔。
+ */
+
 /**
  * 设计 token 注入。
  *
@@ -55,7 +99,10 @@ export function buildImportMap(extra?: Record<string, string>): string {
  */
 function themeTag(theme: string | undefined): string {
   if (!theme?.trim()) return ''
-  return `<style type="text/tailwindcss">\n${theme}\n</style>`
+  // 兜底剥掉 @import 'tailwindcss':运行时已内置,重复引入会冲突。
+  // 提示词里禁了,但历史版本的产物和走神的模型都可能带着它
+  const cleaned = theme.replace(/@import\s+(['"])tailwindcss\1\s*;?/g, '')
+  return `<style type="text/tailwindcss">\n${cleaned}\n</style>`
 }
 
 const COMMON_HEAD = `
@@ -110,14 +157,41 @@ const COMMON_HEAD = `
  * import 返回的是 promise,失败能接住,再走 reportError 显示到预览面板,并回流
  * 给模型。这条链是"模型知道自己写的东西跑不跑得起来"的唯一来源。
  */
-const VUE_BOOT = `
+const vueBoot = (setups: string[], withAntd: boolean): string => `
 <script type="module">
   window.__previewAwaitMount = true
   try {
     const { createApp } = await import('vue')
     const App = (await import('./App.vue')).default
     if (!App) throw new Error('App.vue 需要默认导出根组件')
-    createApp(App).mount('#app')
+    const app = createApp(App)
+    ${setups
+      .map(
+        (path) => `// 依赖包装配(样式 + app.use),模块由协议层直出,不在产物文件树里
+    await (await import(${JSON.stringify(path)})).default(app)`
+      )
+      .join('\n    ')}
+    app.mount('#app')
+    ${
+      withAntd
+        ? ''
+        : `/*
+     * 守边界的报错:没勾 antdv-next 却写了 <a-xxx> 组件时,生产构建的 vue
+     * 会**静默**把它当普通元素渲染(属性全变 [object Object]),没有任何
+     * 报错——用户只看到一个坏页面。这里挂载后扫一遍,把原因说成人话,
+     * 走错误回流让模型和用户都知道该怎么办。
+     */
+    const stray = [...document.querySelectorAll('#app *')].find(
+      (el) => el.tagName.toLowerCase().startsWith('a-')
+    )
+    if (stray) {
+      reportError(
+        '页面用了 ' + stray.tagName.toLowerCase() + ' 等 antdv-next 组件,' +
+        '但本项目没有勾选 antdv-next 依赖包。在工作台右上角的「依赖包」里勾上它,' +
+        '或者改用原生元素实现。'
+      )
+    }`
+    }
     notifyReady()
   } catch (err) {
     reportError((err && err.stack) || err.message || err)
@@ -152,12 +226,17 @@ const REACT_BOOT = `
 </script>
 `
 
-export function buildBootstrapHtml(stack: Stack, theme?: string): string {
-  const boot = stack === 'vue3' ? VUE_BOOT : REACT_BOOT
+export function buildBootstrapHtml(stack: Stack, theme?: string, libs: PreviewLib[] = []): string {
+  // 组件库目前只有 vue3 栈的运行时装配;别的栈传进来也不生效
+  const activeLibs = stack === 'vue3' ? libs : []
+  const boot =
+    stack === 'vue3'
+      ? vueBoot(libSetupPaths(activeLibs), activeLibs.includes('antdv-next'))
+      : REACT_BOOT
   // import map 必须出现在任何模块脚本之前,所以放在 head 最前面
   return `<!doctype html>
 <html>
-<head>${buildImportMap()}${COMMON_HEAD}${themeTag(theme)}</head>
+<head>${buildImportMap(libImports(activeLibs))}${COMMON_HEAD}${themeTag(theme)}</head>
 <body>
 <div id="app"></div>
 ${boot}

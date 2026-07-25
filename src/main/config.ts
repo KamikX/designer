@@ -22,6 +22,7 @@ const DEFAULT_CONFIG: AppConfig = {
   window: { width: 1400, height: 900 },
   assistantModel: null,
   searchApi: null,
+  marketUrl: '',
   // 最保守的组合:不依赖服务端持久化,也不用任何非标准选项
   openaiCompat: { store: false, encryptedReasoning: false }
 }

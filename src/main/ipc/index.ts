@@ -1,24 +1,27 @@
 import { dialog, ipcMain, nativeTheme } from 'electron'
 import type { AppConfig } from '../config'
 import { patchConfig, readConfig } from '../config'
-import {
-  createMcpServer,
-  deleteMcpServer,
-  importMcpJson,
-  listMcpServers,
-  updateMcpServer
-} from '../db/repo/mcp'
-import { createSkill, deleteSkill, listSkills, updateSkill } from '../db/repo/skill'
+import { importMcpText, listMcpViews, removeMcp, setMcpEnabled, upsertMcp } from '../mcp/service'
 import { importSkillPackage } from '../skill-import'
+import {
+  createSkillPackage,
+  installSkillContent,
+  mkdirSkill,
+  readSkillFile,
+  removeSkillEntry,
+  removeSkillPackage,
+  skillTree,
+  writeSkillFile
+} from '../skills/files'
 import type {
   CreateProjectInput,
   CreateProviderInput,
   FetchModelsInput,
   McpServerInput,
   ModelSelection,
+  PreviewLib,
   SessionSettings,
-  Provider,
-  SkillInput
+  Provider
 } from '../../shared/types'
 import {
   createProject,
@@ -26,16 +29,21 @@ import {
   getProject,
   listProjects,
   renameProject,
-  saveProjectSettings
+  saveProjectSettings,
+  setProjectLibs
 } from '../db/repo/project'
 import {
   createChat,
+  createGroup,
   deleteConversation,
   ensureDesignConversation,
   listChats,
+  listGroups,
   renameConversation,
   saveConversationSettings
 } from '../db/repo/conversation'
+import { abortGroup, sendGroupMessage } from '../ai/group-service'
+import { roleMetas } from '../ai/prompts/group-roles'
 import {
   clearProviderKey,
   createProvider,
@@ -50,8 +58,7 @@ import { testProvider } from '../ai/registry'
 import { fetchRemoteModels } from '../ai/model-catalog'
 import { abortChat, sendChat } from '../ai/chat-service'
 import { answerQuestion } from '../ai/ask-user'
-import { BUILTIN_SKILLS } from '../ai/prompts/builtin-skills'
-import { catalog } from '../market'
+import { catalog, marketStatus } from '../market'
 import { scanSkills } from '../skills/scan'
 import { addRoot, grantPaths, listRoots, removeRoot } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
@@ -68,6 +75,7 @@ import {
 import type {
   AskUserAnswer,
   DataBackendInput,
+  GroupSendInput,
   ImportImageInput,
   SendChatInput,
   StorageConfigInput
@@ -104,15 +112,31 @@ export function registerIpc(): void {
     return project
   })
   ipcMain.handle('project:rename', (_e, id: string, name: string) => renameProject(id, name))
+  ipcMain.handle('project:set-libs', (_e, id: string, libs: PreviewLib[]) =>
+    setProjectLibs(id, libs)
+  )
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
   ipcMain.handle('project:save-settings', (_e, id: string, patch: SessionSettings) =>
     saveProjectSettings(id, patch)
   )
 
   ipcMain.handle('market:skills', () => catalog().skills())
+  ipcMain.handle('market:status', () => marketStatus())
   // 文件系统里已装的技能,市场里按来源分组显示
   ipcMain.handle('market:installed-skills', () => scanSkills())
   ipcMain.handle('market:mcp', () => catalog().mcp())
+
+  // 多 agent 协作群组
+  ipcMain.handle('group:roles', () => roleMetas())
+  ipcMain.handle('group:list', () => listGroups())
+  ipcMain.handle('group:create', (_e, name: string, members: string[]) =>
+    createGroup(name, members)
+  )
+  ipcMain.handle('group:rename', (_e, id: string, name: string) => renameConversation(id, name))
+  ipcMain.handle('group:delete', (_e, id: string) => deleteConversation(id))
+  ipcMain.handle('group:messages', (_e, id: string) => listMessages(id))
+  ipcMain.handle('group:send', (e, input: GroupSendInput) => sendGroupMessage(e.sender, input))
+  ipcMain.handle('group:abort', (_e, id: string) => abortGroup(id))
 
   ipcMain.handle('chat:list', () => listChats())
   ipcMain.handle('chat:create', () => createChat())
@@ -202,30 +226,31 @@ export function registerIpc(): void {
   ipcMain.handle('sync:get-config', () => dataBackendView())
   ipcMain.handle('sync:set-config', (_e, input: DataBackendInput) => setDataBackendConfig(input))
 
-  ipcMain.handle('mcp:list', () => listMcpServers())
-  ipcMain.handle('mcp:create', (_e, input: McpServerInput) => createMcpServer(input))
-  ipcMain.handle(
-    'mcp:update',
-    (_e, id: string, patch: Partial<McpServerInput> & { enabled?: boolean }) =>
-      updateMcpServer(id, patch)
+  // MCP:mcp.json 是唯一事实来源,身份即名字
+  ipcMain.handle('mcp:list', () => listMcpViews())
+  ipcMain.handle('mcp:upsert', (_e, name: string, input: McpServerInput) => upsertMcp(name, input))
+  ipcMain.handle('mcp:set-enabled', (_e, name: string, enabled: boolean) =>
+    setMcpEnabled(name, enabled)
   )
-  ipcMain.handle('mcp:delete', (_e, id: string) => deleteMcpServer(id))
-  ipcMain.handle('mcp:import-json', (_e, json: string) => importMcpJson(json))
+  ipcMain.handle('mcp:delete', (_e, name: string) => removeMcp(name))
+  ipcMain.handle('mcp:import-json', (_e, json: string) => importMcpText(json))
 
-  ipcMain.handle('skill:list', () => listSkills())
-  ipcMain.handle('skill:list-builtin', () =>
-    BUILTIN_SKILLS.map(({ id, name, description, alwaysOn }) => ({
-      id,
-      name,
-      description,
-      alwaysOn
-    }))
-  )
-  ipcMain.handle('skill:create', (_e, input: SkillInput) => createSkill(input))
-  ipcMain.handle(
-    'skill:update',
-    (_e, id: string, patch: Partial<SkillInput> & { enabled?: boolean }) => updateSkill(id, patch)
-  )
-  ipcMain.handle('skill:delete', (_e, id: string) => deleteSkill(id))
+  // 「我的技能」:全部落在 ~/.antd-designer/skills,身份即目录名
+  ipcMain.handle('skill:create', (_e, name: string) => createSkillPackage(name))
+  ipcMain.handle('skill:install-market', async (_e, id: string) => {
+    const entry = (await catalog().skills()).find((s) => s.id === id)
+    if (!entry) throw new Error('市场里没有这个技能')
+    return installSkillContent(entry.name, entry.description, entry.content)
+  })
+  ipcMain.handle('skill:delete', (_e, name: string) => removeSkillPackage(name))
   ipcMain.handle('skill:import-package', (_e, zipPath?: string) => importSkillPackage(zipPath))
+  ipcMain.handle('skill:tree', (_e, name: string) => skillTree(name))
+  ipcMain.handle('skill:read-file', (_e, name: string, rel: string) => readSkillFile(name, rel))
+  ipcMain.handle('skill:write-file', (_e, name: string, rel: string, content: string) =>
+    writeSkillFile(name, rel, content)
+  )
+  ipcMain.handle('skill:mkdir', (_e, name: string, rel: string) => mkdirSkill(name, rel))
+  ipcMain.handle('skill:remove-entry', (_e, name: string, rel: string) =>
+    removeSkillEntry(name, rel)
+  )
 }

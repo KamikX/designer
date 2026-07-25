@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
-import { DeleteOutlined, PlusOutlined } from '@antdv-next/icons'
+import { DeleteOutlined, LoadingOutlined, PlusOutlined } from '@antdv-next/icons'
 import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '@renderer/stores/project'
+import { useChatStore } from '@renderer/stores/chat'
 import CreateProjectModal from './components/CreateProjectModal.vue'
 import type { Project, Stack } from '@shared/types'
 
@@ -38,6 +39,14 @@ const STACK_META: Record<Stack, { label: string; color: string; gradient: string
 }
 
 const MODE_LABEL: Record<string, string> = { design: 'UI 设计', prototype: '原型' }
+
+/** 正在生成中的项目集合。流状态在 chat store 里全局存着,首页也看得见 */
+const chatStore = useChatStore()
+const busyProjects = computed(() => {
+  const ids = new Set<string>()
+  for (const s of Object.values(chatStore.streams)) if (s.projectId) ids.add(s.projectId)
+  return ids
+})
 
 function openProject(id: string): void {
   router.push(`/project/${id}`)
@@ -96,7 +105,14 @@ function fromNow(time: string): string {
             <i class="card-stack-dot" :style="{ background: STACK_META[p.stack].color }" />
             {{ STACK_META[p.stack].label }}
           </span>
-          <span class="card-mode" :style="{ color: token.colorTextTertiary }">
+          <span
+            v-if="busyProjects.has(p.id)"
+            class="card-busy"
+            :style="{ color: token.colorPrimary }"
+          >
+            <LoadingOutlined spin /> 生成中
+          </span>
+          <span v-else class="card-mode" :style="{ color: token.colorTextTertiary }">
             {{ MODE_LABEL[p.designMode] }}
           </span>
         </div>
@@ -215,6 +231,13 @@ function fromNow(time: string): string {
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
+}
+
+.card-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
 }
 
 .card-stack-dot {

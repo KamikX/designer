@@ -25,9 +25,20 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@renderer/pages/chat/index.vue')
       },
       {
+        path: 'collab',
+        name: 'Collab',
+        component: () => import('@renderer/pages/collab/index.vue')
+      },
+      {
         path: 'market',
         name: 'Market',
         component: () => import('@renderer/pages/market/index.vue')
+      },
+      {
+        // 「我的技能」编辑器。:name 就是技能目录名——技能没有数据库 id
+        path: 'skills/:name',
+        name: 'SkillEditor',
+        component: () => import('@renderer/pages/skill-editor/index.vue')
       },
       {
         path: 'settings',

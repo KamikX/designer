@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { theme } from 'antdv-next'
+import { App, theme } from 'antdv-next'
+import { AppstoreAddOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
+import { useProjectStore } from '@renderer/stores/project'
 import FileTree from './FileTree.vue'
 import CodeViewer from './CodeViewer.vue'
 import PreviewPane from './PreviewPane.vue'
-import type { Project } from '@shared/types'
+import type { PreviewLib, Project } from '@shared/types'
 
 const props = defineProps<{ project: Project }>()
 
@@ -38,15 +40,94 @@ watch(
 )
 
 const empty = computed(() => store.artifacts.length === 0 && !store.streamingFiles)
+
+/* ---------------- 依赖包(创建后可改) ---------------- */
+
+const { message } = App.useApp()
+const projectStore = useProjectStore()
+
+/** 与 CreateProjectModal 同一份清单;目前只有 vue3 栈有可加载的依赖 */
+const LIB_OPTIONS: { value: PreviewLib; label: string; hint: string }[] = [
+  { value: 'antdv-next', label: 'antdv-next', hint: '组件库本体' },
+  { value: '@antdv-next/icons', label: '@antdv-next/icons', hint: '配套图标库' }
+]
+
+/**
+ * 勾选状态的本地乐观副本。
+ *
+ * 不直接读 props.project.libs:那要等 IPC 往返、整个 project 对象替换后才
+ * 更新,checkbox 点下去会先翻转再被旧值拍回去,看起来就是"取消不掉"。
+ * 点击立即改本地副本,落库失败再回滚。
+ */
+const libDraft = ref<PreviewLib[]>([])
+watch(
+  () => props.project.libs,
+  (libs) => (libDraft.value = [...(libs ?? [])]),
+  { immediate: true }
+)
+
+async function toggleLib(value: PreviewLib): Promise<void> {
+  const before = [...libDraft.value]
+  const next = new Set(libDraft.value)
+  if (next.has(value)) next.delete(value)
+  else {
+    next.add(value)
+    // 图标包依赖组件库本体的场景占绝大多数,勾图标顺手带上本体
+    if (value === '@antdv-next/icons') next.add('antdv-next')
+  }
+  libDraft.value = [...next]
+  try {
+    await projectStore.setLibs(props.project.id, libDraft.value)
+    // 引导 HTML 按项目当前状态生成,不刷预览看不到变化;
+    // 提示词的变化则在下一轮对话自然生效
+    store.previewEpoch++
+    message.success('依赖包已更新,预览已刷新;AI 从下一轮开始按新依赖生成')
+  } catch (err) {
+    libDraft.value = before
+    message.error(err instanceof Error ? err.message : String(err))
+  }
+}
 </script>
 
 <template>
   <div class="workspace" :style="{ background: token.colorBgContainer, borderRadius: '8px' }">
     <div class="workspace-header">
-      <a-tabs v-model:active-key="activeTab" size="small">
-        <a-tab-pane key="preview" tab="预览" />
-        <a-tab-pane key="code" tab="代码" />
-      </a-tabs>
+      <a-segmented
+        v-model:value="activeTab"
+        size="small"
+        :options="[
+          { label: '预览', value: 'preview' },
+          { label: '代码', value: 'code' }
+        ]"
+      />
+
+      <!-- 依赖包创建后也能改:老项目不用重建就能用上组件库 -->
+      <a-popover v-if="project.stack === 'vue3'" trigger="click" placement="bottomRight">
+        <template #content>
+          <div class="libs-pop">
+            <div class="libs-pop-title">依赖包(预览环境自动加载)</div>
+            <label v-for="opt in LIB_OPTIONS" :key="opt.value" class="libs-pop-row">
+              <a-checkbox :checked="libDraft.includes(opt.value)" @change="toggleLib(opt.value)" />
+              <span class="libs-pop-name">{{ opt.label }}</span>
+              <span class="libs-pop-meta" :style="{ color: token.colorTextTertiary }">
+                {{ opt.hint }}
+              </span>
+            </label>
+          </div>
+        </template>
+        <a-tooltip title="依赖包">
+          <button class="libs-btn" :style="{ color: token.colorTextSecondary }" type="button">
+            <AppstoreAddOutlined />
+            <span
+              v-if="libDraft.length"
+              class="libs-badge"
+              :style="{ background: token.colorPrimary }"
+            >
+              {{ libDraft.length }}
+            </span>
+          </button>
+        </a-tooltip>
+      </a-popover>
     </div>
 
     <div class="workspace-body">
@@ -93,10 +174,62 @@ const empty = computed(() => store.artifacts.length === 0 && !store.streamingFil
 .workspace-header {
   flex-shrink: 0;
   gap: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* 原来的高度由 tabs 的内边距撑出来;换成紧凑的 segmented 后自己补 */
+  padding: 8px 8px 4px;
 }
 
-.workspace-header :deep(.ant-tabs-nav) {
-  margin-bottom: 0;
+.libs-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 6px;
+}
+
+.libs-badge {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  color: #fff;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  padding: 0 3px;
+}
+
+.libs-pop {
+  width: 260px;
+}
+
+.libs-pop-title {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.75;
+  margin-bottom: 8px;
+}
+
+.libs-pop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.libs-pop-meta {
+  font-size: 12px;
+  margin-left: auto;
 }
 
 .workspace-body {

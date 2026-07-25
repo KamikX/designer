@@ -112,14 +112,15 @@ function revoke(root: WorkspaceRoot): void {
     </template>
 
     <!-- 与输入框工具条上的 MCP / 技能同款,它们是同一类东西:
-         "这次对话给 AI 看什么" -->
-    <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
-      <FolderOpenOutlined />
-      <span>目录</span>
-      <span v-if="roots.length" class="toolbox-badge" :style="{ background: token.colorPrimary }">
-        {{ roots.length }}
-      </span>
-    </button>
+         "这次对话给 AI 看什么"。工具条只放图标,名字进 tooltip -->
+    <a-tooltip title="本地目录授权">
+      <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
+        <FolderOpenOutlined />
+        <span v-if="roots.length" class="toolbox-badge" :style="{ background: token.colorPrimary }">
+          {{ roots.length }}
+        </span>
+      </button>
+    </a-tooltip>
   </a-popover>
 </template>
 

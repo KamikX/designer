@@ -1,0 +1,232 @@
+import { streamText } from 'ai'
+import type { WebContents } from 'electron'
+import type { GroupSendInput, GroupStreamEvent, Message } from '../../shared/types'
+import { getConversation, touchConversation } from '../db/repo/conversation'
+import { createMessage, listMessages, updateMessage } from '../db/repo/message'
+import { getModel } from '../db/repo/model'
+import { getLanguageModel, errorMessage } from './registry'
+import { buildTimeTools } from './time-tools'
+import { buildLocalTools } from './local-tools'
+import { listRoots } from '../workspace/roots'
+import { firstMention, nextMention, roleById } from './prompts/group-roles'
+import { labelFor, verbOf } from './tool-activity'
+
+/**
+ * 多 agent 协作群组的编排。
+ *
+ * 模型:一个"聊天室"+ @ 接力。用户 @ 某个角色发起,该角色跑一轮
+ * (人设 + 群聊记录 + 本地目录工具),产出 markdown 文档落库为一条群消息;
+ * 它的输出末尾若 @ 了下一位成员,链条继续,直到 @用户 / 没人被 @ / 到达
+ * 上限 / 用户中止。
+ *
+ * 与设计会话共用的部分刻意少:没有 VFS、没有版本、没有技能与 MCP——
+ * 群组的产出就是文档本身(消息即文档)。共用的只有模型注册表、本地文件
+ * 工具(读用户授权目录里的资料)和时间工具。
+ */
+
+/** 一次接力最多跑几棒。防两个角色互相 @ 出死循环 */
+const MAX_HOPS = 8
+/** 单个 agent 一轮的工具调用上限。它只是读文档,不需要设计会话那么多 */
+const MAX_TOOL_CALLS = 40
+
+const running = new Map<string, AbortController>()
+
+export function abortGroup(conversationId: string): void {
+  running.get(conversationId)?.abort()
+}
+
+export function sendGroupMessage(sender: WebContents, input: GroupSendInput): void {
+  const conversation = getConversation(input.conversationId)
+  if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')
+  const model = getModel(input.modelId)
+  if (!model) throw new Error('模型不存在')
+  if (!model.abilities.includes('tools')) {
+    throw new Error(`模型「${model.displayName}」不支持工具调用,协作群组需要能读文档的模型。`)
+  }
+  if (running.has(input.conversationId))
+    throw new Error('上一条接力还在进行中,先等它结束或点停止。')
+
+  const members = conversation.settings?.members ?? []
+  const emit = (event: GroupStreamEvent): void => {
+    if (!sender.isDestroyed()) sender.send('group:stream', event)
+  }
+
+  // 用户消息先落库
+  createMessage({
+    conversationId: input.conversationId,
+    role: 'user',
+    parts: [{ type: 'text', text: input.text }],
+    author: 'user'
+  })
+  touchConversation(input.conversationId)
+
+  const first = firstMention(input.text, members)
+  if (!first) {
+    // 没 @ 任何机器人就只是留言,不启动链条
+    emit({ conversationId: input.conversationId, type: 'chain-done' })
+    return
+  }
+
+  const abort = new AbortController()
+  running.set(input.conversationId, abort)
+  void runChain(input, first, members, emit, abort).finally(() => {
+    running.delete(input.conversationId)
+  })
+}
+
+async function runChain(
+  input: GroupSendInput,
+  firstRole: string,
+  members: string[],
+  emit: (e: GroupStreamEvent) => void,
+  abort: AbortController
+): Promise<void> {
+  const conversationId = input.conversationId
+  let current: string | null = firstRole
+
+  for (let hop = 0; hop < MAX_HOPS && current && !abort.signal.aborted; hop++) {
+    const role = roleById(current)
+    if (!role) break
+
+    const message = createMessage({
+      conversationId,
+      role: 'assistant',
+      parts: [],
+      status: 'streaming',
+      modelId: input.modelId,
+      author: role.id
+    })
+
+    const roots = listRoots({ conversationId })
+    const system = buildAgentSystem(role.id, members, roots.length > 0)
+    emit({ conversationId, type: 'agent-start', messageId: message.id, author: role.id, system })
+
+    let text = ''
+    try {
+      const result = streamText({
+        model: getLanguageModel(input.providerId, input.modelId),
+        system,
+        messages: [{ role: 'user', content: transcript(conversationId, message.id, role.name) }],
+        abortSignal: abort.signal,
+        tools: {
+          ...buildTimeTools(),
+          ...buildLocalTools(roots, { canSeeImages: false, intent: input.text })
+        },
+        stopWhen: ({ steps }) => steps.reduce((n, s) => n + s.toolCalls.length, 0) >= MAX_TOOL_CALLS
+      })
+
+      let streamError: unknown = null
+      for await (const part of result.fullStream) {
+        if (part.type === 'error') {
+          streamError = part.error
+          break
+        }
+        if (part.type === 'abort') break
+        switch (part.type) {
+          case 'text-delta':
+            text += part.text
+            emit({ conversationId, type: 'delta', messageId: message.id, text: part.text })
+            break
+          case 'tool-input-start':
+            emit({
+              conversationId,
+              type: 'tool-start',
+              messageId: message.id,
+              callId: part.id,
+              label: verbOf(part.toolName)
+            })
+            break
+          case 'tool-call':
+            emit({
+              conversationId,
+              type: 'tool-update',
+              messageId: message.id,
+              callId: part.toolCallId,
+              label: labelFor(part.toolName, part.input as Record<string, unknown>)
+            })
+            break
+          case 'tool-result':
+            emit({
+              conversationId,
+              type: 'tool-end',
+              messageId: message.id,
+              callId: part.toolCallId,
+              ok: true
+            })
+            break
+        }
+      }
+      if (streamError) throw streamError
+
+      updateMessage(message.id, {
+        parts: [{ type: 'text', text }],
+        status: abort.signal.aborted ? 'aborted' : 'complete'
+      })
+      emit({ conversationId, type: 'agent-done', messageId: message.id })
+      touchConversation(conversationId)
+
+      // 从**末尾**找下一棒:开头的 @ 往往是在回应上一位,结尾的才是移交
+      current = abort.signal.aborted ? null : nextMention(text, members, role.id)
+    } catch (err) {
+      updateMessage(message.id, {
+        parts: [{ type: 'text', text }],
+        status: abort.signal.aborted ? 'aborted' : 'error'
+      })
+      if (!abort.signal.aborted) {
+        emit({ conversationId, type: 'error', message: errorMessage(err), messageId: message.id })
+      }
+      current = null
+    }
+  }
+
+  emit({ conversationId, type: 'chain-done' })
+}
+
+/**
+ * 群聊记录 → 单条 transcript 文本。
+ *
+ * 不映射成多条 user 消息:群里的发言本来就不满足"一问一答"的角色交替,
+ * 有些供应商的 API 会直接拒绝连续同角色消息。拼成一份带【发言人】前缀的
+ * 记录最稳,也最接近"读群聊"的心智。
+ */
+function transcript(conversationId: string, excludeId: string, selfName: string): string {
+  const nameOf = (author: string | null | undefined): string =>
+    author === 'user' || !author ? '用户' : (roleById(author)?.name ?? author)
+
+  const lines = listMessages(conversationId)
+    .filter((m: Message) => m.id !== excludeId && m.status !== 'streaming')
+    .map((m: Message) => {
+      const text = m.parts
+        .map((p) => (p.type === 'text' ? p.text : ''))
+        .join('')
+        .trim()
+      return text ? `【${nameOf(m.author)}】\n${text}` : ''
+    })
+    .filter(Boolean)
+
+  return `以下是群聊记录(按时间顺序):\n\n${lines.join('\n\n---\n\n')}\n\n---\n\n现在轮到你(${selfName})发言。按你的职责与协作协议产出文档。`
+}
+
+function buildAgentSystem(roleId: string, members: string[], hasRoots: boolean): string {
+  const role = roleById(roleId)!
+  const roster = members
+    .map((id) => roleById(id))
+    .filter((r): r is NonNullable<typeof r> => !!r)
+    .map((r) => `@${r.name}(${r.duty})`)
+    .join('、')
+
+  return [
+    role.persona,
+    `## 协作协议
+
+你在一个多角色协作群里。成员:${roster},以及 @用户(发起人,最终验收者)。
+
+- **只产出 markdown 文档**,不写实现代码(字段表、结构树、伪代码可以)。文档以一级标题开头(如「# 需求文档:xxx」)。
+- 直接输出文档本身,不要客套与自我介绍。
+- 群聊记录里【角色名】开头的是各成员的发言,你自己的历史发言也在其中,不要重复已有内容,在其基础上推进。
+- 完成后在消息**末尾单独一行**决定下一棒:还需要谁接力就写「@角色名 一句话交代要做什么」;整条链路完成或需要用户决策时写「@用户 一句话总结」。**一次只 @ 一位。**`,
+    hasRoots
+      ? '- 用户授权了本地目录:先用 list_local / read_local_file 读里面的文档定位背景,再动笔。'
+      : '- 用户没有授权本地目录,基于群聊内容做合理假设,并把关键假设写在文档开头。'
+  ].join('\n\n')
+}

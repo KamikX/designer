@@ -19,6 +19,15 @@
 const PAGE_TIMEOUT_MS = 20_000
 /** 加载完之后再等一会,给 JS 渲染留时间 */
 const SETTLE_MS = 600
+/**
+ * 页内脚本(注入 + 取值)的单步超时。
+ *
+ * loadURL 一直有超时,但之前 executeJavaScript 没有——页面 JS 只要卡住
+ * (死循环、提取脚本 await 一个永不 resolve 的 Promise),整个工具调用就
+ * 无限挂起,表现为"fetch 一个网页一直没反应"。取值脚本要跑 defuddle,
+ * 给宽一点。
+ */
+const EXEC_TIMEOUT_MS = 15_000
 
 export interface RenderedPage {
   url: string
@@ -64,11 +73,20 @@ export async function withPage<T>(
   try {
     await withTimeout(win.loadURL(url), options.timeout ?? PAGE_TIMEOUT_MS, `打开超时:${url}`)
     await delay(options.settle ?? SETTLE_MS)
-    // 依赖脚本先注入(如 defuddle),再跑取值脚本
+    // 依赖脚本先注入(如 defuddle),再跑取值脚本。每一步都带超时:
+    // 超时后 finally 里 destroy 会直接杀掉渲染进程,挂着的脚本一并回收
     for (const source of options.inject ?? []) {
-      await win.webContents.executeJavaScript(source, true)
+      await withTimeout(
+        win.webContents.executeJavaScript(source, true),
+        EXEC_TIMEOUT_MS,
+        `页面脚本注入超时:${url}`
+      )
     }
-    return (await win.webContents.executeJavaScript(extract, true)) as T
+    return (await withTimeout(
+      win.webContents.executeJavaScript(extract, true),
+      EXEC_TIMEOUT_MS,
+      `正文提取超时:${url}`
+    )) as T
   } finally {
     if (!win.isDestroyed()) win.destroy()
   }

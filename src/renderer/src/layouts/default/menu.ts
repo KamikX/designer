@@ -1,5 +1,11 @@
 import type { MenuItemType } from 'antdv-next'
-import { AppstoreOutlined, HomeOutlined, MessageOutlined, SettingOutlined } from '@antdv-next/icons'
+import {
+  AppstoreOutlined,
+  HomeOutlined,
+  MessageOutlined,
+  SettingOutlined,
+  TeamOutlined
+} from '@antdv-next/icons'
 
 /**
  * 侧栏菜单配置。
@@ -12,6 +18,7 @@ import { AppstoreOutlined, HomeOutlined, MessageOutlined, SettingOutlined } from
 export const MENU_ITEMS: MenuItemType[] = [
   { key: '/', icon: HomeOutlined, label: '首页' },
   { key: '/chat', icon: MessageOutlined, label: '聊天' },
+  { key: '/collab', icon: TeamOutlined, label: '协作' },
   // 技能和 MCP 合成一个入口的两个 tab:侧栏刚减掉一项,再加两项就白减了
   { key: '/market', icon: AppstoreOutlined, label: '市场' }
 ]

@@ -1,4 +1,4 @@
-import type { Stack } from '../../../shared/types'
+import type { PreviewLib, Stack } from '../../../shared/types'
 
 /**
  * 技术栈约束段。必须与 preview 运行时(src/main/preview)的真实能力
@@ -14,6 +14,8 @@ const COMMON_RUNTIME = `
 - 一律用 Tailwind 工具类(预览环境内置 Tailwind v4,无需引入任何东西)。
 - **设计 token 全部写在 \`theme.css\` 里**,用 \`@theme { ... }\` 声明;
   预览环境会自动加载它,页面里不需要 link 或 import。
+- **theme.css 里不要写 \`@import 'tailwindcss'\`**——运行时已经内置了,
+  写了会重复加载直接冲突。这个文件只放 @theme 与自定义样式层。
 - 页面里只用 token 派生的类名(\`bg-surface\` \`text-ink\` \`bg-brand-500\`),
   不写 \`bg-[#...]\`,也不用 Tailwind 自带的 \`gray-\` \`blue-\` 这类调色板——
   那样换主题时改不动。
@@ -81,6 +83,45 @@ ${COMMON_RUNTIME}
 `
 }
 
-export function stackPrompt(stack: Stack): string {
-  return STACKS[stack].trim()
+/**
+ * 组件库段,按项目勾选注入。规则要点:
+ * - 有组件库时,交互控件优先用它——自己拿 div 手搓一个次品按钮是浪费;
+ * - 但布局、间距、配色仍然走 Tailwind + theme.css,组件库管"控件",不管"版面";
+ * - 图标从图标包引,继续禁止 emoji。
+ */
+const LIB_PROMPTS: Record<PreviewLib, string> = {
+  'antdv-next': `
+### 组件库:antdv-next(预览环境已加载,直接 import)
+
+- 组件库已全局安装:模板里直接写 \`<a-button>\` \`<a-table>\` \`<a-modal>\` 这类
+  标签即可;需要具名引入的(theme、message 等)从 'antdv-next' import。
+- 样式已全局就绪。**不要 import 任何 css 文件**——浏览器 ESM 不支持,写了直接白屏。
+- **能用组件库就用组件库,不要手搓**。不只交互控件:表单(Form/Input/Select/
+  DatePicker)、数据展示(Table/Descriptions/Statistic/Tag/Empty/Skeleton)、
+  反馈(Modal/Drawer/Message/Popconfirm)、导航(Menu/Tabs/Breadcrumb/Pagination)
+  都优先从组件库取——它的键盘、焦点、无障碍、边界态是手搓追不上的。
+  动手写一个自定义控件之前,先确认组件库里真的没有。
+- **版面与风格仍归 Tailwind + theme.css**:页面布局、间距、卡片、配色不要
+  依赖组件库的栅格和默认主题色,设计感来自你的 token,组件库只是控件来源。
+- **主题必须定制,默认蓝原样交付 = 没做设计**:App.vue 最外层包
+  \`<a-config-provider :theme>\`,colorPrimary 对齐 theme.css 的 brand、
+  圆角与字体同档、算法按气质选(dark/compact 可组合)。完整 token 清单、
+  算法组合与六套风格配方,**动手前先 activate_skill 加载 antdv-theme**。
+`,
+  '@antdv-next/icons': `
+### 图标库:@antdv-next/icons(预览环境已加载)
+
+- **所有图标尽可能从这里取**:\`import { SearchOutlined, ... } from '@antdv-next/icons'\`。
+  这条**覆盖**前面"图标一律内联 SVG"的默认规则——那是没有图标库时的兜底;
+  现在只有图标库里确实没有的图形才允许内联 SVG 补位,emoji 仍然禁止。
+- 通栏默认用 Outlined 一族;同一界面不要混用 Outlined / Filled 两种风格。
+`
+}
+
+export function stackPrompt(stack: Stack, libs: PreviewLib[] = []): string {
+  const base = STACKS[stack].trim()
+  // 组件库目前只在 vue3 栈的预览环境里装了运行时,别的栈勾了也没用
+  if (stack !== 'vue3' || libs.length === 0) return base
+  const sections = libs.map((lib) => LIB_PROMPTS[lib]?.trim()).filter(Boolean)
+  return [base, ...sections].join('\n\n')
 }

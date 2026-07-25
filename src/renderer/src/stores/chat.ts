@@ -5,6 +5,7 @@ import type {
   ChatStreamEvent,
   ChatUsage,
   Message,
+  MessagePart,
   Project,
   SessionSettings,
   RootScope,
@@ -49,6 +50,21 @@ interface StreamState {
   streamId: string
   conversationId: string
   assistantMessageId: string
+  /** 设计会话所属的项目。首页项目卡片靠它显示"生成中"转圈;纯聊天没有 */
+  projectId?: string
+  /**
+   * 流式缓冲:这条流**从第一个分片起的全部内容**,跟着流走,不跟着"当前
+   * 打开哪条会话"走。
+   *
+   * 增量事件不落库(完成时才整体写入 messages 表),之前把增量直接写进
+   * 当前消息列表的消息对象里——切走会话,消息数组被换掉,已经流出来的
+   * 内容就全丢了。现在事件一律写进这里;消息对象的 parts、activities 与
+   * 缓冲**共享同一份引用**:在看着的时候增量实时上屏,切走了缓冲继续攒,
+   * 切回来把消息重新指向缓冲,一个分片都不少。
+   */
+  parts: MessagePart[]
+  activities: ToolActivity[]
+  reasoning: string
 }
 
 /**
@@ -70,17 +86,23 @@ export const useChatStore = defineStore('chat', {
   state: () => ({
     conversationId: '' as string,
     messages: [] as Message[],
-    /** 当前进行中的流(一期同一时刻只允许一个) */
-    stream: null as StreamState | null,
+    /**
+     * 进行中的流,**按会话隔离**(key = conversationId)。
+     *
+     * 之前是全局单例,后果:在纯聊天里发了消息,切到设计项目,输入框也显示
+     * "停止中"——那是别的会话在生成。每条会话的生成状态只属于它自己,
+     * 不同会话可以同时各跑一条流(主进程本来就按 streamId 支持多路)。
+     */
+    streams: {} as Record<string, StreamState>,
     error: '' as string,
     /** 当前项目 id。选择要按项目存,存的时候得知道存给谁 */
     projectId: '' as string,
     /** 工作台模型选择。跟着项目走,进项目时从 project.settings 恢复 */
     selected: null as { providerId: string; modelId: string } | null,
     /**
-     * 本会话启用的 MCP 服务 / 技能。null 表示"没选过,跟随全局启用状态";
-     * 空数组表示用户**明确一个都不要**——两者不能混同,否则"全部取消勾选"
-     * 一重启就被当成没选过,又给勾回来了。
+     * 本会话勾选的 MCP 服务名 / 技能名(身份即名字,没有数据库 id)。
+     * null 表示"没选过",效果与空数组相同:**什么都不加载**——技能与 MCP
+     * 都是手动勾选制,不存在"按全局启用兜底"。
      */
     mcpIds: null as string[] | null,
     skillIds: null as string[] | null,
@@ -117,8 +139,9 @@ export const useChatStore = defineStore('chat', {
       if (state.conversationId) return { conversationId: state.conversationId }
       return null
     },
+    /** 只看**当前打开的会话**在不在生成。别的会话在后台跑不关这里的事 */
     streaming(state): boolean {
-      return state.stream != null
+      return state.streams[state.conversationId] != null
     },
     awaitingAnswer(state): boolean {
       return state.pendingQuestionId !== ''
@@ -239,10 +262,32 @@ export const useChatStore = defineStore('chat', {
       if (this.conversationId === conversationId) return
       this.conversationId = conversationId
       this.messages = await window.api.chat.listMessages(conversationId)
-      // 活动流水是内存态,换会话就没意义了
+      // 活动流水是内存态,换会话就没意义了;提问归属于上一条会话,一并放掉
       this.activities = {}
       this.reasoning = {}
       this.error = ''
+      this.pendingQuestionId = ''
+
+      /*
+       * 这条会话有流在后台跑:库里那条 assistant 消息还是空的(增量完成时
+       * 才落库),把它重新接回流缓冲——缓冲里存着从第一个分片起的全部内容
+       * (文本、文件条目、工具活动、思考流),接上之后增量继续实时上屏。
+       */
+      const active = this.streams[conversationId]
+      if (active) {
+        const message = this.messages.find((m) => m.id === active.assistantMessageId)
+        if (message) {
+          message.parts = active.parts
+          message.status = 'streaming'
+        }
+        this.activities[active.assistantMessageId] = active.activities
+        this.reasoning[active.assistantMessageId] = active.reasoning
+        // 流正停在一个没答的提问上:回来接着答,别让主进程干等
+        const pending = [...active.parts]
+          .reverse()
+          .find((p) => p.type === 'question' && p.answer === null)
+        if (pending?.type === 'question') this.pendingQuestionId = pending.questionId
+      }
     },
 
     ensureSubscribed(): void {
@@ -251,51 +296,52 @@ export const useChatStore = defineStore('chat', {
     },
 
     handleEvent(event: ChatStreamEvent): void {
-      if (event.streamId !== this.stream?.streamId) return
-      const message = this.messages.find((m) => m.id === this.stream?.assistantMessageId)
-      if (!message) return
+      const entry = Object.values(this.streams).find((s) => s.streamId === event.streamId)
+      if (!entry) return
+      const isCurrent = entry.conversationId === this.conversationId
 
-      // 文件相关事件同步转发给 artifact store(文件树 + 代码视图)
-      useArtifactStore().applyStreamEvent(event)
+      // 画布(文件树 + 代码视图)只属于当前会话,别的会话的文件事件不转发
+      if (isCurrent) useArtifactStore().applyStreamEvent(event)
 
+      /*
+       * 内容增量一律写进流缓冲 entry.parts / entry.activities——它们和当前
+       * 会话的消息对象共享引用(见 StreamState 注释),在看着的时候实时上屏,
+       * 切走了也一个分片不丢。只有"消息级状态"(status/usage/artifactId)
+       * 和"全局提示"(pendingQuestionId/error)按 isCurrent 分流:后台会话
+       * 的这些状态由落库兜底,切回来从库里读到的就是对的。
+       */
       switch (event.type) {
         case 'delta': {
-          const last = message.parts[message.parts.length - 1]
+          const last = entry.parts[entry.parts.length - 1]
           if (last?.type === 'text') last.text += event.text
-          else message.parts.push({ type: 'text', text: event.text })
+          else entry.parts.push({ type: 'text', text: event.text })
           break
         }
-        case 'file-start': {
-          if (!message.parts.some((p) => p.type === 'file' && p.path === event.path)) {
-            message.parts.push({ type: 'file', path: event.path, action: 'write' })
-          }
-          break
-        }
+        // 工具协议里改动文件的气泡条目靠 file-patch 补,两种事件同一处理
+        case 'file-start':
         case 'file-patch': {
-          // 工具协议没有 file-start,改动文件的气泡条目在这里补上
-          if (!message.parts.some((p) => p.type === 'file' && p.path === event.path)) {
-            message.parts.push({ type: 'file', path: event.path, action: 'write' })
+          if (!entry.parts.some((p) => p.type === 'file' && p.path === event.path)) {
+            entry.parts.push({ type: 'file', path: event.path, action: 'write' })
           }
           break
         }
         case 'question': {
           // 主进程的工具循环正停在这一步等作答
-          message.parts.push({
+          entry.parts.push({
             type: 'question',
             questionId: event.questionId,
             ask: event.ask,
             answer: null
           })
-          this.pendingQuestionId = event.questionId
+          if (isCurrent) this.pendingQuestionId = event.questionId
           break
         }
         case 'file-delete': {
-          message.parts.push({ type: 'file', path: event.path, action: 'delete' })
+          entry.parts.push({ type: 'file', path: event.path, action: 'delete' })
           break
         }
         case 'tool-start': {
-          const list = (this.activities[message.id] ??= [])
-          list.push({
+          entry.activities.push({
             callId: event.callId,
             toolName: event.toolName,
             label: event.label,
@@ -304,12 +350,12 @@ export const useChatStore = defineStore('chat', {
           break
         }
         case 'tool-update': {
-          const hit = this.activities[message.id]?.find((a) => a.callId === event.callId)
+          const hit = entry.activities.find((a) => a.callId === event.callId)
           if (hit) hit.label = event.label
           break
         }
         case 'tool-end': {
-          const hit = this.activities[message.id]?.find((a) => a.callId === event.callId)
+          const hit = entry.activities.find((a) => a.callId === event.callId)
           if (hit) {
             hit.state = event.ok ? 'ok' : 'error'
             hit.summary = event.summary
@@ -317,28 +363,40 @@ export const useChatStore = defineStore('chat', {
           break
         }
         case 'reasoning': {
-          this.reasoning[message.id] = (this.reasoning[message.id] ?? '') + event.text
+          entry.reasoning += event.text
+          // this.reasoning 是按消息 id 的展示态,切会话会被清空;从缓冲镜像
+          // 过去,回来时 openConversation 再整体恢复
+          if (isCurrent) this.reasoning[entry.assistantMessageId] = entry.reasoning
           break
         }
         case 'usage': {
-          message.usage = event.usage as ChatUsage
+          const message = this.messages.find((m) => m.id === entry.assistantMessageId)
+          if (message) message.usage = event.usage as ChatUsage
           break
         }
         case 'done': {
-          message.status = 'complete'
-          message.artifactId = event.artifactId
-          this.stream = null
-          this.pendingQuestionId = ''
+          const message = this.messages.find((m) => m.id === entry.assistantMessageId)
+          if (message) {
+            message.status = 'complete'
+            message.artifactId = event.artifactId
+          }
+          delete this.streams[entry.conversationId]
+          if (isCurrent) this.pendingQuestionId = ''
           break
         }
         case 'error': {
-          message.status = 'error'
-          // 出错前已经改好的部分照样成了版本(工具调用是原子的),认下来,
-          // 否则用户看到报错就以为这一轮白干了
-          if (event.artifactId) message.artifactId = event.artifactId
-          this.error = event.message
-          this.stream = null
-          this.pendingQuestionId = ''
+          const message = this.messages.find((m) => m.id === entry.assistantMessageId)
+          if (message) {
+            message.status = 'error'
+            // 出错前已经改好的部分照样成了版本(工具调用是原子的),认下来,
+            // 否则用户看到报错就以为这一轮白干了
+            if (event.artifactId) message.artifactId = event.artifactId
+          }
+          if (isCurrent) {
+            this.error = event.message
+            this.pendingQuestionId = ''
+          }
+          delete this.streams[entry.conversationId]
           break
         }
       }
@@ -375,8 +433,9 @@ export const useChatStore = defineStore('chat', {
           ...(attachments.length
             ? { attachments: attachments.map((a) => ({ assetId: a.assetId, name: a.name })) }
             : {}),
-          // null 表示渲染层还没初始化勾选状态,交给主进程按"全局启用"兜底
-          ...(this.skillIds ? { skillIds: [...this.skillIds] } : {}),
+          // 勾选的技能名与 MCP 名。没勾就什么都不传——主进程默认零加载
+          ...(this.skillIds?.length ? { skillIds: [...this.skillIds] } : {}),
+          ...(this.mcpIds?.length ? { mcpIds: [...this.mcpIds] } : {}),
           ...(this.webSearch ? { webSearch: true } : {})
         })
         this.lastGrantedRoots = result.grantedRoots ?? []
@@ -409,11 +468,14 @@ export const useChatStore = defineStore('chat', {
         artifactId: null,
         createdAt: new Date().toISOString()
       })
+      // parts / activities 与流缓冲共享引用(见 StreamState 的注释)
+      const parts: MessagePart[] = []
+      const activities: ToolActivity[] = []
       this.messages.push({
         id: result.assistantMessageId,
         conversationId: this.conversationId,
         role: 'assistant',
-        parts: [],
+        parts,
         status: 'streaming',
         usage: null,
         providerSlug: null,
@@ -421,19 +483,26 @@ export const useChatStore = defineStore('chat', {
         artifactId: null,
         createdAt: new Date().toISOString()
       })
-      this.stream = {
+      this.activities[result.assistantMessageId] = activities
+      this.streams[this.conversationId] = {
         streamId: result.streamId,
         conversationId: this.conversationId,
-        assistantMessageId: result.assistantMessageId
+        assistantMessageId: result.assistantMessageId,
+        ...(this.projectId ? { projectId: this.projectId } : {}),
+        parts,
+        activities,
+        reasoning: ''
       }
     },
 
+    /** 停止**当前会话**的生成。别的会话在后台跑的流不受影响 */
     async abort(): Promise<void> {
-      if (!this.stream) return
-      await window.api.chat.abort(this.stream.streamId)
-      const message = this.messages.find((m) => m.id === this.stream?.assistantMessageId)
+      const entry = this.streams[this.conversationId]
+      if (!entry) return
+      await window.api.chat.abort(entry.streamId)
+      const message = this.messages.find((m) => m.id === entry.assistantMessageId)
       if (message && message.status === 'streaming') message.status = 'aborted'
-      this.stream = null
+      delete this.streams[entry.conversationId]
       this.pendingQuestionId = ''
     }
   }

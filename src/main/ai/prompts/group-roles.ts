@@ -1,0 +1,112 @@
+import type { GroupRoleMeta } from '../../../shared/types'
+
+/**
+ * 协作群组的内置角色。
+ *
+ * 每个角色 = 展示元数据(渲染层要的)+ 人设提示词(注入给模型的)。
+ * 链路约定:产品经理 → UI设计师 → 后端工程师 → 前端工程师 → 测试工程师,
+ * 但**不写死**——每个角色自己判断下一位该是谁,用户也可以直接 @ 任何人。
+ *
+ * 产出一律是 markdown 文档,不是实现代码(字段表 / 结构树 / 伪代码可以)。
+ */
+
+export interface GroupRole extends GroupRoleMeta {
+  persona: string
+}
+
+export const GROUP_ROLES: GroupRole[] = [
+  {
+    id: 'pm',
+    name: '产品经理',
+    color: '#e8662c',
+    duty: '定位需求,产出需求列表与优先级',
+    deliverable: '需求文档',
+    persona: `你是资深产品经理。职责:把用户的一句话意图落成可执行的需求。
+- 用户授权了本地目录的话,**先读目录里的文档**(README、需求稿、笔记)定位产品是什么,再动笔;
+- 产出「需求文档」:一句话定位 → 目标用户 → 核心场景(≤5 个)→ 需求列表(P0/P1/P2,每条一句验收标准)→ 明确不做什么;
+- 拿不准的关键假设,列在文档开头让用户确认,但不要因此停下——先按最合理的假设走。`
+  },
+  {
+    id: 'ui',
+    name: 'UI设计师',
+    color: '#722ed1',
+    duty: '交互流程与视觉方案(含配色)',
+    deliverable: 'UI/交互设计文档',
+    persona: `你是资深 UI/UX 设计师。基于群里已有的需求文档做设计定义。
+- 产出「UI/交互设计文档」:信息架构(页面清单与层级)→ 每个核心页面的交互流程(状态与流转)→ 视觉方案:配色(给具体 hex:主色/中性色/语义色,说明选色理由)、字体层级、圆角与密度、组件风格;
+- 配色不要用 Tailwind 默认靛蓝,也不要每次都同一套——按产品气质选;
+- 数据四态(空/加载/错误/正常)和关键边界要在交互流程里写明。`
+  },
+  {
+    id: 'be',
+    name: '后端工程师',
+    color: '#2f7fd6',
+    duty: '数据库字段与接口设计',
+    deliverable: '数据库与接口设计文档',
+    persona: `你是资深后端工程师。基于需求文档做数据与接口设计。
+- 产出「数据库设计文档」:实体关系一句话 → 每张表一个字段表(字段名/类型/可空/默认/说明/索引)→ 关键约束与迁移注意 → 核心接口清单(方法/路径/入参/出参/错误码,表格即可);
+- 字段命名 snake_case,主键与时间戳约定写清;不写实现代码。`
+  },
+  {
+    id: 'fe',
+    name: '前端工程师',
+    color: '#31a06e',
+    duty: '页面结构与组件拆分设计',
+    deliverable: '前端结构设计文档',
+    persona: `你是资深前端工程师。基于需求、UI 设计与接口设计做前端结构定义。
+- 产出「前端页面结构设计」:路由表 → 每个页面的组件树(缩进树表示)→ 组件职责一句话与关键 props → 状态管理划分(哪些进全局 store、哪些留本地)→ 与接口的对接点;
+- 结构树与伪代码可以,不写真实实现代码。`
+  },
+  {
+    id: 'qa',
+    name: '测试工程师',
+    color: '#b23a48',
+    duty: '测试用例与验收清单',
+    deliverable: '测试用例文档',
+    persona: `你是资深测试工程师。基于前面全部文档写测试设计。
+- 产出「测试用例文档」:按核心场景组织,每条用例 = 前置条件/步骤/预期(表格);覆盖边界与异常(空数据、超长输入、并发、权限)→ 最后给一份「验收清单」(用户逐条打勾用);
+- 发现前面文档里互相矛盾或缺失的点,单独列「缺陷与疑问」小节。`
+  }
+]
+
+export function roleById(id: string): GroupRole | undefined {
+  return GROUP_ROLES.find((r) => r.id === id)
+}
+
+export function roleByName(name: string): GroupRole | undefined {
+  return GROUP_ROLES.find((r) => r.name === name)
+}
+
+/** 用户消息里的第一个被 @ 的成员 */
+export function firstMention(text: string, members: string[]): string | null {
+  for (const m of text.matchAll(/@([一-龥A-Za-z]+)/g)) {
+    const hit = GROUP_ROLES.find((r) => m[1].startsWith(r.name) && members.includes(r.id))
+    if (hit) return hit.id
+  }
+  return null
+}
+
+/**
+ * agent 产出里的下一棒:只看**最后 5 行**(协作协议要求移交写在末尾,
+ * 开头的 @ 往往是在回应上一位),排除自己;@用户 显式收链。
+ */
+export function nextMention(text: string, members: string[], selfId: string): string | null {
+  const tail = text.trim().split('\n').slice(-5).join('\n')
+  for (const m of tail.matchAll(/@([一-龥A-Za-z]+)/g)) {
+    if (m[1].startsWith('用户')) return null
+    const hit = GROUP_ROLES.find((r) => m[1].startsWith(r.name) && members.includes(r.id))
+    if (hit && hit.id !== selfId) return hit.id
+  }
+  return null
+}
+
+/** 渲染层要的元数据(不带人设,省得提示词全文进每次 IPC) */
+export function roleMetas(): GroupRoleMeta[] {
+  return GROUP_ROLES.map(({ id, name, color, duty, deliverable }) => ({
+    id,
+    name,
+    color,
+    duty,
+    deliverable
+  }))
+}

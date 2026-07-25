@@ -42,9 +42,7 @@ const SYNCED_TABLES = [
   'messages',
   'artifacts',
   'artifact_files',
-  'assets',
-  'mcp_servers',
-  'skills'
+  'assets'
 ] as const
 
 /**

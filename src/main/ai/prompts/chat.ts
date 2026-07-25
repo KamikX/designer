@@ -1,6 +1,3 @@
-import type { Skill } from '../../../shared/types'
-import { skillsPrompt } from './skills'
-
 /**
  * 纯聊天的系统提示词。
  *
@@ -19,8 +16,6 @@ import { skillsPrompt } from './skills'
  */
 
 export interface ChatPromptOptions {
-  /** 用户勾选的技能 */
-  skills?: Skill[]
   /** 已授权的本地范围说明,由 localScopePrompt 生成 */
   localScope?: string
   /** 是否开了联网搜索 */
@@ -56,8 +51,7 @@ const WEB_SEARCH = `
 
 export function buildChatPrompt(options: ChatPromptOptions = {}): string {
   const sections = [
-    // 技能是用户自己勾的,内容由他掌握;这里原样注入,不加任何我们的框架
-    options.skills?.length ? skillsPrompt(options.skills, { builtin: false }) : '',
+    // 勾选的技能只出现在目录里(渐进披露),不再有"全文注入"这条路
     options.localScope,
     options.skillCatalog,
     options.webSearch ? WEB_SEARCH : ''

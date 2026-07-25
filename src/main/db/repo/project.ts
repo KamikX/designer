@@ -1,5 +1,10 @@
 import { desc, eq, sql } from 'drizzle-orm'
-import type { CreateProjectInput, Project, ProjectSettings } from '../../../shared/types'
+import type {
+  CreateProjectInput,
+  PreviewLib,
+  Project,
+  ProjectSettings
+} from '../../../shared/types'
 import { getDb } from '../index'
 import { projects } from '../schema'
 import type { ProjectRow } from '../schema'
@@ -39,11 +44,29 @@ export function createProject(input: CreateProjectInput): Project {
         name: input.name,
         stack: input.stack,
         designMode: input.designMode,
+        // 空数组归一成 null:两者都是"没选",不该以两种形态存在库里
+        targets: input.targets?.length ? input.targets : null,
+        libs: input.libs?.length ? input.libs : null,
         description: input.description ?? ''
       })
       .returning()
       .get()
   )
+}
+
+/**
+ * 修改依赖包。和 stack 不同,libs 不牵动文件树,创建后改是安全的:
+ * 影响面只有预览引导页(import map + app.use)和提示词,下一轮/下一次
+ * 刷新自然生效。
+ */
+export function setProjectLibs(id: string, libs: PreviewLib[]): Project | null {
+  const row = getDb()
+    .update(projects)
+    .set({ libs: libs.length ? libs : null, updatedAt: sql`(datetime('now'))` })
+    .where(eq(projects.id, id))
+    .returning()
+    .get()
+  return row ? toProject(row) : null
 }
 
 export function renameProject(id: string, name: string): Project | null {

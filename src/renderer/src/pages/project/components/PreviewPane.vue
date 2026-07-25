@@ -52,6 +52,12 @@ function refresh(): void {
   beginLoad()
 }
 
+// 依赖包这类"不改文件但改装配"的设置变了,引导 HTML 要重新生成——强刷
+watch(
+  () => store.previewEpoch,
+  () => refresh()
+)
+
 function onMessage(e: MessageEvent): void {
   if (!e.data?.__preview) return
 

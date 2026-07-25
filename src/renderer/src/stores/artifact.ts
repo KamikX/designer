@@ -53,6 +53,12 @@ export const useArtifactStore = defineStore('artifact', {
     pending: [] as PendingFile[],
     /** 流式期间被删掉的路径,树里要立刻消失 */
     pendingDeletes: [] as string[],
+    /**
+     * 预览重载信号。依赖包这类"不改文件但改装配"的设置变了之后 +1,
+     * PreviewPane 监听它强刷 iframe——引导 HTML 是按项目当前状态生成的,
+     * 不刷新看不到变化。
+     */
+    previewEpoch: 0,
     /** 当前在代码视图中选中的文件路径 */
     selectedPath: '' as string,
     exporting: false

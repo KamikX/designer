@@ -1,14 +1,21 @@
-import type { ArtifactFile, Project, Skill } from '../../../shared/types'
+import type { ArtifactFile, Project } from '../../../shared/types'
 import { FILE_PROTOCOL } from './protocol'
 import { CRAFT_CORE } from './craft-core'
-import { skillsPrompt } from './skills'
 import { stackPrompt } from './stacks'
 
 /**
  * system prompt 组装。
  *
- * 段落顺序即优先级:身份 → 模式 → 项目背景 → **规范**(内置 + 用户技能)
- * → 协议 → 技术栈 → 当前设计稿 → 收尾要求。
+ * 段落按**稳定性分区**(借 open-design 的缓存前缀纪律):
+ *
+ * - 项目稳定区(整个项目不变,可被前缀缓存命中):身份 → 模式 → 端契约 →
+ *   端模板 → 项目背景 → 规范(用户技能)→ 协议 → 技术栈 → 手艺底线 → 技能目录
+ * - 逐轮可变区(每轮都可能不同,放尾部,不污染前缀):当前设计稿 →
+ *   预览报错 → 反 AI 味检查 → 收尾要求
+ *
+ * 预览报错和 lint 结果原来排在头部第 3/4 段——那既让每一轮的前缀都不一样
+ * (缓存全废),又把最需要立刻行动的信息放在了离生成最远的位置。挪到尾部
+ * 一举两得:前缀稳定,且 recency 偏置恰好落在"这轮必须修的问题"上。
  *
  * 规范排在协议之前是有意的:协议讲"怎么写文件",规范讲"写成什么样"。
  * 模型读 prompt 时越靠前的约束越容易守住,而设计质量正是这个产品的命根子。
@@ -28,14 +35,17 @@ export function buildSystemPrompt(
   currentFiles: ArtifactFile[],
   options: {
     mode?: PromptMode
-    skills?: Skill[]
     localScope?: string
-    /** 上一版预览的运行时错误。跑不起来比任何设计意见都优先,所以排在最前 */
+    /** 上一版预览的运行时错误。跑不起来比任何设计意见都优先——放尾部可变区吃 recency */
     previewError?: string
-    /** 上一版产物的反 AI 味检查结果。和 previewError 一样排在最前 */
+    /** 上一版产物的反 AI 味检查结果。和 previewError 一样放尾部可变区 */
     slopLint?: string
     /** 文件系统技能的目录(渐进披露的 L1),由 skills/catalog 生成 */
     skillCatalog?: string
+    /** 端契约:勾选端的角色定位 + 提问纪律 + 多端交付结构,由 prompts/targets 生成 */
+    targetContract?: string
+    /** 勾选端的设计模板正文,组装期直接注入(不走 activate_skill) */
+    targetTemplates?: string
   } = {}
 ): string {
   const mode = options.mode ?? 'markers'
@@ -45,18 +55,21 @@ export function buildSystemPrompt(
       : '追求快速验证想法的原型:结构与流程优先,视觉从简。原型模式下设计体系仍要建立,只是可以简化到主色 + 中性色两组。'
 
   const sections = [
+    // ---- 项目稳定区 ----
     '你是一名资深产品 UI 设计师兼前端工程师,在桌面设计工具中与用户协作产出设计稿。',
     modeText,
-    options.previewError ?? '',
-    options.slopLint ?? '',
+    options.targetContract ?? '',
+    options.targetTemplates ?? '',
     project.description ? `项目背景:${project.description}` : '',
-    skillsPrompt(options.skills ?? []),
     mode === 'tools' ? TOOL_PROTOCOL : FILE_PROTOCOL,
-    stackPrompt(project.stack),
+    stackPrompt(project.stack, project.libs ?? []),
     options.localScope ?? '',
     CRAFT_CORE,
     options.skillCatalog ?? '',
+    // ---- 逐轮可变区 ----
     mode === 'tools' ? renderFileTree(currentFiles) : renderCurrentFiles(currentFiles),
+    options.previewError ?? '',
+    options.slopLint ?? '',
     CLOSING
   ]
   return sections.filter(Boolean).join('\n\n')

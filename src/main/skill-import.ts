@@ -1,20 +1,21 @@
-import { mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { basename, dirname, join, normalize, sep } from 'path'
 import AdmZip from 'adm-zip'
 import { dialog } from 'electron'
-import type { Skill } from '../shared/types'
-import { createSkill } from './db/repo/skill'
+import type { InstalledSkill } from '../shared/types'
 import { DATA_DIR } from './paths'
 
 /**
- * 技能压缩包导入。
+ * 技能压缩包导入,解压到「我的技能」目录(~/.antd-designer/skills/<名字>)。
  *
- * 包格式约定(与 Claude 技能包一致):zip 内必须有 SKILL.md,
- * 可带 YAML frontmatter(name/description),正文即技能内容;
- * 其余文件(参考资料、模板)解压到 DATA_DIR/skills/<id>/ 留给
- * 运行时引用。没有 SKILL.md 直接拒绝。
+ * 包格式约定(与 Claude 技能包一致):zip 内必须有 SKILL.md,可带 YAML
+ * frontmatter(name/description),其余文件(references/assets)原样落地,
+ * 渐进披露的第三层就靠它们。没有 SKILL.md 直接拒绝。
+ *
+ * 落地后技能的身份是**目录名**(frontmatter 的 name,缺了用 zip 文件名),
+ * 与扫描器的规则一致。同名已存在就报错——静默覆盖会吃掉用户自己改过的版本。
  */
-export async function importSkillPackage(givenPath?: string): Promise<Skill | null> {
+export async function importSkillPackage(givenPath?: string): Promise<InstalledSkill | null> {
   let zipPath = givenPath
   if (!zipPath) {
     const res = await dialog.showOpenDialog({
@@ -39,16 +40,15 @@ export async function importSkillPackage(givenPath?: string): Promise<Skill | nu
   }
 
   const raw = skillEntry.getData().toString('utf-8')
-  const { name, description, body } = parseSkillMd(raw)
+  const { name, description } = parseSkillMd(raw)
+  const dirName = sanitizeDirName(name || basename(zipPath, '.zip'))
 
-  const skill = createSkill({
-    name: name || basename(zipPath, '.zip'),
-    description,
-    content: body
-  })
+  const targetDir = join(DATA_DIR, 'skills', dirName)
+  if (existsSync(targetDir)) {
+    throw new Error(`技能「${dirName}」已存在,请先删除旧的再导入`)
+  }
 
-  // 整包解压留档(逐条校验路径,防 zip-slip 目录穿越)
-  const targetDir = join(DATA_DIR, 'skills', skill.id)
+  // 整包解压(逐条校验路径,防 zip-slip 目录穿越)
   const packageRoot = dirname(skillEntry.entryName) === '.' ? '' : dirname(skillEntry.entryName)
   for (const entry of entries) {
     // 以 SKILL.md 所在目录为包根,去掉外层文件夹前缀
@@ -59,21 +59,28 @@ export async function importSkillPackage(givenPath?: string): Promise<Skill | nu
     writeFileSync(target, entry.getData())
   }
 
-  return skill
+  return { name: dirName, description, source: 'app', dir: targetDir }
+}
+
+/** 目录名不能带路径分隔符;frontmatter 的 name 是不可信输入 */
+function sanitizeDirName(name: string): string {
+  const cleaned = name.replace(/[/\\]/g, '-').trim()
+  if (!cleaned || cleaned === '.' || cleaned === '..' || cleaned.startsWith('.')) {
+    throw new Error(`技能名「${name}」不合法`)
+  }
+  return cleaned
 }
 
 /** 解析 SKILL.md:可选的 YAML frontmatter(只认 name/description 两行)+ 正文 */
-function parseSkillMd(raw: string): { name: string; description: string; body: string } {
+function parseSkillMd(raw: string): { name: string; description: string } {
   const text = raw.replace(/^\uFEFF/, '')
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
-  if (!match) {
-    return { name: '', description: '', body: text.trim() }
-  }
+  if (!match) return { name: '', description: '' }
   const front = match[1]
   const pick = (key: string): string =>
     front
       .match(new RegExp(`^${key}\\s*:\\s*(.+)$`, 'mi'))?.[1]
       .trim()
       .replace(/^['"]|['"]$/g, '') ?? ''
-  return { name: pick('name'), description: pick('description'), body: match[2].trim() }
+  return { name: pick('name'), description: pick('description') }
 }

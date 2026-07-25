@@ -29,6 +29,14 @@ export interface AppConfig {
    */
   searchApi: { provider: 'brave' | 'tavily'; key: string } | null
   /**
+   * 应用市场源地址。指向一个 JSON 端点,形如
+   * `{ "skills": MarketSkill[], "mcp": MarketMcp[] }`(两个键都可缺省)。
+   *
+   * 空串表示没配——市场页就是空的。清单不再内置在应用里:
+   * 内容更新不该跟着应用发版走,谁维护清单也不该由代码写死。
+   */
+  marketUrl: string
+  /**
    * OpenAI 协议的兼容开关。中转站行为各不相同,这里留给用户手改
    * (~/.antd-designer/config.json),不用重新打包就能试。
    */
@@ -65,6 +73,23 @@ export type Stack = 'html' | 'vue3' | 'react'
 export type DesignMode = 'design' | 'prototype'
 
 /**
+ * 设计端类型,创建项目时多选。
+ *
+ * 它决定两件事:注入哪套端契约(不可妥协的交付标准)和哪份端设计模板
+ * (archetype 路由 + 提问清单 + 自查项)。**只加载勾选的端**——不勾的端
+ * 的模板留在技能目录里按需激活,不占常驻上下文。
+ *
+ * mobile 移动端 App / web PC Web 应用 / landing 营销落地页 / admin 中后台
+ */
+export type DesignTarget = 'mobile' | 'web' | 'landing' | 'admin'
+
+/**
+ * 预览环境可加载的组件库(CDN / vendor 的浏览器 ESM 构建)。
+ * 目前只对 vue3 栈开放:antdv-next 组件库与它的图标包。
+ */
+export type PreviewLib = 'antdv-next' | '@antdv-next/icons'
+
+/**
  * "上次选了什么"。设计项目和纯聊天各存各的。
  *
  * 为什么不做成全局单值:不同项目本来就该配不同的模型和技能——给管理后台
@@ -78,10 +103,56 @@ export type DesignMode = 'design' | 'prototype'
 export interface SessionSettings {
   providerId?: string
   modelId?: string
+  /** 勾选的文件技能**名字**(技能的身份就是目录名,没有数据库 id) */
   skillIds?: string[]
+  /** 勾选的 MCP 服务**名字**(mcp.json 的键) */
   mcpIds?: string[]
   /** 是否开着联网。按会话记,不是全局——不然会出现"忘了它还开着" */
   webSearch?: boolean
+  /** 群组会话的成员角色 id 列表(conversations.kind='group' 时使用) */
+  members?: string[]
+}
+
+/* ------------------------------------------------------------------ */
+/* 多 agent 协作群组                                                    */
+/* ------------------------------------------------------------------ */
+
+/** 群组角色的展示元数据。人设提示词在主进程,渲染层只需要这些 */
+export interface GroupRoleMeta {
+  id: string
+  name: string
+  /** 头像底色 */
+  color: string
+  /** 一句话职责,建群勾选时看 */
+  duty: string
+  /** 产出物名称,如「需求列表」 */
+  deliverable: string
+}
+
+/** 群组流式事件,单通道按 conversationId 路由 */
+export type GroupStreamEvent = { conversationId: string } & (
+  | {
+      /** 某个 agent 开始干活。system 是注入给它的完整提示词,头像抽屉展示用 */
+      type: 'agent-start'
+      messageId: string
+      author: string
+      system: string
+    }
+  | { type: 'delta'; messageId: string; text: string }
+  | { type: 'tool-start'; messageId: string; callId: string; label: string }
+  | { type: 'tool-update'; messageId: string; callId: string; label: string }
+  | { type: 'tool-end'; messageId: string; callId: string; ok: boolean; summary?: string }
+  | { type: 'agent-done'; messageId: string }
+  /** 整条接力链结束(没人再被 @,或到达上限,或用户中止) */
+  | { type: 'chain-done' }
+  | { type: 'error'; message: string; messageId?: string }
+)
+
+export interface GroupSendInput {
+  conversationId: string
+  text: string
+  providerId: string
+  modelId: string
 }
 
 /** @deprecated 名字留作过渡,内容与 SessionSettings 一致 */
@@ -92,6 +163,10 @@ export interface Project {
   name: string
   stack: Stack
   designMode: DesignMode
+  /** 勾选的端类型。null / [] 表示没选(老项目或用户跳过),不注入任何端契约 */
+  targets: DesignTarget[] | null
+  /** 勾选的组件库。null / [] 表示纯 Tailwind,预览不加载任何组件库 */
+  libs: PreviewLib[] | null
   description: string
   settings: SessionSettings | null
   createdAt: string
@@ -102,6 +177,8 @@ export interface CreateProjectInput {
   name: string
   stack: Stack
   designMode: DesignMode
+  targets?: DesignTarget[]
+  libs?: PreviewLib[]
   description?: string
 }
 
@@ -110,8 +187,8 @@ export interface Conversation {
   /** 纯聊天没有项目,这里为 null */
   projectId: string | null
   title: string
-  /** 'design' 项目里的设计会话 | 'chat' 独立的纯聊天 */
-  kind: 'design' | 'chat'
+  /** 'design' 项目里的设计会话 | 'chat' 独立的纯聊天 | 'group' 多 agent 协作群组 */
+  kind: 'design' | 'chat' | 'group'
   /** 这条会话"上次选了什么"。纯聊天靠它记住模型 / 技能 / MCP / 联网开关 */
   settings: SessionSettings | null
   createdAt: string
@@ -227,6 +304,8 @@ export interface Message {
   providerSlug: string | null
   modelId: string | null
   artifactId: string | null
+  /** 群组会话的发言者(角色 id / 'user');普通对话为 null */
+  author?: string | null
   createdAt: string
 }
 
@@ -257,10 +336,15 @@ export interface SendChatInput {
    */
   attachments?: { assetId: string; name: string }[]
   /**
-   * 本会话启用的技能 id。内置的强制技能不在这里——它们由主进程无条件
-   * 注入,用户关不掉。
+   * 本会话勾选的文件技能名字。
+   *
+   * 勾选 = 允许使用(进 L1 目录、可被 activate_skill 激活),不是全文注入。
+   * 设计会话里内置技能(craft-* / target-* / design-seed)不走这里——
+   * 它们按项目勾选的端自动生效;纯聊天则**只有**勾选的技能可用,默认零注入。
    */
   skillIds?: string[]
+  /** 本会话勾选的 MCP 服务名字。勾选的才连接,默认一个都不连 */
+  mcpIds?: string[]
   /**
    * 本轮是否开启联网搜索。默认关。
    *
@@ -431,8 +515,11 @@ export interface ProviderTestResult {
 
 export type McpTransport = 'stdio' | 'sse' | 'http'
 
-export interface McpServer {
-  id: string
+/**
+ * MCP 服务的对外形态。事实来源是 `~/.antd-designer/mcp.json`,**身份就是名字**
+ * (mcp.json 的键),没有数据库 id。会话勾选也按名字存。
+ */
+export interface McpServerView {
   name: string
   transport: McpTransport
   /** stdio:启动命令与参数 */
@@ -443,32 +530,19 @@ export interface McpServer {
   url: string | null
   headers: Record<string, string>
   enabled: boolean
-  createdAt: string
-  updatedAt: string
+  /** 配置里引用了、但环境变量和密钥库都给不出的 ${VAR}。界面上标出来 */
+  missingEnv?: string[]
 }
 
 export interface McpServerInput {
-  name: string
   transport: McpTransport
   command?: string
   args?: string[]
   env?: Record<string, string>
   url?: string
   headers?: Record<string, string>
+  enabled?: boolean
 }
-
-/** 技能:可复用的提示词包,启用后注入设计对话 */
-export interface Skill {
-  id: string
-  name: string
-  description: string
-  content: string
-  enabled: boolean
-  createdAt: string
-  updatedAt: string
-}
-
-/** 内置技能:随应用发布,用户不可编辑;alwaysOn 的还不可关闭 */
 /* ------------------------------------------------------------------ */
 /* 市场                                                                */
 /* ------------------------------------------------------------------ */
@@ -513,17 +587,15 @@ export interface MarketMcp {
   homepage?: string
 }
 
-export interface BuiltinSkillView {
-  id: string
+/**
+ * 技能文件树节点。「我的技能」编辑器(左树右编辑器)用,
+ * path 是相对技能根目录的相对路径。
+ */
+export interface SkillFileNode {
   name: string
-  description: string
-  alwaysOn: boolean
-}
-
-export interface SkillInput {
-  name: string
-  description?: string
-  content: string
+  path: string
+  type: 'file' | 'dir'
+  children?: SkillFileNode[]
 }
 
 /* ------------------------------------------------------------------ */
@@ -660,6 +732,8 @@ export interface DesignerApi {
     get: (id: string) => Promise<Project | null>
     create: (input: CreateProjectInput) => Promise<Project>
     rename: (id: string, name: string) => Promise<Project | null>
+    /** 修改依赖包。libs 不牵动文件树,创建后改是安全的(影响预览装配与提示词) */
+    setLibs: (id: string, libs: PreviewLib[]) => Promise<Project | null>
     remove: (id: string) => Promise<void>
     /** 合并保存工作台选择(模型/技能/MCP),只覆盖传进来的字段 */
     saveSettings: (id: string, patch: SessionSettings) => Promise<void>
@@ -668,10 +742,12 @@ export interface DesignerApi {
     /** 项目的 design 主会话,不存在则自动创建 */
     ensureDesign: (projectId: string) => Promise<Conversation>
   }
-  /** 技能 / MCP 市场。清单目前内置,跟着版本发 */
+  /** 技能 / MCP 市场。清单来自设置里配置的远程市场源(marketUrl),没配就是空的 */
   market: {
     skills: () => Promise<MarketSkill[]>
     mcp: () => Promise<MarketMcp[]>
+    /** 市场源状态:配没配地址、最近一次拉取有没有问题 */
+    status: () => Promise<{ url: string; problem?: string }>
     /** 文件系统里已装好的技能(含来源) */
     installedSkills: () => Promise<InstalledSkill[]>
   }
@@ -683,6 +759,21 @@ export interface DesignerApi {
     remove: (id: string) => Promise<void>
     /** 合并保存这条聊天的选择,只覆盖传进来的字段 */
     saveSettings: (id: string, patch: SessionSettings) => Promise<void>
+  }
+  /** 多 agent 协作群组(聊天室) */
+  group: {
+    /** 可用角色清单(内置,建群时勾选) */
+    roles: () => Promise<GroupRoleMeta[]>
+    list: () => Promise<Conversation[]>
+    create: (name: string, members: string[]) => Promise<Conversation>
+    rename: (id: string, name: string) => Promise<void>
+    remove: (id: string) => Promise<void>
+    messages: (conversationId: string) => Promise<Message[]>
+    /** 发消息并启动 @ 接力编排;立即返回,过程走 onStream */
+    send: (input: GroupSendInput) => Promise<void>
+    /** 停止当前接力链 */
+    abort: (conversationId: string) => Promise<void>
+    onStream: (cb: (event: GroupStreamEvent) => void) => () => void
   }
   chat: {
     listMessages: (conversationId: string) => Promise<Message[]>
@@ -760,28 +851,35 @@ export interface DesignerApi {
     getConfig: () => Promise<DataBackendView>
     setConfig: (input: DataBackendInput) => Promise<DataBackendView>
   }
+  /** MCP 服务。事实来源是 ~/.antd-designer/mcp.json,身份即名字 */
   mcp: {
-    list: () => Promise<McpServer[]>
-    create: (input: McpServerInput) => Promise<McpServer>
-    update: (
-      id: string,
-      patch: Partial<McpServerInput> & { enabled?: boolean }
-    ) => Promise<McpServer | null>
-    remove: (id: string) => Promise<void>
-    /** 导入标准 mcpServers JSON(Claude Desktop / Cursor 同款格式),返回新增列表 */
-    importJson: (json: string) => Promise<McpServer[]>
+    list: () => Promise<{ servers: McpServerView[]; problem?: string }>
+    /** 新增或整体覆盖一条(改名 = 删旧加新) */
+    upsert: (name: string, input: McpServerInput) => Promise<McpServerView>
+    setEnabled: (name: string, enabled: boolean) => Promise<void>
+    remove: (name: string) => Promise<void>
+    /** 粘贴 mcpServers JSON(Claude Desktop / Cursor / VS Code 方言都认),合并进 mcp.json */
+    importJson: (json: string) => Promise<McpServerView[]>
   }
+  /**
+   * 「我的技能」的文件管理,全部 scoped 在 ~/.antd-designer/skills 下。
+   * 技能的身份是目录名;编辑走左树右编辑器,直接读写文件。
+   */
   skill: {
-    list: () => Promise<Skill[]>
-    /** 内置技能清单(只读),让用户知道有哪些规范在强制生效 */
-    listBuiltin: () => Promise<BuiltinSkillView[]>
-    create: (input: SkillInput) => Promise<Skill>
-    update: (
-      id: string,
-      patch: Partial<SkillInput> & { enabled?: boolean }
-    ) => Promise<Skill | null>
-    remove: (id: string) => Promise<void>
-    /** 弹文件框导入技能压缩包(必须包含 SKILL.md);用户取消返回 null */
-    importPackage: () => Promise<Skill | null>
+    /** 新建技能:建目录 + 模板 SKILL.md */
+    create: (name: string) => Promise<InstalledSkill>
+    /** 从市场安装:写 SKILL.md 到我的技能目录 */
+    installMarket: (id: string) => Promise<InstalledSkill>
+    /** 删除整个技能目录 */
+    remove: (name: string) => Promise<void>
+    /** 弹文件框导入技能压缩包(必须包含 SKILL.md),解压到我的技能目录;取消返回 null */
+    importPackage: () => Promise<InstalledSkill | null>
+    /** 技能内的文件树 */
+    tree: (name: string) => Promise<SkillFileNode[]>
+    readFile: (name: string, path: string) => Promise<string>
+    writeFile: (name: string, path: string, content: string) => Promise<void>
+    mkdir: (name: string, path: string) => Promise<void>
+    /** 删除技能内的文件或目录 */
+    removeEntry: (name: string, path: string) => Promise<void>
   }
 }

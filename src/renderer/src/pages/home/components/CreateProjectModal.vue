@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
 import { useProjectStore } from '@renderer/stores/project'
-import type { DesignMode, Stack } from '@shared/types'
+import type { DesignMode, DesignTarget, PreviewLib, Stack } from '@shared/types'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
 // 上下文,主题、语言、z-index 全用的是默认值
@@ -18,8 +18,48 @@ const form = reactive({
   name: '',
   stack: 'html' as Stack,
   designMode: 'design' as DesignMode,
+  targets: [] as DesignTarget[],
+  libs: [] as PreviewLib[],
   description: ''
 })
+
+/**
+ * 组件库选择,目前只对 vue3 栈开放。勾了之后预览环境会通过 import map
+ * 加载浏览器 ESM 构建,AI 的提示词里也会放开对应的 import 许可。
+ */
+const LIB_OPTIONS: { value: PreviewLib; label: string; hint: string }[] = [
+  { value: 'antdv-next', label: 'antdv-next', hint: '组件库本体:按钮、表格、表单等' },
+  { value: '@antdv-next/icons', label: '@antdv-next/icons', hint: '配套图标库' }
+]
+
+function toggleLib(value: PreviewLib): void {
+  const at = form.libs.indexOf(value)
+  if (at >= 0) form.libs.splice(at, 1)
+  else {
+    form.libs.push(value)
+    // 图标包依赖组件库的场景占绝大多数,勾图标顺手把本体带上
+    if (value === '@antdv-next/icons' && !form.libs.includes('antdv-next')) {
+      form.libs.push('antdv-next')
+    }
+  }
+}
+
+/**
+ * 端类型多选。勾了哪些端,AI 就只加载哪些端的设计模板与交付契约——
+ * 不勾也能创建,那时所有端模板都留在技能目录里等模型按需激活。
+ */
+const TARGET_OPTIONS: { value: DesignTarget; label: string; hint: string }[] = [
+  { value: 'landing', label: '落地页', hint: '营销页 / 官网首页,讲一个故事,一个主 CTA' },
+  { value: 'web', label: 'Web 应用', hint: 'PC 端产品界面,键盘与 hover 是一等公民' },
+  { value: 'mobile', label: '移动端 App', hint: '真机框呈现,一屏一事,44px 点击目标' },
+  { value: 'admin', label: '中后台', hint: '管理系统,信息密度优先,表格与筛选' }
+]
+
+function toggleTarget(value: DesignTarget): void {
+  const at = form.targets.indexOf(value)
+  if (at >= 0) form.targets.splice(at, 1)
+  else form.targets.push(value)
+}
 
 const STACK_OPTIONS: { value: Stack; label: string; color: string; hint: string }[] = [
   {
@@ -50,10 +90,15 @@ async function submit(): Promise<void> {
       name: form.name.trim(),
       stack: form.stack,
       designMode: form.designMode,
+      targets: [...form.targets],
+      // 组件库只在 vue3 栈有意义;切过栈的话别把残留勾选带进去
+      libs: form.stack === 'vue3' ? [...form.libs] : [],
       description: form.description.trim()
     })
     open.value = false
     form.name = form.description = ''
+    form.targets = []
+    form.libs = []
     emit('created', project.id)
   } catch (err) {
     message.error(err instanceof Error ? err.message : String(err))
@@ -69,60 +114,142 @@ async function submit(): Promise<void> {
     title="新建项目"
     :confirm-loading="creating"
     :width="520"
+    centered
     ok-text="创建项目"
     @ok="submit"
   >
-    <a-form layout="vertical" style="margin-top: 8px">
-      <a-form-item label="项目名称" required>
-        <a-input
-          v-model:value="form.name"
-          size="large"
-          placeholder="如 官网改版 / 管理后台"
-          @press-enter="submit"
-        />
-      </a-form-item>
+    <!-- 表单项加到六组之后整体高度可能超过视口:弹窗本体封顶 80vh,
+         超出的部分在这层内部滚,不把外面的页面顶出滚动条 -->
+    <div class="create-body">
+      <a-form layout="vertical" style="margin-top: 8px">
+        <a-form-item label="项目名称" required>
+          <a-input
+            v-model:value="form.name"
+            size="large"
+            placeholder="如 官网改版 / 管理后台"
+            @press-enter="submit"
+          />
+        </a-form-item>
 
-      <a-form-item label="产物技术栈(创建后不可更改)">
-        <div class="stack-grid">
-          <div
-            v-for="opt in STACK_OPTIONS"
-            :key="opt.value"
-            class="stack-item"
-            :class="{ 'stack-item--active': form.stack === opt.value }"
-            :style="
-              form.stack === opt.value
-                ? { borderColor: opt.color, boxShadow: `0 0 0 1px ${opt.color}` }
-                : { borderColor: token.colorBorderSecondary }
-            "
-            @click="form.stack = opt.value"
-          >
-            <span class="stack-item-label" :style="{ color: opt.color }">
-              <i class="stack-item-dot" :style="{ background: opt.color }" />
-              {{ opt.label }}
-            </span>
-            <span class="stack-item-hint" :style="{ color: token.colorTextTertiary }">
-              {{ opt.hint }}
-            </span>
+        <a-form-item label="产物技术栈(创建后不可更改)">
+          <div class="stack-grid">
+            <div
+              v-for="opt in STACK_OPTIONS"
+              :key="opt.value"
+              class="stack-item"
+              :class="{ 'stack-item--active': form.stack === opt.value }"
+              :style="
+                form.stack === opt.value
+                  ? { borderColor: opt.color, boxShadow: `0 0 0 1px ${opt.color}` }
+                  : { borderColor: token.colorBorderSecondary }
+              "
+              @click="form.stack = opt.value"
+            >
+              <span class="stack-item-label" :style="{ color: opt.color }">
+                <i class="stack-item-dot" :style="{ background: opt.color }" />
+                {{ opt.label }}
+              </span>
+              <span class="stack-item-hint" :style="{ color: token.colorTextTertiary }">
+                {{ opt.hint }}
+              </span>
+            </div>
           </div>
-        </div>
-      </a-form-item>
+        </a-form-item>
 
-      <a-form-item label="设计模式">
-        <a-segmented v-model:value="form.designMode" :options="MODE_OPTIONS" block />
-      </a-form-item>
+        <a-form-item label="设计模式">
+          <a-segmented v-model:value="form.designMode" :options="MODE_OPTIONS" block />
+        </a-form-item>
 
-      <a-form-item label="项目描述">
-        <a-textarea
-          v-model:value="form.description"
-          :rows="3"
-          placeholder="一句话说明这个项目要做什么,会作为 AI 的背景信息"
-        />
-      </a-form-item>
-    </a-form>
+        <a-form-item v-if="form.stack === 'vue3'" label="可选依赖包(预览环境自动加载)">
+          <div class="target-grid">
+            <div
+              v-for="opt in LIB_OPTIONS"
+              :key="opt.value"
+              class="target-item"
+              :style="
+                form.libs.includes(opt.value)
+                  ? {
+                      borderColor: token.colorPrimary,
+                      boxShadow: `0 0 0 1px ${token.colorPrimary}`
+                    }
+                  : { borderColor: token.colorBorderSecondary }
+              "
+              @click="toggleLib(opt.value)"
+            >
+              <span
+                class="target-item-label"
+                :style="{
+                  color: form.libs.includes(opt.value) ? token.colorPrimary : token.colorText
+                }"
+              >
+                {{ opt.label }}
+              </span>
+              <span class="target-item-hint" :style="{ color: token.colorTextTertiary }">
+                {{ opt.hint }}
+              </span>
+            </div>
+          </div>
+        </a-form-item>
+
+        <a-form-item label="设计端类型(可多选,决定 AI 加载哪些端的设计规范)">
+          <div class="target-grid">
+            <div
+              v-for="opt in TARGET_OPTIONS"
+              :key="opt.value"
+              class="target-item"
+              :style="
+                form.targets.includes(opt.value)
+                  ? {
+                      borderColor: token.colorPrimary,
+                      boxShadow: `0 0 0 1px ${token.colorPrimary}`
+                    }
+                  : { borderColor: token.colorBorderSecondary }
+              "
+              @click="toggleTarget(opt.value)"
+            >
+              <span
+                class="target-item-label"
+                :style="{
+                  color: form.targets.includes(opt.value) ? token.colorPrimary : token.colorText
+                }"
+              >
+                {{ opt.label }}
+              </span>
+              <span class="target-item-hint" :style="{ color: token.colorTextTertiary }">
+                {{ opt.hint }}
+              </span>
+            </div>
+          </div>
+        </a-form-item>
+
+        <a-form-item label="项目描述">
+          <a-textarea
+            v-model:value="form.description"
+            :rows="3"
+            placeholder="一句话说明这个项目要做什么,会作为 AI 的背景信息"
+          />
+        </a-form-item>
+      </a-form>
+    </div>
   </a-modal>
 </template>
 
 <style scoped>
+/* 弹窗本体不超过 80vh:减去标题栏与底部按钮区约 120px,剩下的给表单内滚 */
+.create-body {
+  max-height: calc(80vh - 120px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /*
+   * 滚动容器会把溢出到边界外的内容裁掉——技术栈/端类型/依赖包卡片的选中
+   * 描边是 1px box-shadow,画在卡片边框**外侧**,贴边的卡片描边就被裁了。
+   * 四周留 2px 让描边画得下,再用负 margin 抵消,布局不变;
+   * 右侧多留一点给滚动条,别压着表单控件。
+   */
+  padding: 2px 6px 2px 2px;
+  margin: -2px -6px -2px -2px;
+}
+
 .stack-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -155,6 +282,33 @@ async function submit(): Promise<void> {
 }
 
 .stack-item-hint {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.target-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.target-item-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.target-item-hint {
   font-size: 12px;
   line-height: 1.5;
 }
