@@ -235,6 +235,26 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
          * 而且只说那件事。空着就整个不传 system,和网页版聊天一样。
          */
         ...(system ? { system } : {}),
+        /*
+         * 让这一轮完全不依赖服务端持久化。
+         *
+         * Responses API 的 store 默认是 true:模型的 reasoning 会存在服务端,
+         * 下一步只回传一个 `rs_xxx` 引用。这在直连 OpenAI 时没问题,但我们
+         * 面对的往往是**网关**——第二次请求可能落到另一个上游实例,那边根本
+         * 没有这个 id,于是报:
+         *
+         *   Item with id 'rs_...' not found. Items are not persisted when
+         *   `store` is set to false.
+         *
+         * 而且这个错**只在多步工具调用时出现**:单轮对话没有回传环节。
+         *
+         * store: false 关掉服务端存储,include 让 reasoning 以加密内容的形式
+         * 随响应回来、再原样带回去。有它就不需要任何一方记住上一步——顺带
+         * 也不再把对话内容留在服务端。
+         */
+        providerOptions: {
+          openai: { store: false, include: ['reasoning.encrypted_content'] }
+        },
         messages: [
           ...history,
           {
