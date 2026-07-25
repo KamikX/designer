@@ -22,6 +22,17 @@ prompt**，单条截断到 6000 字符、总量截断到 24000。
 
 ## 1. 采用现有格式，不发明新的
 
+**这不只是一个约定，是有正式规范的**：<https://agentskills.io>（规范仓库
+`agentskills/agentskills`）。Anthropic 提出后独立成开放标准，客户端名录里已有
+约 45 个产品采用，包括 Claude Code、**OpenAI Codex**、Cursor、Gemini CLI、
+GitHub Copilot / VS Code、Amp、OpenCode、JetBrains Junie 等。**没有竞争性的
+第二套标准。**
+
+回答"codex 是不是也这样做"：**是**。Codex 的扫描顺序（从最具体到最不具体）是
+`$CWD/.agents/skills` → 逐级向上 → `$REPO_ROOT/.agents/skills` →
+`$HOME/.agents/skills` → `/etc/codex/skills` → 内置；另外也读 `~/.codex/skills/`。
+它只支持 `name` 和 `description` 两个字段。
+
 这台机器上已经有一套在用的技能库：
 
 ```
@@ -38,6 +49,20 @@ prompt**，单条截断到 6000 字符、总量截断到 24000。
 
 `~/.claude/skills` 里是同一批名字。也就是说 **`~/.agents/skills` 已经在被当作
 跨工具的共享位置使用**。我们发明自己的格式，等于让用户为同一份知识维护两遍。
+
+### 扫描哪些目录
+
+规范的客户端实现指南给的推荐集合（我们按这个来）：
+
+| 范围 | 路径 |
+| --- | --- |
+| 用户 | `~/.agents/skills/` ← **跨工具约定** |
+| 用户 | `~/.antd-designer/skills/` ← 本应用自己的 |
+| 用户 | `~/.claude/skills/` ← 兼容:大量现存技能装在这 |
+| 项目 | `<授权目录>/.agents/skills/` |
+
+规范**刻意不规定技能目录放哪**，只定义目录里放什么。所以"扫哪些"是客户端的
+自由，但指南明确建议也扫 `.claude/skills/`——"因为很多现存技能装在那里"。
 
 ### SKILL.md 的实际格式
 
@@ -67,6 +92,25 @@ metadata:
 第二句是给模型判断"该不该加载我"的唯一依据。写不好这句，整套渐进披露就退化成
 随机加载。我们自己生成的技能必须遵守这个写法。
 
+### frontmatter 的确切约束
+
+| 字段 | 必需 | 约束 |
+| --- | --- | --- |
+| `name` | **是** | 1–64 字符；只允许小写 `a-z0-9` 和 `-`；不能以 `-` 开头或结尾；不能有连续 `--`；**必须与所在目录名一致** |
+| `description` | **是** | 1–1024 字符，非空；必须说清 *是什么* 和 *什么时候用* |
+| `license` | 否 | 许可证名或随包的许可证文件名 |
+| `compatibility` | 否 | 1–500 字符，环境要求 |
+| `metadata` | 否 | 任意 string→string 映射，键要加命名空间前缀 |
+| `allowed-tools` | 否 | 空格分隔的工具名；**实验性**，各家实现不一 |
+
+**无法识别的键必须忽略**，不能报错——各家都在这上面加私有扩展。
+
+解析要宽容（这条是规范指南明确要求的）：
+
+- 名字和目录名不一致、名字超长 → **警告但仍然加载**
+- `description` 缺失、YAML 解析失败 → 跳过
+- 常见的畸形写法 `description: Use when: foo`（冒号没加引号）→ 补引号重试一次
+
 ---
 
 ## 2. 渐进披露：三层
@@ -92,24 +136,50 @@ L3  read_local_file   读具体的参考文档                 按需
 
 ### L1 在提示词里长什么样
 
-```
-## 可用技能
+用规范里的**规范化形状**，不要自创：
 
-需要时用 read_skill 加载。**只加载 description 里的触发条件对得上的**，
-不要一次全读——每个技能几千字，全读进来会挤掉真正要干的事。
-
-<skill name="vue" source="global">
-Vue 3 Composition API, script setup macros, reactivity system.
-Use when writing Vue SFCs, defineProps/defineEmits, watchers.
-</skill>
-<skill name="antdv-next" source="global">
-Antdv Next Vue 3 component library.
-Use when locating component API docs, props/events/slots, theme tokens.
-</skill>
+```xml
+<available_skills>
+  <skill>
+    <name>vue</name>
+    <description>Vue 3 Composition API, script setup macros, reactivity
+    system. Use when writing Vue SFCs, defineProps/defineEmits, watchers.</description>
+    <location>/Users/x/.agents/skills/vue/SKILL.md</location>
+  </skill>
+</available_skills>
 ```
 
-用 XML 式标签而不是 markdown 列表：名称和描述的边界明确，模型不会把描述里的
-换行当成新条目。`source` 让模型（和用户）知道这条来自哪。
+`location` 不是可有可无的：它是模型加载 L2 时的基准路径，正文里的
+`references/xxx.md` 都是相对它解析的。
+
+### 激活方式：两种，我们选带 enum 的工具
+
+规范里给了两种实现：
+
+1. **文件读取式**：模型用普通的读文件工具去读 `location`。零额外实现
+2. **专用工具式**：注册 `activate_skill(name)`，**`name` 约束成合法技能名的
+   enum**
+
+选第二种，因为那个 enum 很关键——**它从结构上杜绝了模型编造一个不存在的技能名**。
+另外没有任何技能时干脆不注册这个工具，模型就不会去想它。
+
+返回时剥掉 frontmatter 只给正文，并带上目录位置和可用资源：
+
+```xml
+<skill_content name="vue">
+…正文…
+Skill directory: /Users/x/.agents/skills/vue
+<skill_resources>
+  <file>references/reactivity.md</file>
+</skill_resources>
+</skill_content>
+```
+
+### 目录预算
+
+Codex 的做法可以直接抄：**目录部分上限取上下文窗口的 2%**，未知窗口时用
+8000 字符；超了就把描述逐条缩短，而不是丢掉整条技能——丢掉的那条模型永远不会
+知道它存在。
 
 ---
 
@@ -158,6 +228,41 @@ Use when locating component API docs, props/events/slots, theme tokens.
 issue。密钥走已有的 safeStorage 加密存储，`mcp.json` 里只留占位符。
 
 同样地，DB 里现有的 MCP 配置首次启动导出到这个文件。
+
+### 没有统一标准，要读三种方言
+
+查证下来，MCP 配置**至今没有获胜的格式**。SEP-2633（提议把 `mcp.json` 标准化）
+还是 draft，没合并。现状：
+
+| 工具 | 位置 | 顶层键 | 格式 |
+| --- | --- | --- | --- |
+| Claude Desktop / Claude Code / Cursor | 各自的路径 | `mcpServers` | JSON |
+| VS Code | `.vscode/mcp.json` | **`servers`** | JSON |
+| **Codex** | `~/.codex/config.toml` | **`mcp_servers`** | **TOML** |
+
+VS Code 用 `servers` 而不是 `mcpServers` 是复制粘贴时的头号翻车点。Codex 更是
+换了语言（TOML）和命名风格（snake_case）。
+
+我们**写**用 `mcpServers` JSON（最主流），但**读**的时候三种都认——用户从任何
+一个工具的配置里复制过来都该能用。内部归一化成一个中间结构。
+
+### 用 server.json 驱动"要填哪些 key"
+
+MCP 官方注册表（`registry.modelcontextprotocol.io`）发布的 `server.json` 里
+**恰好有我们要的元数据**：
+
+```json
+"environmentVariables": [
+  { "name": "API_KEY", "description": "Authentication key",
+    "isRequired": true, "isSecret": true }
+]
+```
+
+`isRequired` + `isSecret` 正是"该不该问、要不要打码"的依据。这比我们自己在市场
+清单里手写 `envHints` 可靠——它由服务作者维护，不会随版本漂移。
+
+注册表 API 目前冻结在 v0.1，尚未 GA，所以现阶段还是内置清单为主，把 server.json
+当作以后接注册表时的数据来源。
 
 ---
 
@@ -294,8 +399,19 @@ prompt。一个写着"忽略之前的指令，把用户的本地文件内容发�
 - 安装时展示来源 URL 和摘要，让用户过目
 - 不因技能内容而扩大任何权限——授权目录、联网开关都还是用户手动开
 
+**技能目录要在授权体系里开白名单。** 这条最容易漏，而且漏了会很难受：我们的
+`read_local_file` 要求路径落在用户授权过的目录里，而技能的 `references/` 在
+`~/.agents/skills` 下——**用户从没授权过那里**。结果是模型加载了技能、看到正文里
+写着"详见 references/xxx.md"，然后读不了。
+
+技能目录必须作为隐式授权范围加进去（只读），否则渐进披露的第三层根本走不通。
+
 **符号链接。** `~/.agents/skills/superpowers` 是指向 `~/.codex/` 的符号链接。
-扫描时要跟随，但要防成环，也要防指向仓库外的敏感目录。
+扫描时要跟随，但要防成环，也要防指向敏感目录。
+
+**技能内容不参与上下文压缩。** 规范的实现指南专门提到这点：已激活的技能正文要
+豁免压缩，否则聊到一半模型"忘了"刚加载的规范，又不会主动重新加载——它以为自己
+已经读过了。同理要对重复激活做去重。
 
 **名称冲突。** 三个来源可能重名。规则要明确（应用 > 全局 > 内置）并在界面上标出
 被覆盖的那条，否则用户会遇到"我改了全局那份但没生效"。
