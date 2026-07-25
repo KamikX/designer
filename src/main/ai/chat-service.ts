@@ -30,6 +30,7 @@ import { loadTargetTemplates } from '../skills/targets'
 import { renderTargetTemplates, targetContractPrompt } from './prompts/targets'
 import {
   buildStyleBriefTools,
+  commitMarkerStyleBrief,
   createInitialStyleWriteGate,
   renderStyleBriefPrompt
 } from './style-brief'
@@ -226,6 +227,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     )
   }
   const parser = new FileStreamParser()
+  /** 正常完成的 markers 提交若被风格事务拒绝，catch 不得把同一批文件重新灌入。 */
+  let markerCommitRejected = false
   /** tools 路的解说自己累计;markers 路用 parser.narration */
   let toolNarration = ''
   /** 本回合的问答,按发生顺序;finalize 时连答案一起存进消息 */
@@ -541,9 +544,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       }
 
       if (!useTools) {
-        relay(parser.finish())
-        // markers 路的产出灌进同一个 VFS,落库出口只有一个
-        vfs.ingest(parser.files, parser.deleted)
+        try {
+          await commitMarkers('complete')
+        } catch (err) {
+          markerCommitRejected = true
+          throw err
+        }
       }
 
       // 触顶说明模型还没收手,按中止处理并在解说里交代
@@ -563,9 +569,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         outputTokens: usage.outputTokens ?? 0
       })
     } catch (err) {
-      if (!useTools) {
-        relay(parser.finish())
-        vfs.ingest(parser.files, parser.deleted)
+      if (!useTools && !markerCommitRejected) {
+        await commitMarkers(abort.signal.aborted ? 'aborted' : 'error')
       }
       if (abort.signal.aborted) {
         // 中止不算错误:已执行的工具调用 / 已解析完成的文件照常成版本
@@ -584,6 +589,22 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       void mcp?.close()
       running.delete(streamId)
     }
+  }
+
+  async function commitMarkers(outcome: 'complete' | 'aborted' | 'error'): Promise<void> {
+    relay(parser.finish())
+    if (!project) {
+      vfs.ingest(parser.files, parser.deleted)
+      return
+    }
+    await commitMarkerStyleBrief({
+      parser,
+      vfs,
+      initialStyleBrief: project.styleBrief ?? '',
+      initialHasFiles: currentFiles.length > 0,
+      outcome,
+      save: (styleBrief) => setProjectStyleBrief(project.id, styleBrief)
+    })
   }
 
   /** @returns 本轮落库的版本 id,没有改动则为 null */

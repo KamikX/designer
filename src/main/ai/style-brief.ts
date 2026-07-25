@@ -2,6 +2,7 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 import type { AskUserAnswer, AskUserInput, Project } from '../../shared/types'
+import type { FileStreamParser } from './file-stream-parser'
 import { SessionVfs } from './session-vfs'
 
 export interface StyleFallback {
@@ -44,6 +45,67 @@ export function createInitialStyleWriteGate(input: {
       if (ask.purpose === 'style-brief' && answer.skipped) locked = false
     }
   }
+}
+
+/**
+ * markers 协议的视觉方向提交边界。
+ *
+ * StyleBrief 与文件同属一条模型输出，却不在同一个存储里：前者进入项目，
+ * 后者进入 VFS。这个协调器把它们收敛成「先保存方向、再灌入文件」的事务
+ * 顺序，并保留没有新标记时的旧 markers 容错行为。
+ */
+export async function commitMarkerStyleBrief(input: {
+  parser: FileStreamParser
+  vfs: SessionVfs
+  initialStyleBrief: string
+  initialHasFiles: boolean
+  outcome: 'complete' | 'aborted' | 'error'
+  save: (styleBrief: string) => Project | null | Promise<Project | null>
+}): Promise<void> {
+  const { parser, vfs } = input
+  const hasStyleMarker = parser.pendingStyleBrief !== undefined
+  const hasStyleProtocol = hasStyleMarker || parser.useStyleFallback
+
+  // 新协议的中止/出错输出不是完整事务，连同已解析的文件一并丢弃。
+  // 没有相关标记时仍走旧逻辑，保持此前 markers 回合的兼容语义。
+  if (input.outcome !== 'complete') {
+    if (!hasStyleProtocol) vfs.ingest(parser.files, parser.deleted)
+    return
+  }
+
+  if (hasStyleMarker && parser.hadUnclosedFile) {
+    throw new Error('文件标记未闭合，已拒绝保存视觉方向和文件改动。')
+  }
+
+  const hasFileOutput = parser.hasChanges
+  const isInitialProject = !input.initialStyleBrief.trim() && !input.initialHasFiles
+  const hasNonemptyStyleBrief = Boolean(parser.pendingStyleBrief)
+  const clearsStyleBrief = hasStyleMarker && !hasNonemptyStyleBrief
+
+  // 首次生成不得把空清除标记当成风格确认；只有非空方向或显式 fallback 可放行。
+  if (isInitialProject && hasFileOutput && !hasNonemptyStyleBrief && !parser.useStyleFallback) {
+    throw new Error('首次生成缺少整体视觉方向或兜底风格标记，已拒绝文件改动。')
+  }
+  if (clearsStyleBrief && !input.initialHasFiles && hasFileOutput && !parser.useStyleFallback) {
+    throw new Error('清除视觉方向后首次生成缺少兜底风格标记，已拒绝文件改动。')
+  }
+
+  // 初始空项目里的空 marker 没有可清除的持久状态，fallback 也不应写回偏好。
+  const shouldSave =
+    hasStyleMarker &&
+    (hasNonemptyStyleBrief || !isInitialProject) &&
+    !(parser.useStyleFallback && !hasNonemptyStyleBrief && isInitialProject)
+
+  if (shouldSave) {
+    try {
+      const saved = await input.save(parser.pendingStyleBrief!)
+      if (!saved) throw new Error('项目不存在或未能保存。')
+    } catch {
+      throw new Error('未能保存项目视觉方向，已丢弃本轮文件改动。')
+    }
+  }
+
+  vfs.ingest(parser.files, parser.deleted)
 }
 
 /**

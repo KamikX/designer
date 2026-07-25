@@ -96,4 +96,70 @@ describe('FileStreamParser', () => {
     expect(parser.hasChanges).toBe(false)
     expect(parser.narration).toBe('用 <antd-button> 组件\n<div>hi</div>\n')
   })
+
+  for (const size of [1, 3, 7, 1000]) {
+    it(`chunk=${size} 时暂存多行视觉方向且不泄漏到正文`, () => {
+      const { parser, events } = feed(
+        [
+          '先说明方案。',
+          '<antdStyleBrief>',
+          '  冷灰、紧凑',
+          '  高信息密度  ',
+          '</antdStyleBrief>',
+          '<antdFile path="index.html">',
+          '<main />',
+          '</antdFile>'
+        ].join('\n'),
+        size
+      )
+
+      expect(parser.pendingStyleBrief).toBe('冷灰、紧凑\n  高信息密度')
+      expect(parser.narration).toBe('先说明方案。\n')
+      expect(parser.hasChanges).toBe(true)
+      expect(
+        events.some((event) => event.type === 'text' && event.text.includes('StyleBrief'))
+      ).toBe(false)
+    })
+  }
+
+  it('多个完整视觉方向以最后一个为准，空正文表示清除', () => {
+    const { parser } = feed(
+      [
+        '<antdStyleBrief>',
+        '旧方向',
+        '</antdStyleBrief>',
+        '<antdStyleBrief>',
+        '   ',
+        '</antdStyleBrief>'
+      ].join('\n'),
+      4
+    )
+
+    expect(parser.pendingStyleBrief).toBe('')
+  })
+
+  for (const size of [1, 3, 7, 1000]) {
+    it(`chunk=${size} 时解析兜底风格标记而不写入正文或文件`, () => {
+      const { parser, events } = feed('<antdUseStyleFallback />\n继续说明', size)
+
+      expect(parser.useStyleFallback).toBe(true)
+      expect(parser.narration).toBe('继续说明')
+      expect(parser.hasChanges).toBe(false)
+      expect(events.some((event) => event.type !== 'text')).toBe(false)
+    })
+  }
+
+  it('未闭合视觉方向会被丢弃且不泄漏到正文', () => {
+    const { parser } = feed('<antdStyleBrief>\n绝不能出现在用户消息里', 3)
+
+    expect(parser.pendingStyleBrief).toBeUndefined()
+    expect(parser.narration).toBe('')
+  })
+
+  it('保留自动收尾文件的兼容行为，同时记录其原本未闭合', () => {
+    const { parser } = feed('<antdFile path="a.html">\n<p>半截', 7)
+
+    expect(parser.files.get('a.html')).toBe('<p>半截\n')
+    expect(parser.hadUnclosedFile).toBe(true)
+  })
 })

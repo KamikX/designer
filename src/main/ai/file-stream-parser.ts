@@ -30,6 +30,9 @@ export type ParserEvent =
 const FILE_START = /^\s*<antdFile\s+path="([^"]+)"\s*>\s*$/
 const FILE_END = /^\s*<\/antdFile\s*>\s*$/
 const FILE_DELETE = /^\s*<antdDelete\s+path="([^"]+)"\s*\/>\s*$/
+const STYLE_BRIEF_START = /^\s*<antdStyleBrief\s*>\s*$/
+const STYLE_BRIEF_END = /^\s*<\/antdStyleBrief\s*>\s*$/
+const STYLE_FALLBACK = /^\s*<antdUseStyleFallback\s*\/>\s*$/
 
 /** 未完行是否还可能长成标记行(是则先压着不放行) */
 function mayBecomeMarker(partial: string): boolean {
@@ -41,7 +44,13 @@ function mayBecomeMarker(partial: string): boolean {
     '</antdFile>'.startsWith(t) ||
     t.startsWith('</antdFile') ||
     '<antdDelete'.startsWith(t) ||
-    t.startsWith('<antdDelete')
+    t.startsWith('<antdDelete') ||
+    '<antdStyleBrief'.startsWith(t) ||
+    t.startsWith('<antdStyleBrief') ||
+    '</antdStyleBrief>'.startsWith(t) ||
+    t.startsWith('</antdStyleBrief') ||
+    '<antdUseStyleFallback'.startsWith(t) ||
+    t.startsWith('<antdUseStyleFallback')
   )
 }
 
@@ -52,12 +61,20 @@ export class FileStreamParser {
   readonly deleted = new Set<string>()
   /** 解说正文(不含文件体)的累计 */
   narration = ''
+  /** 最近一个完整 <antdStyleBrief> 的 trim 后正文；空串表示明确清除。 */
+  pendingStyleBrief: string | undefined
+  /** 模型已明确选择首次兜底风格；它不是用户 StyleBrief。 */
+  useStyleFallback = false
+  /** finish 为兼容自动收尾的文件，原始输出是否忘了 </antdFile>。 */
+  hadUnclosedFile = false
 
   private pending = ''
   /** pending 中已作为 text 放行的前缀长度(仅 text 态使用) */
   private released = 0
   private currentPath: string | null = null
   private currentLines: string[] = []
+  private collectingStyleBrief = false
+  private styleBriefLines: string[] = []
 
   push(chunk: string): ParserEvent[] {
     const events: ParserEvent[] = []
@@ -71,7 +88,7 @@ export class FileStreamParser {
     }
 
     // 处理未完行:text 态下尽快放行,file 态下一律压到成行
-    if (this.currentPath == null && !mayBecomeMarker(this.pending)) {
+    if (this.currentPath == null && !this.collectingStyleBrief && !mayBecomeMarker(this.pending)) {
       const fresh = this.pending.slice(this.released)
       if (fresh) {
         events.push({ type: 'text', text: fresh })
@@ -86,38 +103,17 @@ export class FileStreamParser {
   finish(): ParserEvent[] {
     const events: ParserEvent[] = []
     if (this.pending) {
-      const line = this.pending
+      this.consumeLine(this.pending, events, false)
       this.pending = ''
-      if (this.currentPath == null) {
-        // 末行也可能是完整标记(模型最后没输出换行)
-        const start = line.match(FILE_START)
-        const del = line.match(FILE_DELETE)
-        if (start) {
-          this.currentPath = start[1]
-          this.currentLines = []
-          events.push({ type: 'file-start', path: start[1] })
-        } else if (del) {
-          this.deleted.add(del[1])
-          this.files.delete(del[1])
-          events.push({ type: 'file-delete', path: del[1] })
-        } else {
-          // 与流中放行不同:结尾没有换行就不补,原样透传
-          const fresh = line.slice(this.released)
-          if (fresh) {
-            events.push({ type: 'text', text: fresh })
-            this.narration += fresh
-          }
-        }
-      } else if (FILE_END.test(line)) {
-        this.closeFile(events)
-      } else {
-        this.currentLines.push(line)
-        events.push({ type: 'file-delta', path: this.currentPath, text: line })
-      }
-      this.released = 0
     }
     if (this.currentPath != null) {
+      this.hadUnclosedFile = true
       this.closeFile(events)
+    }
+    // 未闭合样式标记没有安全的恢复语义，不能让其正文回流给用户。
+    if (this.collectingStyleBrief) {
+      this.collectingStyleBrief = false
+      this.styleBriefLines = []
     }
     return events
   }
@@ -126,12 +122,31 @@ export class FileStreamParser {
     return this.files.size > 0 || this.deleted.size > 0
   }
 
-  private consumeLine(line: string, events: ParserEvent[]): void {
+  private consumeLine(line: string, events: ParserEvent[], hasNewline = true): void {
     // 该行此前可能已有前缀作为 text 放行,只处理剩余部分
     const fresh = this.currentPath == null ? line.slice(this.released) : line
     this.released = 0
 
     if (this.currentPath == null) {
+      if (this.collectingStyleBrief) {
+        if (STYLE_BRIEF_END.test(line)) {
+          this.pendingStyleBrief = this.styleBriefLines.join('\n').trim()
+          this.collectingStyleBrief = false
+          this.styleBriefLines = []
+        } else {
+          this.styleBriefLines.push(line)
+        }
+        return
+      }
+      if (STYLE_BRIEF_START.test(line)) {
+        this.collectingStyleBrief = true
+        this.styleBriefLines = []
+        return
+      }
+      if (STYLE_FALLBACK.test(line)) {
+        this.useStyleFallback = true
+        return
+      }
       const start = line.match(FILE_START)
       if (start) {
         this.currentPath = start[1]
@@ -147,13 +162,15 @@ export class FileStreamParser {
         return
       }
       if (fresh || line.length === 0) {
-        const text = `${fresh}\n`
+        const text = hasNewline ? `${fresh}\n` : fresh
         events.push({ type: 'text', text })
         this.narration += text
       } else {
         // fresh 为空但整行非空:整行已放行过,只补换行
-        events.push({ type: 'text', text: '\n' })
-        this.narration += '\n'
+        if (hasNewline) {
+          events.push({ type: 'text', text: '\n' })
+          this.narration += '\n'
+        }
       }
       return
     }
