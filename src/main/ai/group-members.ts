@@ -1,9 +1,28 @@
-import type { GroupMember, GroupMemberDraft, InstalledSkill, Model } from '../../shared/types'
+import type {
+  GroupMember,
+  GroupMemberDraft,
+  GroupMemberTemplate,
+  InstalledSkill,
+  Model
+} from '../../shared/types'
 
 export interface CreateGroupMembersDependencies {
   models: readonly Model[]
   skills: readonly InstalledSkill[]
   createId: () => string
+}
+
+export type ResolvableGroupAgent =
+  { kind: 'configured'; member: GroupMember } | { kind: 'legacy'; role: GroupMemberTemplate }
+
+export interface ResolvedGroupAgent extends GroupMemberTemplate {
+  model: Model
+  skillIds: string[]
+}
+
+export interface ResolveGroupAgentDependencies {
+  fallbackModelRowId?: string
+  getModel: (modelRowId: string) => Model | null
 }
 
 const INVALID_NAME = /[@[\]()\r\n\u2028\u2029]/
@@ -95,4 +114,36 @@ export function createGroupMembers(
       skillIds
     }
   })
+}
+
+export function resolveGroupAgent(
+  source: ResolvableGroupAgent,
+  dependencies: ResolveGroupAgentDependencies
+): ResolvedGroupAgent {
+  const member = source.kind === 'configured' ? source.member : source.role
+  const modelRowId =
+    source.kind === 'configured' ? source.member.modelRowId : dependencies.fallbackModelRowId
+
+  if (!modelRowId) {
+    throw new Error(`成员“${member.name}”缺少旧群组回退模型`)
+  }
+
+  const selectedModel = dependencies.getModel(modelRowId)
+  if (!selectedModel) throw new Error(`成员“${member.name}”选择的模型不存在`)
+  if (!selectedModel.enabled) throw new Error(`成员“${member.name}”选择的模型已停用`)
+  if (selectedModel.type !== 'chat') throw new Error(`成员“${member.name}”选择的不是对话模型`)
+  if (!selectedModel.abilities.includes('tools')) {
+    throw new Error(`成员“${member.name}”选择的模型不支持 tools`)
+  }
+
+  return {
+    id: member.id,
+    name: member.name,
+    color: member.color,
+    duty: member.duty,
+    deliverable: member.deliverable,
+    persona: member.persona,
+    model: selectedModel,
+    skillIds: source.kind === 'configured' ? [...source.member.skillIds] : []
+  }
 }

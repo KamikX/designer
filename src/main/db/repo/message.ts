@@ -31,6 +31,7 @@ function toView(row: MessageRow): Message {
     providerSlug: row.providerSlug,
     modelId: row.modelId,
     artifactId: row.artifactId,
+    author: row.author,
     createdAt: row.createdAt
   }
 }

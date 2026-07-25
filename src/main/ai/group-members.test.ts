@@ -7,8 +7,8 @@ import type {
   SessionSettings
 } from '../../shared/types'
 import { normalizeGroupMembers } from '../../shared/group-members'
-import { createGroupMembers } from './group-members'
-import { roleMetas, roleTemplates } from './prompts/group-roles'
+import { createGroupMembers, resolveGroupAgent } from './group-members'
+import { GROUP_ROLES, roleMetas, roleTemplates } from './prompts/group-roles'
 
 function model(overrides: Partial<Model> = {}): Model {
   return {
@@ -182,6 +182,108 @@ describe('normalizeGroupMembers', () => {
     expect(normalizeGroupMembers(settings.members, roleMetas())).toEqual([
       { kind: 'configured', member }
     ])
+  })
+})
+
+describe('resolveGroupAgent', () => {
+  it('configured 成员使用自己的模型行与技能', () => {
+    const member: GroupMember = {
+      ...draft({ modelRowId: 'member-model', skillIds: ['research', 'writing'] }),
+      id: 'member-1'
+    }
+    const selectedModel = model({
+      id: 'member-model',
+      providerId: 'provider-member',
+      modelId: 'provider-model'
+    })
+
+    expect(
+      resolveGroupAgent(
+        { kind: 'configured', member },
+        {
+          fallbackModelRowId: 'ignored-fallback',
+          getModel: (id) => (id === selectedModel.id ? selectedModel : null)
+        }
+      )
+    ).toEqual({
+      id: 'member-1',
+      name: '产品经理',
+      color: '#e8662c',
+      duty: '梳理需求',
+      deliverable: '需求文档',
+      persona: '你是产品经理。',
+      model: selectedModel,
+      skillIds: ['research', 'writing']
+    })
+  })
+
+  it('legacy 成员使用完整角色、fallback 模型与空技能', () => {
+    const role = GROUP_ROLES[1]
+    const fallback = model({
+      id: 'fallback-model',
+      providerId: 'provider-legacy',
+      modelId: 'legacy-chat'
+    })
+
+    expect(
+      resolveGroupAgent(
+        { kind: 'legacy', role },
+        {
+          fallbackModelRowId: fallback.id,
+          getModel: (id) => (id === fallback.id ? fallback : null)
+        }
+      )
+    ).toEqual({
+      ...role,
+      model: fallback,
+      skillIds: []
+    })
+  })
+
+  it('legacy 成员缺少 fallback 时给出带成员名的中文错误', () => {
+    const role = GROUP_ROLES[0]
+
+    expect(() => resolveGroupAgent({ kind: 'legacy', role }, { getModel: () => null })).toThrow(
+      /产品经理.*回退模型/
+    )
+  })
+
+  it.each([
+    ['不存在', null],
+    ['已停用', model({ id: 'bad-model', enabled: false })],
+    ['不是对话模型', model({ id: 'bad-model', type: 'image' })],
+    ['不支持 tools', model({ id: 'bad-model', abilities: [] })]
+  ])('legacy fallback %s时给出带成员名的中文错误', (label, selectedModel) => {
+    const role = GROUP_ROLES[0]
+
+    expect(() =>
+      resolveGroupAgent(
+        { kind: 'legacy', role },
+        {
+          fallbackModelRowId: 'bad-model',
+          getModel: () => selectedModel
+        }
+      )
+    ).toThrow(new RegExp(`产品经理.*${label}`))
+  })
+
+  it.each([
+    ['不存在', null],
+    ['已停用', model({ id: 'bad-model', enabled: false })],
+    ['不是对话模型', model({ id: 'bad-model', type: 'image' })],
+    ['不支持 tools', model({ id: 'bad-model', abilities: [] })]
+  ])('configured 成员模型%s时给出带成员名的中文错误', (label, selectedModel) => {
+    const member: GroupMember = {
+      ...draft({ name: '研究员', modelRowId: 'bad-model' }),
+      id: 'member-1'
+    }
+
+    expect(() =>
+      resolveGroupAgent(
+        { kind: 'configured', member },
+        { fallbackModelRowId: 'irrelevant', getModel: () => selectedModel }
+      )
+    ).toThrow(new RegExp(`研究员.*${label}`))
   })
 })
 

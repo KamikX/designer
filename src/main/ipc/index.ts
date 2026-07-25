@@ -1,4 +1,5 @@
 import { dialog, ipcMain, nativeTheme } from 'electron'
+import { ulid } from 'ulid'
 import type { AppConfig } from '../config'
 import { patchConfig, readConfig } from '../config'
 import { importMcpText, listMcpViews, removeMcp, setMcpEnabled, upsertMcp } from '../mcp/service'
@@ -15,6 +16,7 @@ import {
 } from '../skills/files'
 import type {
   CreateProjectInput,
+  CreateGroupInput,
   CreateProviderInput,
   FetchModelsInput,
   McpServerInput,
@@ -43,6 +45,7 @@ import {
   saveConversationSettings
 } from '../db/repo/conversation'
 import { abortGroup, sendGroupMessage } from '../ai/group-service'
+import { createGroupMembers } from '../ai/group-members'
 import { roleMetas } from '../ai/prompts/group-roles'
 import {
   clearProviderKey,
@@ -129,9 +132,17 @@ export function registerIpc(): void {
   // 多 agent 协作群组
   ipcMain.handle('group:roles', () => roleMetas())
   ipcMain.handle('group:list', () => listGroups())
-  ipcMain.handle('group:create', (_e, name: string, members: string[]) =>
-    createGroup(name, members)
-  )
+  ipcMain.handle('group:create', (_e, input: CreateGroupInput) => {
+    if (input == null || typeof input.name !== 'string' || !input.name.trim()) {
+      throw new Error('群组名称不能为空')
+    }
+    const members = createGroupMembers(input.members, {
+      models: listModels(),
+      skills: scanSkills(),
+      createId: ulid
+    })
+    return createGroup({ name: input.name.trim(), members })
+  })
   ipcMain.handle('group:rename', (_e, id: string, name: string) => renameConversation(id, name))
   ipcMain.handle('group:delete', (_e, id: string) => deleteConversation(id))
   ipcMain.handle('group:messages', (_e, id: string) => listMessages(id))

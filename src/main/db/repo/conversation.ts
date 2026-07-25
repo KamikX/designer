@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
-import type { Conversation, SessionSettings } from '../../../shared/types'
+import type { Conversation, GroupMember, SessionSettings } from '../../../shared/types'
 import { getDb } from '../index'
 import { conversations } from '../schema'
 import type { ConversationRow } from '../schema'
@@ -71,11 +71,16 @@ export function listGroups(): Conversation[] {
     .map(toView)
 }
 
-export function createGroup(name: string, members: string[]): Conversation {
+export function createGroup(input: { name: string; members: GroupMember[] }): Conversation {
   return toView(
     getDb()
       .insert(conversations)
-      .values({ projectId: null, kind: 'group', title: name, settings: { members } })
+      .values({
+        projectId: null,
+        kind: 'group',
+        title: input.name,
+        settings: { members: input.members }
+      })
       .returning()
       .get()
   )

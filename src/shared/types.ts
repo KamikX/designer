@@ -172,16 +172,21 @@ export type GroupStreamEvent = { conversationId: string } & (
   | { type: 'tool-update'; messageId: string; callId: string; label: string }
   | { type: 'tool-end'; messageId: string; callId: string; ok: boolean; summary?: string }
   | { type: 'agent-done'; messageId: string }
-  /** 整条接力链结束(没人再被 @,或到达上限,或用户中止) */
+  /** 整条接力链正常结束(没人再被 @、@用户或用户中止) */
   | { type: 'chain-done' }
+  | {
+      type: 'chain-stopped'
+      reason: 'cycle-detected' | 'member-limit' | 'hop-limit'
+      message: string
+    }
   | { type: 'error'; message: string; messageId?: string }
 )
 
 export interface GroupSendInput {
   conversationId: string
   text: string
-  providerId: string
-  modelId: string
+  /** 仅旧 string[] 群组需要；新群组始终使用成员自己的 modelRowId */
+  fallbackModelRowId?: string
 }
 
 /** @deprecated 名字留作过渡,内容与 SessionSettings 一致 */
@@ -799,7 +804,7 @@ export interface DesignerApi {
     /** 可用角色清单(内置,建群时勾选) */
     roles: () => Promise<GroupRoleMeta[]>
     list: () => Promise<Conversation[]>
-    create: (name: string, members: string[]) => Promise<Conversation>
+    create: (input: CreateGroupInput) => Promise<Conversation>
     rename: (id: string, name: string) => Promise<void>
     remove: (id: string) => Promise<void>
     messages: (conversationId: string) => Promise<Message[]>

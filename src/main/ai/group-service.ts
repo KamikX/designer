@@ -1,7 +1,8 @@
 import { streamText } from 'ai'
 import type { WebContents } from 'electron'
-import type { GroupSendInput, GroupStreamEvent, Message } from '../../shared/types'
-import { isLegacyGroupMembers } from '../../shared/group-members'
+import type { GroupSendInput, GroupStreamEvent, Message, SessionSettings } from '../../shared/types'
+import { isConfiguredGroupMembers, isLegacyGroupMembers } from '../../shared/group-members'
+import { firstMention, mentionsToModelText, nextMention } from '../../shared/group-mentions'
 import { getConversation, touchConversation } from '../db/repo/conversation'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { getModel } from '../db/repo/model'
@@ -9,8 +10,17 @@ import { getLanguageModel, errorMessage } from './registry'
 import { buildTimeTools } from './time-tools'
 import { buildLocalTools } from './local-tools'
 import { listRoots } from '../workspace/roots'
-import { firstMention, nextMention, roleById } from './prompts/group-roles'
+import { roleById } from './prompts/group-roles'
 import { labelFor, verbOf } from './tool-activity'
+import { GroupChainGuard } from './group-chain'
+import {
+  resolveGroupAgent,
+  type ResolvableGroupAgent,
+  type ResolvedGroupAgent
+} from './group-members'
+import { scanSkills, skillRoots } from '../skills/scan'
+import { skillCatalog } from '../skills/catalog'
+import { buildSkillTools } from '../skills/tools'
 
 /**
  * 多 agent 协作群组的编排。
@@ -20,13 +30,10 @@ import { labelFor, verbOf } from './tool-activity'
  * 它的输出末尾若 @ 了下一位成员,链条继续,直到 @用户 / 没人被 @ / 到达
  * 上限 / 用户中止。
  *
- * 与设计会话共用的部分刻意少:没有 VFS、没有版本、没有技能与 MCP——
- * 群组的产出就是文档本身(消息即文档)。共用的只有模型注册表、本地文件
- * 工具(读用户授权目录里的资料)和时间工具。
+ * 群组的产出就是文档本身(消息即文档)。每位成员只拿自己的模型与文件技能；
+ * 仍然没有 VFS、版本、MCP、联网和写文件工具。
  */
 
-/** 一次接力最多跑几棒。防两个角色互相 @ 出死循环 */
-const MAX_HOPS = 8
 /** 单个 agent 一轮的工具调用上限。它只是读文档,不需要设计会话那么多 */
 const MAX_TOOL_CALLS = 40
 
@@ -39,16 +46,11 @@ export function abortGroup(conversationId: string): void {
 export function sendGroupMessage(sender: WebContents, input: GroupSendInput): void {
   const conversation = getConversation(input.conversationId)
   if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')
-  const model = getModel(input.modelId)
-  if (!model) throw new Error('模型不存在')
-  if (!model.abilities.includes('tools')) {
-    throw new Error(`模型「${model.displayName}」不支持工具调用,协作群组需要能读文档的模型。`)
-  }
   if (running.has(input.conversationId))
     throw new Error('上一条接力还在进行中,先等它结束或点停止。')
 
-  const storedMembers = conversation.settings?.members
-  const members = isLegacyGroupMembers(storedMembers) ? storedMembers : []
+  const members = resolveStoredMembers(conversation.settings?.members)
+  const mentionMembers = members.map(memberMention)
   const emit = (event: GroupStreamEvent): void => {
     if (!sender.isDestroyed()) sender.send('group:stream', event)
   }
@@ -62,7 +64,7 @@ export function sendGroupMessage(sender: WebContents, input: GroupSendInput): vo
   })
   touchConversation(input.conversationId)
 
-  const first = firstMention(input.text, members)
+  const first = firstMention(input.text, mentionMembers)
   if (!first) {
     // 没 @ 任何机器人就只是留言,不启动链条
     emit({ conversationId: input.conversationId, type: 'chain-done' })
@@ -78,41 +80,83 @@ export function sendGroupMessage(sender: WebContents, input: GroupSendInput): vo
 
 async function runChain(
   input: GroupSendInput,
-  firstRole: string,
-  members: string[],
+  firstMemberId: string,
+  members: ResolvableGroupAgent[],
   emit: (e: GroupStreamEvent) => void,
   abort: AbortController
 ): Promise<void> {
   const conversationId = input.conversationId
-  let current: string | null = firstRole
+  const membersById = new Map(members.map((member) => [memberId(member), member]))
+  const mentionMembers = members.map(memberMention)
+  const guard = new GroupChainGuard()
+  let current: string | null = firstMemberId
 
-  for (let hop = 0; hop < MAX_HOPS && current && !abort.signal.aborted; hop++) {
-    const role = roleById(current)
-    if (!role) break
+  while (current && !abort.signal.aborted) {
+    const guarded = guard.enter(current)
+    if (!guarded.ok) {
+      emit({
+        conversationId,
+        type: 'chain-stopped',
+        reason: guarded.reason,
+        message: guarded.message
+      })
+      return
+    }
 
+    const source = membersById.get(current)
+    if (!source) break
+    const sourceMember = source.kind === 'configured' ? source.member : source.role
+    const modelRowId =
+      source.kind === 'configured' ? source.member.modelRowId : input.fallbackModelRowId
     const message = createMessage({
       conversationId,
       role: 'assistant',
       parts: [],
       status: 'streaming',
-      modelId: input.modelId,
-      author: role.id
+      ...(modelRowId ? { modelId: modelRowId } : {}),
+      author: sourceMember.id
     })
-
-    const roots = listRoots({ conversationId })
-    const system = buildAgentSystem(role.id, members, roots.length > 0)
-    emit({ conversationId, type: 'agent-start', messageId: message.id, author: role.id, system })
 
     let text = ''
     try {
+      const agent = resolveGroupAgent(source, {
+        fallbackModelRowId: input.fallbackModelRowId,
+        getModel
+      })
+      const installedSkills = scanSkills()
+      const wantedSkills = new Set(agent.skillIds)
+      const selectedSkills = installedSkills.filter(
+        (skill) => skill.source !== 'builtin' && wantedSkills.has(skill.name)
+      )
+      const userRoots = listRoots({ conversationId })
+      const roots = [...userRoots, ...skillRoots(selectedSkills)]
+      const catalog = skillCatalog(selectedSkills, agent.model.contextWindow)
+      const system = buildAgentSystem(agent, members, userRoots.length > 0, catalog)
+      emit({
+        conversationId,
+        type: 'agent-start',
+        messageId: message.id,
+        author: agent.id,
+        system
+      })
+
       const result = streamText({
-        model: getLanguageModel(input.providerId, input.modelId),
+        model: getLanguageModel(agent.model.providerId, agent.model.modelId),
         system,
-        messages: [{ role: 'user', content: transcript(conversationId, message.id, role.name) }],
+        messages: [
+          {
+            role: 'user',
+            content: transcript(conversationId, message.id, agent.name, mentionMembers)
+          }
+        ],
         abortSignal: abort.signal,
         tools: {
           ...buildTimeTools(),
-          ...buildLocalTools(roots, { canSeeImages: false, intent: input.text })
+          ...buildLocalTools(roots, {
+            canSeeImages: agent.model.abilities.includes('vision'),
+            intent: input.text
+          }),
+          ...buildSkillTools(selectedSkills)
         },
         stopWhen: ({ steps }) => steps.reduce((n, s) => n + s.toolCalls.length, 0) >= MAX_TOOL_CALLS
       })
@@ -168,7 +212,7 @@ async function runChain(
       touchConversation(conversationId)
 
       // 从**末尾**找下一棒:开头的 @ 往往是在回应上一位,结尾的才是移交
-      current = abort.signal.aborted ? null : nextMention(text, members, role.id)
+      current = abort.signal.aborted ? null : nextMention(text, mentionMembers, agent.id)
     } catch (err) {
       updateMessage(message.id, {
         parts: [{ type: 'text', text }],
@@ -191,9 +235,15 @@ async function runChain(
  * 有些供应商的 API 会直接拒绝连续同角色消息。拼成一份带【发言人】前缀的
  * 记录最稳,也最接近"读群聊"的心智。
  */
-function transcript(conversationId: string, excludeId: string, selfName: string): string {
+function transcript(
+  conversationId: string,
+  excludeId: string,
+  selfName: string,
+  members: ReturnType<typeof memberMention>[]
+): string {
+  const membersById = new Map(members.map((member) => [member.id, member]))
   const nameOf = (author: string | null | undefined): string =>
-    author === 'user' || !author ? '用户' : (roleById(author)?.name ?? author)
+    author === 'user' || !author ? '用户' : (membersById.get(author)?.name ?? author)
 
   const lines = listMessages(conversationId)
     .filter((m: Message) => m.id !== excludeId && m.status !== 'streaming')
@@ -202,23 +252,26 @@ function transcript(conversationId: string, excludeId: string, selfName: string)
         .map((p) => (p.type === 'text' ? p.text : ''))
         .join('')
         .trim()
-      return text ? `【${nameOf(m.author)}】\n${text}` : ''
+      return text ? `【${nameOf(m.author)}】\n${mentionsToModelText(text, members)}` : ''
     })
     .filter(Boolean)
 
   return `以下是群聊记录(按时间顺序):\n\n${lines.join('\n\n---\n\n')}\n\n---\n\n现在轮到你(${selfName})发言。按你的职责与协作协议产出文档。`
 }
 
-function buildAgentSystem(roleId: string, members: string[], hasRoots: boolean): string {
-  const role = roleById(roleId)!
+function buildAgentSystem(
+  agent: ResolvedGroupAgent,
+  members: readonly ResolvableGroupAgent[],
+  hasRoots: boolean,
+  catalog: string
+): string {
   const roster = members
-    .map((id) => roleById(id))
-    .filter((r): r is NonNullable<typeof r> => !!r)
-    .map((r) => `@${r.name}(${r.duty})`)
+    .map((member) => (member.kind === 'configured' ? member.member : member.role))
+    .map((member) => `@${member.name}(${member.duty})`)
     .join('、')
 
   return [
-    role.persona,
+    agent.persona,
     `## 协作协议
 
 你在一个多角色协作群里。成员:${roster},以及 @用户(发起人,最终验收者)。
@@ -229,6 +282,29 @@ function buildAgentSystem(roleId: string, members: string[], hasRoots: boolean):
 - 完成后在消息**末尾单独一行**决定下一棒:还需要谁接力就写「@角色名 一句话交代要做什么」;整条链路完成或需要用户决策时写「@用户 一句话总结」。**一次只 @ 一位。**`,
     hasRoots
       ? '- 用户授权了本地目录:先用 list_local / read_local_file 读里面的文档定位背景,再动笔。'
-      : '- 用户没有授权本地目录,基于群聊内容做合理假设,并把关键假设写在文档开头。'
+      : '- 用户没有授权本地目录,基于群聊内容做合理假设,并把关键假设写在文档开头。',
+    catalog
   ].join('\n\n')
+}
+
+function resolveStoredMembers(members: SessionSettings['members']): ResolvableGroupAgent[] {
+  if (isConfiguredGroupMembers(members)) {
+    return members.map((member) => ({ kind: 'configured', member }))
+  }
+  if (isLegacyGroupMembers(members)) {
+    return members.flatMap((id) => {
+      const role = roleById(id)
+      return role ? [{ kind: 'legacy' as const, role }] : []
+    })
+  }
+  return []
+}
+
+function memberId(member: ResolvableGroupAgent): string {
+  return member.kind === 'configured' ? member.member.id : member.role.id
+}
+
+function memberMention(member: ResolvableGroupAgent): { id: string; name: string } {
+  const value = member.kind === 'configured' ? member.member : member.role
+  return { id: value.id, name: value.name }
 }
