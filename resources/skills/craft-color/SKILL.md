@@ -15,12 +15,12 @@ metadata:
 
 先想清楚四层再写 CSS。
 
-| 层         | 占多少像素 | token                                          |
-| ---------- | ---------- | ---------------------------------------------- |
-| **中性色** | **70–90%** | `--bg` `--surface` `--fg` `--muted` `--border` |
-| **强调色** | 5–10%      | `--accent` 或项目定义的交互 token              |
-| 语义色     | 0–5%       | `--success` `--warn` `--danger`                |
-| 效果       | <1%        | 渐变、辉光。很少有正当理由                     |
+| 层         | 占多少像素 | token                                                                                                                |
+| ---------- | ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| **中性色** | **70–90%** | `--color-bg` `--color-surface` `--color-raised` `--color-sunken` `--color-ink` `--color-ink-muted` `--color-line` `--color-line-strong` |
+| **强调色** | 5–10%      | `--color-brand-500` `--color-brand-600` `--color-focus`                                                              |
+| 语义色     | 0–5%       | `--color-success` `--color-warning` `--color-danger` `--color-info`                                                  |
+| 效果       | <1%        | 渐变、辉光。很少有正当理由                                                                                           |
 
 当界面显得杂乱时，可先检查这些比例是否失衡；它们不是固定配色公式。
 
@@ -54,10 +54,10 @@ metadata:
 
 ```css
 /* 填充:强调色 5–12% 混进面板色 */
-background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+background: color-mix(in srgb, var(--color-brand-500) 8%, var(--color-surface));
 
 /* 描边:强调色 22–45% 混进描边色 */
-border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+border-color: color-mix(in srgb, var(--color-brand-500) 30%, var(--color-line));
 ```
 
 描边与填充的相对浓度应由 StyleBrief 的表面语言和可读性决定；以上只是能随 token
@@ -66,8 +66,8 @@ border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 ## token 按用途命名,不按色相
 
 ```css
---accent: #2f6feb; /* ✅ 用途 */
---blue-500: #2f6feb; /* ❌ 色相 —— 以后想换成绿色就得改所有引用 */
+--color-brand-500: #2f6feb; /* ✅ 品牌交互用途 */
+--color-blue-500: #2f6feb; /* ❌ 色相 —— 以后想换成绿色就得改所有引用 */
 ```
 
 ## 常见模板化倾向（fallback 检查）

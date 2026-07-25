@@ -3,14 +3,34 @@
 > 参照 [nexu-io/open-design](https://github.com/nexu-io/open-design)(Apache-2.0,可改写引入其内容,保留出处)对本项目
 > skills / craft / 提示词管线的重设计方案。调研基线:open-design 主干 + 本仓库 commit 3cf780d。
 >
-> **当前实现更新(2026-07):**项目 `StyleBrief` 已取代固定设计种子,成为整体视觉的唯一事实来源。
-> 本文保留 v2 的演进背景;涉及主题生成的当前行为以 §4–§5 的更新说明为准。
+> **阅读提示:**本文主体记录基于旧提交的 v2 历史提案,其中 `resources/craft`、
+> `design-templates`、单数 `target` 和部分拼装顺序并非当前实现。只有下面的“当前实现（权威）”
+> 可作为维护依据;§0–§8 用于保留设计演进背景。
+
+---
+
+## 当前实现（权威）
+
+- 项目 `styleBrief` 是整体视觉唯一事实来源,优先级为“用户本轮明确的全局风格 >
+  项目 StyleBrief > 当前产物连续性 > skills 质量护栏”;局部修改不更新它。
+- 设计技能仍位于 `resources/skills/`:端模板是 `target-*`,通用工艺是 `craft-*`;
+  项目使用 `targets: DesignTarget[]` 支持多端,不是历史提案里的单数 `target`。
+- `design-seed/references/theme-contract.md` 只定义语义 token 接口。项目 `theme.css`
+  从 StyleBrief 生成;空 brief 且已有文件时延续当前视觉;首次空项目只有用户跳过后才使用
+  项目内稳定、维度彼此独立且不持久化的 fallback。
+- tools 模式只有“空 brief + 无文件”的首次项目由 VFS 闸门机械锁住写入;用户回答后先
+  `set_style_brief`,跳过后才解锁 fallback。其他整体风格更新由 prompt 协议要求先
+  `set_style_brief` 再写文件,局部修改不得调用该工具。
+- markers 首次空项目的第一轮只在正文给出 2–3 个方向并等待,禁止输出文件;下一轮用户
+  给出方向才使用 `<antdStyleBrief>`,明确跳过才使用 `<antdUseStyleFallback />`。
+  收流后先持久化 StyleBrief,再提交暂存文件;失败不留下新主题或本轮文件,协议标记不进入
+  VFS、artifact 或助手正文。
 
 ---
 
 ## 0. 一页结论
 
-| 维度 | 我们现状 | open-design 做法 | v2 决策 |
+| 维度 | 调研时现状 | open-design 做法 | 当时 v2 决策 |
 |---|---|---|---|
 | 目录模型 | 单一 `skills/`,craft 与主题方法混在其中 | 四轴正交:skills(做事)/ design-templates(产物形状)/ design-systems(品牌)/ craft(通用工艺) | 收敛为**三轴**:`craft/`、`design-templates/`、`skills/`;当前不内置品牌主题,每项目由 StyleBrief 生成 `theme.css` |
 | 平台维度 | **完全缺失**:无项目字段、无提示词分支、无预览视口 | `od.platform` + `metadata.kind` + `PLATFORM_CONTRACTS_BLOCK` + 按 kind 分叉的 metadata 块 | 项目新增 `target` 字段,注入平台契约块;预览面板加视口切换 |
@@ -38,7 +58,7 @@
 
 ---
 
-## 2. 目标目录结构(三轴)
+## 2. 历史方案:目标目录结构(三轴)
 
 ```
 resources/
@@ -156,17 +176,21 @@ INTERACTION_SKILL(1767 字符)成为无可达路径的死代码,其内容在 res
 早期实现曾有三套 token 命名互相矛盾;当前 `design-seed/references/theme-contract.md` 只定义语义角色,
 不携带任何固定色值、字号、间距或组件外观。具体 token 由每个项目的 StyleBrief 生成到 `theme.css`。
 
-**决策:以 Tailwind v4 `@theme` 语义命名为唯一契约**(因为产物层直接消费它):
+**当前已落地的颜色契约**:
 
 ```css
 @theme {
-  --color-bg / --color-surface / --color-fg / --color-muted / --color-line
-  --color-accent(及 color-mix 派生:fill 8% / border 30%,保留 craft-color 的 4 倍关系)
+  --color-bg / --color-surface / --color-raised / --color-sunken
+  --color-ink / --color-ink-muted
+  --color-line / --color-line-strong
+  --color-brand-500 / --color-brand-600 / --color-focus
+  --color-success / --color-warning / --color-danger / --color-info
 }
 ```
 
-- utility 形态:`bg-bg` 太拗口,保留 `bg-surface / text-fg / text-muted / border-line / bg-accent`。
-- `craft/color.md`、`stacks.ts` COMMON_RUNTIME 与 `design-seed` 的语义 token 契约保持同名;
+- utility 使用同一语义:`bg-surface / text-ink / text-ink-muted / border-line / bg-brand-500`。
+- `resources/skills/craft-color/SKILL.md`、`stacks.ts` COMMON_RUNTIME 与 `design-seed`
+  的语义 token 契约保持同名;
   `theme.css` 是项目产物,由 StyleBrief 生成具体值,不得从内置资产复制主题。
 - 是否提供暗色块由 StyleBrief 决定;`@import 'tailwindcss'` 仍由预览运行时注入方(`bootstrap.ts`)统一负责,
   导出时由 `artifact-export.ts` 补回 import,保证导出产物独立可用。
@@ -190,7 +214,7 @@ INTERACTION_SKILL(1767 字符)成为无可达路径的死代码,其内容在 res
 其后保留现有 6 条底线 + 五维自评。宪章大小用测试卡死(参照 open-design 的 byte-budget 测试):
 `tests/prompts/charter-budget.test.ts` 断言渲染后 ≤1200 字符,加不进去的内容必须移去模板/craft/契约块。
 
-### 5.2 平台契约块(新增,每块 ≤500 字符,常量放 `prompts/platform.ts`)
+### 5.2 历史方案:单数 target 平台契约块
 
 项目新增 `target: 'landing' | 'mobile' | 'admin' | 'desktop' | 'responsive'`(创建时选择,可留空)。
 对应契约块只写**该平台不可妥协的交付标准**,与模板包不重复:
@@ -204,7 +228,7 @@ INTERACTION_SKILL(1767 字符)成为无可达路径的死代码,其内容在 res
 `target` 为空时不注入契约块,但在会话文本命中平台信号(如中途说"改成手机 App")时,
 把对应契约块追加到**可变区尾部**(不动稳定前缀,这是 open-design 的缓存纪律:触发源的稳定性决定注入位置)。
 
-### 5.3 拼装顺序 v2(`buildSystemPrompt` 重排)
+### 5.3 历史方案:拼装顺序 v2
 
 现状把"上一版预览报错"和"lint 结果"排在第 3/4 段——既毁掉缓存前缀,又浪费了 recency 位。重排为:
 
@@ -225,12 +249,15 @@ INTERACTION_SKILL(1767 字符)成为无可达路径的死代码,其内容在 res
 
 ### 5.4 markers 模式回退(修复长尾模型零技能)
 
-tools 模式改变整体视觉时必须先调用 `set_style_brief`;只有持久化成功才解锁 VFS 写入,
-保存失败会丢弃本轮文件改动并拒绝后续写入。局部修改不得调用该工具。
+tools 模式中,只有空 brief 且无文件的首次项目由 VFS 闸门机械锁住写入。用户给出方向后
+必须先成功调用 `set_style_brief` 才解锁;用户跳过后才解锁本轮 fallback。其他整体风格更新
+仍由 prompt 协议要求先调用 `set_style_brief` 再写文件,不是全项目通用的机械闸门;
+局部修改不得调用该工具。
 
 `useTools=false` 时 L1/L2/L3 不可达,因此第 4/5 段仍由组装期注入。视觉方向不再内联固定主题:
-有 StyleBrief 时直接注入原文;空 brief 且无文件时,先要求模型给出 `<antdStyleBrief>` 或明确
-`<antdUseStyleFallback />`,再输出 `<antdFile>`;空 brief 但已有文件时延续当前产物视觉。
+有 StyleBrief 时直接注入原文;空 brief 且无文件时,本轮只在正文给出 2–3 个方向并等待下一轮,
+禁止输出文件。用户下一轮给出方向才先输出 `<antdStyleBrief>`,明确跳过才先输出
+`<antdUseStyleFallback />`,随后才能输出 `<antdFile>`;空 brief 但已有文件时延续当前产物视觉。
 `<antdStyleBrief>` 必须先持久化,随后才提交文件;任一步失败都不留下新主题或本轮文件。
 两个视觉协议标记只参与编排,不进入 VFS、artifact 或助手正文。
 
@@ -284,7 +311,7 @@ tools 模式改变整体视觉时必须先调用 `set_style_brief`;只有持久�
 
 ---
 
-## 8. 分期路线
+## 8. 历史分期路线
 
 **P0 — 止血与地基(先行,独立可交付)**
 死代码内容回收为 4 个新 craft 段(§3.2);token 契约统一(§4);每项目 `theme.css` 生成与运行时注入衔接;

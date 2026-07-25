@@ -35,6 +35,29 @@ describe('内置设计技能的 StyleBrief 契约', () => {
     )
   })
 
+  it('craft-color 只使用 theme contract 的颜色 token，不另造旧命名轨道', () => {
+    const color = readSkill('craft-color')
+
+    expect(color).toMatch(/--color-bg/)
+    expect(color).toMatch(/--color-surface/)
+    expect(color).toMatch(/--color-raised/)
+    expect(color).toMatch(/--color-sunken/)
+    expect(color).toMatch(/--color-ink/)
+    expect(color).toMatch(/--color-ink-muted/)
+    expect(color).toMatch(/--color-line/)
+    expect(color).toMatch(/--color-line-strong/)
+    expect(color).toMatch(/--color-brand-500/)
+    expect(color).toMatch(/--color-brand-600/)
+    expect(color).toMatch(/--color-focus/)
+    expect(color).toMatch(/--color-success/)
+    expect(color).toMatch(/--color-warning/)
+    expect(color).toMatch(/--color-danger/)
+    expect(color).toMatch(/--color-info/)
+    expect(color).not.toMatch(
+      /(^|[^-\w])--(?:bg|surface|fg|muted|border|accent|success|warn|danger)\b/m
+    )
+  })
+
   it('target-admin 保持运营信息架构，但由 StyleBrief 决定视觉实现', () => {
     const admin = readSkill('target-admin')
 
