@@ -2,6 +2,9 @@
 
 > 参照 [nexu-io/open-design](https://github.com/nexu-io/open-design)(Apache-2.0,可改写引入其内容,保留出处)对本项目
 > skills / craft / 提示词管线的重设计方案。调研基线:open-design 主干 + 本仓库 commit 3cf780d。
+>
+> **当前实现更新(2026-07):**项目 `StyleBrief` 已取代固定设计种子,成为整体视觉的唯一事实来源。
+> 本文保留 v2 的演进背景;涉及主题生成的当前行为以 §4–§5 的更新说明为准。
 
 ---
 
@@ -9,12 +12,12 @@
 
 | 维度 | 我们现状 | open-design 做法 | v2 决策 |
 |---|---|---|---|
-| 目录模型 | 单一 `skills/`,craft 与种子混在其中 | 四轴正交:skills(做事)/ design-templates(产物形状)/ design-systems(品牌)/ craft(通用工艺) | 收敛为**三轴**:`craft/`、`design-templates/`、`skills/`(design-systems 我们暂用单一 theme.css 种子代替,给 SaaS 版预留) |
+| 目录模型 | 单一 `skills/`,craft 与主题方法混在其中 | 四轴正交:skills(做事)/ design-templates(产物形状)/ design-systems(品牌)/ craft(通用工艺) | 收敛为**三轴**:`craft/`、`design-templates/`、`skills/`;当前不内置品牌主题,每项目由 StyleBrief 生成 `theme.css` |
 | 平台维度 | **完全缺失**:无项目字段、无提示词分支、无预览视口 | `od.platform` + `metadata.kind` + `PLATFORM_CONTRACTS_BLOCK` + 按 kind 分叉的 metadata 块 | 项目新增 `target` 字段,注入平台契约块;预览面板加视口切换 |
 | 提示词组织 | 段落顺序随意,lint/报错排在头部 | 缓存前缀纪律:稳定在前、逐轮可变在后、自检钉在最后 | 管线重排(§5) |
 | 规则冲突 | 三套 token 命名互相打架;规则散落多处 | "一条规则只有一个家" + 显式优先级阶梯 | 统一 token 契约(§4)+ 宪章开篇写优先级阶梯 |
 | 反 AI 味 | slop-lint 8 条 + craft-anti-slop,已有回流闭环 | 四层:负面清单 → linter → 自检 → 评审团;规则**二元化、可数化、现象化** | 保留闭环,升级写法与规则集(§6) |
-| 渐进披露 | L1 目录 / L2 activate_skill / L3 资源,仅 tools 模式 | SKILL.md 短路由 + assets 种子 + references 按需读 | 保留;markers 模式补内联回退(§5.4) |
+| 渐进披露 | L1 目录 / L2 activate_skill / L3 资源,仅 tools 模式 | SKILL.md 短路由 + references/assets 按需读 | 保留;markers 模式由组装期注入视觉方向与协议约束(§5.4) |
 | 死代码 | ~6000 字符规范(交互完备性/设计体系)不可达 | — | 内容回收进新 craft 段(§3.2) |
 
 ---
@@ -26,7 +29,7 @@
 1. **规则二元化,不用软措辞。** open-design 实测:"use sparingly" 会被模型无视,改成 "zero em-dashes, no allowance" 才生效。我们所有"尽量/建议/避免过多"改写成可判定的祈使句:"强调色一屏最多 2 处"而非"克制使用强调色"。
 2. **审美可数化。** 把品味翻译成机械检查:"uppercase 小标签数 ≤ ceil(区块数/3)"、"连续 3 个区块不得用同一版式家族"、"8 个区块至少 4 种版式家族"。可以数的规则才能进自检清单。
 3. **失败现象化。** 不写"要像真手机",写"出现以下任一现象,说明你把手机做成了'假装是手机的卡片':外框圆角不比屏幕圆角大 / 顶部没有灵动岛缺口 / 状态栏文字是灰色 / 没有 home indicator"。
-4. **复制种子,不从零写。** "别从零写 CSS——复制种子、替换 token、粘贴版面。" 这是 open-design 里 deck 产物质量稳定的最大单一原因,我们 design-seed 已有此理念,v2 扩展到每个平台模板。
+4. **复用契约,不复用主题。** 固定主题会把不同项目拉回同一种审美;当前只复用语义 token、可访问性与一致性约束,`theme.css` 的具体值由项目 StyleBrief 生成。
 5. **诚实占位 > 编造数据。** 没有真实数值就放 `—`、灰块、带标注的桩,不许发明 "99.9% uptime"。
 6. **80/20 灵魂判据。** ~80% 成熟模式 + ~20% 独特选择;"截图给项目外的人看,能认出是哪个产品的,就有灵魂;认不出,就只是模板。"
 7. **触发词必须能区分"什么时候不选我"。** "creative project / modern design" 这类什么都命中的触发词禁止使用。
@@ -47,13 +50,12 @@ resources/
 │   ├── anti-slop.md              # 现 craft-anti-slop + 二元化改写 + 机械检查(§6)
 │   ├── state-coverage.md         # 新:回收 INTERACTION_SKILL(数据四态/骨架屏/1-3-多边界)
 │   ├── interaction.md            # 新:回收 INTERACTION_SKILL(反馈/二次确认/表单校验时机)
-│   ├── dark-mode.md              # 新:回收 DESIGN_SYSTEM_SKILL 暗色要求 + theme.css 暗色配方
+│   ├── dark-mode.md              # 新:回收 DESIGN_SYSTEM_SKILL 暗色要求,不内置具体主题配方
 │   └── a11y.md                   # 新:回收 DESIGN_SYSTEM_SKILL 可访问性底线 + 状态齐全
 │
 ├── design-templates/             # 轴二:产物形状,每个平台一个包,四文件渐进披露
 │   ├── landing-page/
 │   │   ├── SKILL.md              # 短路由:brief 语言 → 版面组合;硬规则;craft 声明
-│   │   ├── assets/seed.css       # 从 design-seed/assets/theme.css 派生(修暗色/去 @import)
 │   │   ├── references/layouts.md # 现 design-seed/references/layouts.md(8 个版面本就是落地页向)
 │   │   └── references/checklist.md
 │   ├── mobile-app/
@@ -63,17 +65,16 @@ resources/
 │   │   └── references/checklist.md   # 含"假手机"现象清单
 │   ├── admin-dashboard/
 │   │   ├── SKILL.md              # 吸收 market:admin-list;密度即功能/tabular-nums/筛选-表格-分页
-│   │   ├── assets/seed.css
 │   │   └── references/{layouts,checklist}.md
 │   └── desktop-app/              # P2 再做:hover/键盘态/分栏/快捷键
 │
 └── skills/                       # 轴三:功能技能(对输入做事,而非渲染产物)
-    └── design-seed/              # 瘦身为"种子用法"技能,assets 移交各模板;或整体并入模板层后删除
+    └── design-seed/              # 生成方法、语义 token 契约、可访问性与一致性护栏;不含具体主题资产
 ```
 
 - 用户技能来源(`~/.antd-designer/skills`、`~/.agents/skills`、`~/.claude/skills`)不变,`scan.ts` 增加对
   `resources/craft`、`resources/design-templates` 两个内置根的扫描。
-- **design-systems 轴本期不做**:我们没有品牌包需求,单一 seed.css 即品牌;但 `target` + 模板包的接口设计
+- **design-systems 轴本期不做**:我们没有品牌包需求,项目 StyleBrief 承担整体视觉事实来源;但 `target` + 模板包的接口设计
   与 [[designer-cloud-saas-roadmap]] 对齐,云端版可在同一契约上加品牌包。
 
 ### 2.1 frontmatter 契约 v2
@@ -134,7 +135,7 @@ INTERACTION_SKILL(1767 字符)成为无可达路径的死代码,其内容在 res
 |---|---|
 | 数据四态、骨架屏、边界数量 1/3/多 | `craft/state-coverage.md` |
 | 交互反馈、二次确认、表单校验时机 | `craft/interaction.md` |
-| 暗色模式要求 | `craft/dark-mode.md` + seed.css 暗色块 |
+| 暗色模式要求 | `craft/dark-mode.md`;是否采用暗色及其具体 token 由 StyleBrief 决定 |
 | 可访问性底线、hover/active/focus-visible/disabled 状态齐全 | `craft/a11y.md` |
 | 响应式两断点 | 并入 `responsive` 平台契约块(§5.2) |
 | 图标规范 | 并入 `craft/anti-slop.md`(emoji-icon 已有 lint 规则) |
@@ -152,9 +153,8 @@ INTERACTION_SKILL(1767 字符)成为无可达路径的死代码,其内容在 res
 
 ## 4. 统一 token 契约(P0,先做)
 
-现状三套命名互相矛盾:craft-color 用 `--accent/--bg/--surface/--fg/--muted/--border`,
-design-seed 用 `--color-brand-500/--color-ink/--color-line`,stacks.ts 要求 `bg-surface/text-ink/bg-brand-500`。
-模型同时加载即自相矛盾。
+早期实现曾有三套 token 命名互相矛盾;当前 `design-seed/references/theme-contract.md` 只定义语义角色,
+不携带任何固定色值、字号、间距或组件外观。具体 token 由每个项目的 StyleBrief 生成到 `theme.css`。
 
 **决策:以 Tailwind v4 `@theme` 语义命名为唯一契约**(因为产物层直接消费它):
 
@@ -166,12 +166,10 @@ design-seed 用 `--color-brand-500/--color-ink/--color-line`,stacks.ts 要求 `b
 ```
 
 - utility 形态:`bg-bg` 太拗口,保留 `bg-surface / text-fg / text-muted / border-line / bg-accent`。
-- `craft/color.md`、`stacks.ts` COMMON_RUNTIME、各模板 seed.css 三处同步改为此契约,并写进宪章一句:
-  "token 名以 seed.css 为准,craft 文档中的名字如与 seed 冲突,以 seed 为准"(优先级阶梯的具体化)。
-- seed.css 同时修掉两个硬伤:
-  1. **加暗色块**(`prefers-color-scheme: dark` + `[data-theme]` 双通道,与预览面板的暗色切换联动);
-  2. **去掉 `@import 'tailwindcss'`**,由预览运行时注入方(`bootstrap.ts`)统一负责;导出时由
-     `artifact-export.ts` 补回 import,保证导出产物独立可用。
+- `craft/color.md`、`stacks.ts` COMMON_RUNTIME 与 `design-seed` 的语义 token 契约保持同名;
+  `theme.css` 是项目产物,由 StyleBrief 生成具体值,不得从内置资产复制主题。
+- 是否提供暗色块由 StyleBrief 决定;`@import 'tailwindcss'` 仍由预览运行时注入方(`bootstrap.ts`)统一负责,
+  导出时由 `artifact-export.ts` 补回 import,保证导出产物独立可用。
 
 ---
 
@@ -182,11 +180,12 @@ design-seed 用 `--color-brand-500/--color-ink/--color-line`,stacks.ts 要求 `b
 开篇即优先级阶梯(照搬 open-design 的宪法写法):
 
 > 规则冲突时,列表靠前者胜:
-> 1. 用户本轮的明确要求(原话是最高权威:"把主色改成深绿"= 所有用主色的元素,不是一处;
->    认为用户要求是错的,也先照做,再用一行说明为什么)
-> 2. 激活的产物模板与设计种子——各管各的领域:模板管结构与工作流,种子管视觉 token
-> 3. 项目描述与用户勾选的技能
-> 4. 本宪章与 craft 手艺规则
+> 1. 用户本轮明确的项目全局风格(原话是最高权威:"把整体主色改成深绿"= 更新项目 StyleBrief)
+> 2. 项目 StyleBrief
+> 3. 当前产物的视觉连续性
+> 4. skills 的生成方法、可访问性与一致性等质量护栏
+
+局部组件调整、单页例外或某个区块的临时风格不更新 StyleBrief。
 
 其后保留现有 6 条底线 + 五维自评。宪章大小用测试卡死(参照 open-design 的 byte-budget 测试):
 `tests/prompts/charter-budget.test.ts` 断言渲染后 ≤1200 字符,加不进去的内容必须移去模板/craft/契约块。
@@ -226,14 +225,18 @@ design-seed 用 `--color-brand-500/--color-ink/--color-line`,stacks.ts 要求 `b
 
 ### 5.4 markers 模式回退(修复长尾模型零技能)
 
-现状 `useTools=false` 时 L1/L2/L3 全部不可达,长尾模型只剩 849 字符宪章。v2 规则:
-markers 模式下,第 4/5 段照常注入(模板正文与 craft 段是组装期读文件,不依赖工具);
-种子文件读不到,就把 seed.css 全文内联为 `## 设计种子(直接作为 theme.css 使用)` 段。
-代价约 5–6K 字符,只发生在非工具模型上,可接受。
+tools 模式改变整体视觉时必须先调用 `set_style_brief`;只有持久化成功才解锁 VFS 写入,
+保存失败会丢弃本轮文件改动并拒绝后续写入。局部修改不得调用该工具。
+
+`useTools=false` 时 L1/L2/L3 不可达,因此第 4/5 段仍由组装期注入。视觉方向不再内联固定主题:
+有 StyleBrief 时直接注入原文;空 brief 且无文件时,先要求模型给出 `<antdStyleBrief>` 或明确
+`<antdUseStyleFallback />`,再输出 `<antdFile>`;空 brief 但已有文件时延续当前产物视觉。
+`<antdStyleBrief>` 必须先持久化,随后才提交文件;任一步失败都不留下新主题或本轮文件。
+两个视觉协议标记只参与编排,不进入 VFS、artifact 或助手正文。
 
 ### 5.5 activate_skill 的角色变化
 
-- 平台模板不再依赖模型主动激活(路由由 `target` 决定,消除"模型没想起来加载 design-seed"的失败模式)。
+- 平台模板不再依赖模型主动激活(路由由 `target` 决定,消除模型漏加载平台方法的失败模式)。
 - activate_skill 保留给:用户自装技能、`target` 为空的自由项目、以及跨平台补充包
   (如在 landing 项目里临时激活 mobile-app 看移动断点建议)。
 - L1 目录里 `kind: template` 且已被 `target` 注入的条目**不再出现**(避免重复占预算)。
@@ -284,7 +287,7 @@ markers 模式下,第 4/5 段照常注入(模板正文与 craft 段是组装期�
 ## 8. 分期路线
 
 **P0 — 止血与地基(先行,独立可交付)**
-死代码内容回收为 4 个新 craft 段(§3.2);token 契约统一(§4);seed.css 修暗色与 @import;
+死代码内容回收为 4 个新 craft 段(§3.2);token 契约统一(§4);每项目 `theme.css` 生成与运行时注入衔接;
 管线重排 + markers 回退(§5.3/5.4);宪章加优先级阶梯 + budget 测试。
 
 **P1 — 平台一等公民(本设计的主体)**
