@@ -4,7 +4,7 @@
  * ## 为什么是正则而不是解析 HTML
  *
  * 故意做得"糙":便宜、确定、加一条规则只要加一个正则。这里要抓的都是**字面
- * 特征**(某个色值、某个 emoji、某个属性组合),不需要理解文档结构。真去解析
+ * 特征**(某段占位文案、某个外部服务、某组属性组合),不需要理解文档结构。真去解析
  * DOM 反而会在半成品 HTML 上崩掉——而流式产出的中间态本来就经常不合法。
  *
  * ## 为什么要把结果喂回给模型
@@ -28,9 +28,6 @@ export interface Finding {
   /** 命中的原文片段,截断 */
   snippet?: string
 }
-
-/** 当图标用的 emoji。只查出现在标题/按钮/列表项里的 */
-const SLOP_EMOJI = /[✨🚀🎯⚡🔥💡📈🎨🛡🌟💪🎉👋🙌✅⭐🏆🔮🌈]/u
 
 /** 编造的指标 */
 const INVENTED_METRIC =
@@ -68,21 +65,6 @@ export function lintArtifact(path: string, source: string): Finding[] {
     message: '出现了填充文案。',
     fix: '空白区域是要用构图解决的设计问题,不是靠编字填满的。换个版面或写真实内容。'
   })
-
-  // emoji 只在当图标用时才算问题,正文里出现无所谓
-  const emojiAsIcon = /<(h[1-6]|button|li)[^>]*>[^<]{0,40}/gi
-  for (const m of source.matchAll(emojiAsIcon)) {
-    if (SLOP_EMOJI.test(m[0])) {
-      findings.push({
-        rule: 'emoji-icon',
-        severity: 'P0',
-        message: '拿 emoji 当功能图标。',
-        fix: '换成 1.6–1.8px 描边的单线 SVG,stroke="currentColor"。',
-        snippet: clip(m[0])
-      })
-      break
-    }
-  }
 
   hit(REMOTE_PLACEHOLDER, {
     rule: 'remote-placeholder',

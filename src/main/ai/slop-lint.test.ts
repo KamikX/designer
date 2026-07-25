@@ -17,12 +17,6 @@ describe('抓得住的', () => {
     expect(lintArtifact('a.html', `<p>${text}</p>`).map((x) => x.rule)).toContain('filler-copy')
   })
 
-  it('emoji 当图标', () => {
-    expect(lintArtifact('a.html', '<h2>🚀 极速部署</h2>').map((x) => x.rule)).toContain(
-      'emoji-icon'
-    )
-  })
-
   it('外部占位图', () => {
     expect(
       lintArtifact('a.html', '<img src="https://images.unsplash.com/x">').map((x) => x.rule)
@@ -54,8 +48,11 @@ describe('不该报的', () => {
     expect(lintArtifact('app.css', source)).toEqual([])
   })
 
-  it('emoji 出现在正文里不算——只有当图标用才算', () => {
-    expect(lintArtifact('a.html', '<p>发布成功 🎉,可以去看看了</p>')).toEqual([])
+  it.each([
+    ['标题', '<h2>🚀 极速部署</h2>'],
+    ['按钮', '<button>✨ 创建项目</button>']
+  ])('%s 使用确认过的 emoji 品牌语言不告警', (_label, source) => {
+    expect(lintArtifact('a.html', source)).toEqual([])
   })
 
   it('非前端文件不查', () => {
@@ -124,7 +121,7 @@ describe('给模型的措辞', () => {
   })
 
   it('每条都带改法', () => {
-    const out = renderLint(lintArtifact('a.html', '<h2>🚀 x</h2>'))
+    const out = renderLint(lintArtifact('a.html', '<p>快 10 倍</p>'))
     expect(out).toContain('改法')
   })
 
