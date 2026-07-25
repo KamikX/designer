@@ -21,7 +21,9 @@ const DEFAULT_CONFIG: AppConfig = {
   primaryColor: '#1677ff',
   window: { width: 1400, height: 900 },
   assistantModel: null,
-  searchApi: null
+  searchApi: null,
+  // 最保守的组合:不依赖服务端持久化,也不用任何非标准选项
+  openaiCompat: { store: false, encryptedReasoning: false }
 }
 
 let cache: AppConfig | null = null
@@ -38,7 +40,12 @@ export function readConfig(): AppConfig {
   try {
     const raw = JSON.parse(readFileSync(CONFIG_FILE, 'utf-8')) as Partial<AppConfig>
     // 浅合并即可：配置只有一层嵌套，且新增字段要能用上默认值
-    cache = { ...DEFAULT_CONFIG, ...raw, window: { ...DEFAULT_CONFIG.window, ...raw.window } }
+    cache = {
+      ...DEFAULT_CONFIG,
+      ...raw,
+      window: { ...DEFAULT_CONFIG.window, ...raw.window },
+      openaiCompat: { ...DEFAULT_CONFIG.openaiCompat, ...raw.openaiCompat }
+    }
   } catch (e) {
     // 配置有问题绝不能挡住启动，一律退回默认值
     cache = { ...DEFAULT_CONFIG }

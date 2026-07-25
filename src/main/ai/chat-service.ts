@@ -14,6 +14,7 @@ import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { listSkills } from '../db/repo/skill'
+import { readConfig } from '../config'
 import { autoTitle, getConversation, touchConversation } from '../db/repo/conversation'
 import { getProject, touchProject } from '../db/repo/project'
 import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/repo/artifact'
@@ -55,6 +56,23 @@ import { resolveAsset } from '../storage/service'
 
 /** 单回合内的工具调用步数上限,防跑飞 */
 const MAX_STEPS = 24
+
+/**
+ * OpenAI 协议的兼容参数。
+ *
+ * 两个开关的取舍都在 AppConfig 的注释里。这里只强调一点:**默认值是按
+ * "面对一个能力未知的中转站"来选的**,不是按直连 OpenAI 选的——后者的
+ * 默认(store=true)恰恰是中转站下最容易出问题的配置。
+ */
+function openaiCompatOptions(): Record<string, string[] | boolean> {
+  const { store, encryptedReasoning } = readConfig().openaiCompat
+  return {
+    store,
+    // include 只在开关打开时才出现在请求体里。传一个空数组也是"发了这个
+    // 字段",而不认识它的后端照样可能翻车
+    ...(encryptedReasoning ? { include: ['reasoning.encrypted_content'] } : {})
+  }
+}
 
 const running = new Map<string, AbortController>()
 
@@ -235,26 +253,9 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
          * 而且只说那件事。空着就整个不传 system,和网页版聊天一样。
          */
         ...(system ? { system } : {}),
-        /*
-         * 让这一轮完全不依赖服务端持久化。
-         *
-         * Responses API 的 store 默认是 true:模型的 reasoning 会存在服务端,
-         * 下一步只回传一个 `rs_xxx` 引用。这在直连 OpenAI 时没问题,但我们
-         * 面对的往往是**网关**——第二次请求可能落到另一个上游实例,那边根本
-         * 没有这个 id,于是报:
-         *
-         *   Item with id 'rs_...' not found. Items are not persisted when
-         *   `store` is set to false.
-         *
-         * 而且这个错**只在多步工具调用时出现**:单轮对话没有回传环节。
-         *
-         * store: false 关掉服务端存储,include 让 reasoning 以加密内容的形式
-         * 随响应回来、再原样带回去。有它就不需要任何一方记住上一步——顺带
-         * 也不再把对话内容留在服务端。
-         */
-        providerOptions: {
-          openai: { store: false, include: ['reasoning.encrypted_content'] }
-        },
+        // OpenAI 协议的兼容开关,见 config.ts。默认最保守:不依赖服务端
+        // 持久化,也不用任何非标准选项
+        providerOptions: { openai: openaiCompatOptions() },
         messages: [
           ...history,
           {

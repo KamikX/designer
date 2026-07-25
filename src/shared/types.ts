@@ -28,6 +28,34 @@ export interface AppConfig {
    * 消耗用户的配额,而多数时候浏览器那条是好使的。
    */
   searchApi: { provider: 'brave' | 'tavily'; key: string } | null
+  /**
+   * OpenAI 协议的兼容开关。中转站行为各不相同,这里留给用户手改
+   * (~/.antd-designer/config.json),不用重新打包就能试。
+   */
+  openaiCompat: {
+    /**
+     * 是否让服务端保存对话项(Responses API 的 store)。
+     *
+     * **默认 false,不要轻易改回 true。** store=true 时模型的 reasoning 存在
+     * 服务端、下一步只回传 `rs_xxx` 引用;而中转站会把两次请求分发到不同的
+     * 上游实例,第二次就找不到这个 id:
+     *
+     *   Item with id 'rs_...' not found.
+     *
+     * 只在多步工具调用时出现——单轮对话没有回传环节。
+     */
+    store: boolean
+    /**
+     * 是否要求返回加密的 reasoning,以便跨步骤原样带回。
+     *
+     * **默认 false。** 开了能让模型在多步之间保住自己的思考过程,质量更好;
+     * 但这是标准 OpenAI API 的特性,**基于 Codex 后端的中转站往往不支持**,
+     * 而且不认识的选项常常换来一个 500 server_error 而不是干净的 400。
+     *
+     * 直连 OpenAI、或确认中转站支持时再打开。
+     */
+    encryptedReasoning: boolean
+  }
 }
 
 /** 设计稿产物技术栈，项目创建时三选一，之后不可改 */
