@@ -162,4 +162,26 @@ describe('FileStreamParser', () => {
     expect(parser.files.get('a.html')).toBe('<p>半截\n')
     expect(parser.hadUnclosedFile).toBe(true)
   })
+
+  it('文件语义之后出现视觉方向时记录协议顺序错误', () => {
+    const { parser } = feed(
+      [
+        '<antdFile path="index.html">',
+        '<main />',
+        '</antdFile>',
+        '<antdStyleBrief>',
+        '冷灰',
+        '</antdStyleBrief>'
+      ].join('\n'),
+      3
+    )
+
+    expect(parser.styleProtocolAfterFile).toBe(true)
+  })
+
+  it('删除语义之后出现兜底风格时记录协议顺序错误', () => {
+    const { parser } = feed('<antdDelete path="old.css" />\n<antdUseStyleFallback />', 7)
+
+    expect(parser.styleProtocolAfterFile).toBe(true)
+  })
 })

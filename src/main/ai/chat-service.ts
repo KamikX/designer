@@ -32,6 +32,7 @@ import {
   buildStyleBriefTools,
   commitMarkerStyleBrief,
   createInitialStyleWriteGate,
+  markerCompletionOutcome,
   renderStyleBriefPrompt
 } from './style-brief'
 import { connectMcpTools } from '../mcp/tools'
@@ -447,13 +448,17 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       // 无效,必须显式接住 'error' ——否则上游 502 之类的失败会被静默吞掉,
       // 表现成"聊到一半自己停了,什么都不说"。
       let streamError: unknown = null
+      let modelAborted = false
       for await (const part of result.fullStream) {
         if (part.type === 'error') {
           streamError = part.error
           break
         }
         // 模型侧主动中止(不是用户点的停):当成中止而非报错
-        if (part.type === 'abort') break
+        if (part.type === 'abort') {
+          modelAborted = true
+          break
+        }
         switch (part.type) {
           case 'text-delta': {
             if (useTools) {
@@ -545,7 +550,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
 
       if (!useTools) {
         try {
-          await commitMarkers('complete')
+          await commitMarkers(markerCompletionOutcome(modelAborted))
         } catch (err) {
           markerCommitRejected = true
           throw err
@@ -564,7 +569,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         toolNarration += note
         emit({ streamId, type: 'delta', text: note })
       }
-      finalize(cappedOut ? 'aborted' : 'complete', {
+      finalize(cappedOut || modelAborted ? 'aborted' : 'complete', {
         inputTokens: usage.inputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0
       })

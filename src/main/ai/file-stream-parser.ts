@@ -67,6 +67,8 @@ export class FileStreamParser {
   useStyleFallback = false
   /** finish 为兼容自动收尾的文件，原始输出是否忘了 </antdFile>。 */
   hadUnclosedFile = false
+  /** 新样式协议若晚于任一文件/删除语义，整轮提交必须拒绝。 */
+  styleProtocolAfterFile = false
 
   private pending = ''
   /** pending 中已作为 text 放行的前缀长度(仅 text 态使用) */
@@ -75,6 +77,7 @@ export class FileStreamParser {
   private currentLines: string[] = []
   private collectingStyleBrief = false
   private styleBriefLines: string[] = []
+  private hasSeenFileSemantic = false
 
   push(chunk: string): ParserEvent[] {
     const events: ParserEvent[] = []
@@ -139,16 +142,19 @@ export class FileStreamParser {
         return
       }
       if (STYLE_BRIEF_START.test(line)) {
+        if (this.hasSeenFileSemantic) this.styleProtocolAfterFile = true
         this.collectingStyleBrief = true
         this.styleBriefLines = []
         return
       }
       if (STYLE_FALLBACK.test(line)) {
+        if (this.hasSeenFileSemantic) this.styleProtocolAfterFile = true
         this.useStyleFallback = true
         return
       }
       const start = line.match(FILE_START)
       if (start) {
+        this.hasSeenFileSemantic = true
         this.currentPath = start[1]
         this.currentLines = []
         events.push({ type: 'file-start', path: start[1] })
@@ -156,6 +162,7 @@ export class FileStreamParser {
       }
       const del = line.match(FILE_DELETE)
       if (del) {
+        this.hasSeenFileSemantic = true
         this.deleted.add(del[1])
         this.files.delete(del[1])
         events.push({ type: 'file-delete', path: del[1] })

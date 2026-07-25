@@ -6,6 +6,7 @@ import {
   buildStyleBriefTools,
   commitMarkerStyleBrief,
   createInitialStyleWriteGate,
+  markerCompletionOutcome,
   renderStyleBriefPrompt,
   styleFallback
 } from './style-brief'
@@ -359,6 +360,48 @@ describe('commitMarkerStyleBrief', () => {
     expect(vfs.hasChanges).toBe(false)
   })
 
+  it('兜底风格搭配未闭合文件时也拒绝灌入', async () => {
+    const parser = marker('<antdUseStyleFallback />\n<antdFile path="index.html">\n<main />')
+    const vfs = new SessionVfs([])
+
+    await expect(
+      commitMarkerStyleBrief({
+        parser,
+        vfs,
+        initialStyleBrief: '',
+        initialHasFiles: false,
+        outcome: 'complete',
+        save: () => project('unexpected')
+      })
+    ).rejects.toThrow('文件标记未闭合')
+    expect(vfs.hasChanges).toBe(false)
+  })
+
+  it.each([
+    ['视觉方向', '<antdStyleBrief>\n冷灰\n</antdStyleBrief>'],
+    ['兜底风格', '<antdUseStyleFallback />']
+  ])('文件输出后置%s标记时拒绝保存和灌入', async (_label, markerText) => {
+    const parser = marker(`<antdFile path="index.html">\n<main />\n</antdFile>\n${markerText}`)
+    const vfs = new SessionVfs([])
+    let saves = 0
+
+    await expect(
+      commitMarkerStyleBrief({
+        parser,
+        vfs,
+        initialStyleBrief: '已有方向',
+        initialHasFiles: true,
+        outcome: 'complete',
+        save: () => {
+          saves += 1
+          return project('unexpected')
+        }
+      })
+    ).rejects.toThrow('必须先于文件')
+    expect(saves).toBe(0)
+    expect(vfs.hasChanges).toBe(false)
+  })
+
   it.each(['aborted', 'error'] as const)('%s 时丢弃样式或兜底暂存', async (outcome) => {
     const parser = marker(
       '<antdUseStyleFallback />\n<antdFile path="index.html">\n<main />\n</antdFile>'
@@ -494,6 +537,11 @@ describe('commitMarkerStyleBrief', () => {
     })
 
     expect(vfs.writes.get('index.html')).toBe('<main />\n')
+  })
+
+  it('模型 abort 会把 markers 提交结果映射为 aborted', () => {
+    expect(markerCompletionOutcome(true)).toBe('aborted')
+    expect(markerCompletionOutcome(false)).toBe('complete')
   })
 })
 

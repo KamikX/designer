@@ -47,6 +47,11 @@ export function createInitialStyleWriteGate(input: {
   }
 }
 
+/** SDK 的 abort part 仍会正常结束迭代，必须显式转换成事务 outcome。 */
+export function markerCompletionOutcome(modelAborted: boolean): 'complete' | 'aborted' {
+  return modelAborted ? 'aborted' : 'complete'
+}
+
 /**
  * markers 协议的视觉方向提交边界。
  *
@@ -73,8 +78,11 @@ export async function commitMarkerStyleBrief(input: {
     return
   }
 
-  if (hasStyleMarker && parser.hadUnclosedFile) {
+  if (hasStyleProtocol && parser.hadUnclosedFile) {
     throw new Error('文件标记未闭合，已拒绝保存视觉方向和文件改动。')
+  }
+  if (parser.styleProtocolAfterFile) {
+    throw new Error('视觉方向或兜底风格标记必须先于文件输出，已拒绝保存和文件改动。')
   }
 
   const hasFileOutput = parser.hasChanges
