@@ -54,6 +54,16 @@ describe('内置设计技能的 StyleBrief 契约', () => {
     expect(antdv).not.toMatch(/风格配方:选一组|选一组/)
     expect(antdv).not.toMatch(/默认选项/)
   })
+
+  it('target-mobile 由 StyleBrief 和目标平台决定设备呈现，未知平台使用中性视口', () => {
+    const mobile = readSkill('target-mobile')
+
+    expect(mobile).toMatch(/StyleBrief/)
+    expect(mobile).toMatch(/中性.*自适应.*移动视口/)
+    expect(mobile).toMatch(/iOS.*按需参考/)
+    expect(mobile).not.toMatch(/iOS\(默认\)|机框骨架\(直接抄|home indicator 永远要/)
+    expect(mobile).not.toMatch(/w-\[390px\]|h-\[844px\]|rounded-\[56px\]/)
+  })
 })
 
 describe('StyleBrief 不被通用审美护栏覆盖', () => {
@@ -75,10 +85,19 @@ describe('StyleBrief 不被通用审美护栏覆盖', () => {
     expect(prompt).not.toMatch(/六套风格配方|配方见/)
   })
 
-  it('antdv 主题示例可直接读取项目 CSS token，且不调用虚构 helper', () => {
+  it('antdv 主题示例通过 DOM computed style 将任意 CSS 长度解析为像素', () => {
     const antdv = readSkill('antdv-theme')
+
     expect(antdv).toMatch(/getComputedStyle/)
     expect(antdv).toMatch(/theme\.darkAlgorithm/)
+    expect(antdv).toMatch(/document\.createElement/)
+    expect(antdv).toMatch(/probe\.style\.width\s*=\s*value/)
+    expect(antdv).toMatch(/document\.body\.append\(probe\)/)
+    expect(antdv).toMatch(/getComputedStyle\(probe\)\.(?:width|inlineSize)/)
+    expect(antdv).toMatch(/Number\.isFinite/)
+    expect(antdv).toMatch(/probe\.remove/)
+    expect(antdv).toMatch(/`px`、`rem`、`clamp\(\)` 和 `var\(\)`/)
+    expect(antdv).not.toMatch(/Number\.parseFloat\(readToken/)
     expect(antdv).not.toMatch(/readProjectThemeTokens/)
   })
 

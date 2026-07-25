@@ -22,7 +22,28 @@ import { theme } from 'antdv-next'
 
 const rootStyle = getComputedStyle(document.documentElement)
 const readToken = (name: string) => rootStyle.getPropertyValue(name).trim()
-const readNumberToken = (name: string) => Number.parseFloat(readToken(name))
+const readLengthTokenInPixels = (name: string, fallbackPixels = 0) => {
+  const value = readToken(name)
+  if (!value) return fallbackPixels
+
+  const probe = document.createElement('div')
+  probe.style.position = 'fixed'
+  probe.style.visibility = 'hidden'
+  probe.style.pointerEvents = 'none'
+  probe.style.contain = 'strict'
+  probe.style.width = value
+  document.body.append(probe)
+
+  try {
+    // 浏览器负责解析 px/rem/clamp()/var()，读取结果时只接受有限的像素值。
+    const resolved = getComputedStyle(probe).width
+    const match = /^(-?(?:\d+|\d*\.\d+))px$/.exec(resolved)
+    const pixels = match ? Number(match[1]) : Number.NaN
+    return Number.isFinite(pixels) ? pixels : fallbackPixels
+  } finally {
+    probe.remove()
+  }
+}
 const isDark = document.documentElement.dataset.theme === 'dark'
 
 const themeConfig = {
@@ -31,7 +52,7 @@ const themeConfig = {
     colorPrimary: readToken('--color-brand-500'), // 必须 = theme.css
     colorBgBase: readToken('--color-bg'),
     colorTextBase: readToken('--color-ink'),
-    borderRadius: readNumberToken('--radius-base'),
+    borderRadius: readLengthTokenInPixels('--radius-base'),
     fontFamily: readToken('--font-body')
   }
 }
@@ -44,7 +65,9 @@ const themeConfig = {
 </template>
 ```
 
-示例直接读取本项目已生成的 `theme.css`，可在 Vue 浏览器预览中运行。`data-theme` 只用于
+示例直接读取本项目已生成的 `theme.css`，可在 Vue 浏览器预览中运行。长度 token 交给 DOM
+计算，因此 `px`、`rem`、`clamp()` 和 `var()` 都会转换成 antdv-next 所需的像素 number；
+缺失、无法计算或非有限结果使用显式 fallback，绝不把 `NaN` 写入主题。`data-theme` 只用于
 表达项目已确认的明暗模式；需要紧凑算法或组件 token 时，按 StyleBrief 在同一对象中添加，
 不要把示例中的任何组合抄成默认。
 

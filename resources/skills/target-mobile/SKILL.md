@@ -8,17 +8,18 @@ metadata:
 
 # 移动端 App
 
-移动端产物在桌面预览里必须**画在真机框里居中呈现**,画布用 `bg-bg`,
-设备浮在上面。不画机框的"手机宽度网页"看起来就是个窄网页,不是 App。
+先读 StyleBrief 与目标平台。设备框、平台外观、视口尺寸、圆角、安全区、摄像头开孔和
+系统导航提示都由它们决定。未知平台时使用**中性自适应移动视口**居中预览，不添加任何
+iOS 或 Android 专属硬件装饰。
 
 ## 开工前:判读与提问
 
-判读一句话:「这是〈哪类屏〉,给〈谁〉在〈什么场景〉用,气质偏〈iOS / Android / 中性〉。」
+判读一句话:「这是〈哪类屏〉,给〈谁〉在〈什么场景〉用,目标平台与 StyleBrief 是〈什么〉。」
 缺关键信息才问,最多一次,不超过 3 题:
 
 1. **首屏类型**(下面路由表的六选一,brief 多半能推断,推断不出才问)
-2. **平台气质**:iOS(默认) / Android / 中性
-3. **明暗**:浅色(默认) / 深色 / 跟随内容气质
+2. **目标平台**:iOS / Android / 小程序 / 中性；未知且不影响任务时不追问，使用中性视口
+3. **明暗与设备呈现**:遵循 StyleBrief；只有设备外观影响评审时才确认是否展示设备框
 
 信号追问:
 
@@ -42,46 +43,21 @@ metadata:
 
 **一屏只做一件事。** brief 像两件事时,交付主要那屏,另一屏口头提议。
 
-## 风格维度:每一项都要做选择,别每次都默认同一组
+## StyleBrief 实现检查
 
-屏型管结构,这里管气质。**用户给了方向听用户的**;没给就按 brief 选,判读时
-逐项声明,**连续两个项目不许选同一组**:
-
-| 维度       | 选项                                                |
-| ---------- | --------------------------------------------------- |
-| 平台气质   | iOS(默认) / Android Material / 中性                 |
-| 明暗       | 浅色 / 深色 / 首屏深色内容浅色                      |
-| tab 栏形态 | 通栏贴底(默认) / 浮岛胶囊(悬浮、圆角、留边)         |
-| 卡片风格   | 描边卡片 / 无边框平铺+分割线 / 大圆角浮卡(带轻阴影) |
-| 头部形态   | 大标题(iOS Large Title) / 紧凑顶栏 / 沉浸头图       |
+- 平台组件语义、导航方式和系统区域匹配目标平台，不把一个平台的习惯移植到另一个平台。
+- 视口尺寸、密度、圆角、卡片、头部、tab 栏与明暗模式响应 StyleBrief 和使用场景。
+- 未知平台使用中性布局、通用安全区和自适应尺寸，不显示灵动岛、home indicator 或
+  Android 系统导航等平台专属元素。
+- 设备框只在有助于评审且与目标设备一致时使用；无框视口同样是合法的 App 预览。
 
 品牌色按 StyleBrief 生成，并与 design-seed 的语义 token 保持一致。
 
-## 机框骨架(直接抄,别重画)
+## 平台参考
 
-```html
-<div class="min-h-screen bg-bg flex items-center justify-center py-10">
-  <div class="w-[390px] h-[844px] rounded-[56px] bg-ink p-[10px] shadow-2xl">
-    <div class="w-full h-full rounded-[46px] bg-surface overflow-hidden relative flex flex-col">
-      <!-- 状态栏:时间用全强度前景色,不是灰色 -->
-      <div
-        class="h-[54px] flex items-end justify-between px-8 pb-2 text-ink text-[15px] font-semibold"
-      >
-        <span class="num">9:41</span>
-        <div
-          class="absolute top-[12px] left-1/2 -translate-x-1/2 w-[120px] h-[34px] rounded-full bg-ink"
-        ></div>
-        <span class="flex gap-1 items-center"><!-- 信号/wifi/电池:内联 SVG --></span>
-      </div>
-      <div class="flex-1 overflow-y-auto"><!-- 屏幕内容 --></div>
-      <!-- tab 栏(需要时);home indicator 永远要 -->
-      <div class="h-[34px] flex items-center justify-center">
-        <div class="w-[134px] h-[5px] rounded-full bg-ink opacity-90"></div>
-      </div>
-    </div>
-  </div>
-</div>
-```
+iOS 固定设备框只在 StyleBrief 或目标平台明确为 iOS 时按需参考；根据目标设备重新确定尺寸、
+安全区、圆角、摄像头区域与 home indicator，不能直接复制某个 iPhone 机框。Android、
+小程序或其他平台使用各自约定；平台未知则回到中性自适应移动视口。
 
 ## 硬规则
 
@@ -91,12 +67,9 @@ metadata:
 - 正文 ≥15px;辅助文字 ≥12px,再小就不是给人看的。
 - 数字(金额、计数、时间)一律 `.num` 等宽。
 
-## 交付前自查:假手机现象
+## 交付前自查
 
-出现任何一条,说明你做的是"假装成手机的卡片",回去修:
-
-- [ ] 外框圆角(56px)没有明显大于屏幕圆角(46px)
-- [ ] 顶部中央没有灵动岛挖孔
-- [ ] 状态栏时间是灰色或半透明(应当是全强度 `text-ink`)
-- [ ] 底部没有 home indicator
-- [ ] 内容从状态栏底下穿过或顶到物理边缘(安全区没留)
+- [ ] 设备呈现与 StyleBrief、目标平台和目标视口一致，没有混入其他平台的硬件装饰
+- [ ] 安全区、键盘、滚动区域和固定操作不会遮挡内容
+- [ ] 中性视口能随桌面预览空间缩放，同时保持移动端交互结构
+- [ ] 使用设备框时，其尺寸和系统区域来自目标设备而不是固定 iPhone 模板

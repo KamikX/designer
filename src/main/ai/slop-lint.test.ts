@@ -79,18 +79,46 @@ describe('不该报的', () => {
 })
 
 describe('旧设计种子的组合指纹', () => {
-  it('多个旧母版特征同时出现才报告，而不是只凭一个色值', () => {
+  const legacyBrand = `
+    --color-brand-500: #c96442;
+    --color-brand-600: #b45a3b;
+  `
+  const legacySerif = `--font-display: 'Source Serif Pro', Georgia, serif;`
+  const legacySpacing = `
+    --spacing-section: 96px;
+    --spacing-block: 56px;
+    --spacing-gutter: 32px;
+  `
+  const legacyWarmSurface = `
+    --color-bg: #faf9f7;
+    --color-surface: #fdfcfa;
+  `
+  const legacyControls = `
+    --radius-base: 10px;
+    .btn { height: 44px; }
+  `
+  const legacyFeaturePairs = [
+    ['品牌色', legacyBrand],
+    ['暖表面', legacyWarmSurface],
+    ['字体', legacySerif],
+    ['间距', legacySpacing],
+    ['控件', legacyControls]
+  ].flatMap(([leftName, leftSource], index, features) =>
+    features
+      .slice(index + 1)
+      .map(([rightName, rightSource]) => [
+        `${leftName} + ${rightName}`,
+        `${leftSource}\n${rightSource}`
+      ])
+  )
+
+  it('旧品牌色组合与另外两类特征构成精确三类时报告', () => {
     const source = `
       @theme {
-        --color-bg: #faf9f7;
-        --color-surface: #fdfcfa;
-        --font-display: 'Source Serif Pro', Georgia, serif;
-        --spacing-section: 96px;
-        --spacing-block: 56px;
-        --spacing-gutter: 32px;
-        --radius-base: 10px;
+        ${legacyBrand}
+        ${legacySerif}
+        ${legacySpacing}
       }
-      .btn { height: 44px; }
     `
 
     const finding = lintArtifact('theme.css', source).find(
@@ -99,9 +127,13 @@ describe('旧设计种子的组合指纹', () => {
 
     expect(finding).toMatchObject({
       severity: 'P1',
-      message: expect.stringContaining('旧设计种子')
+      message: expect.stringContaining('同时出现 3 类旧设计种子特征')
     })
-    expect(finding?.snippet).toContain('#faf9f7')
+    expect(finding?.snippet).toContain('#c96442')
+  })
+
+  it.each(legacyFeaturePairs)('任两类不报：%s', (_label, source) => {
+    expect(lintArtifact('theme.css', `@theme { ${source} }`)).toEqual([])
   })
 })
 

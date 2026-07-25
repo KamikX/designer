@@ -163,6 +163,12 @@ interface LegacySeedFeature {
 /** 旧主题的判定必须是组合信号，避免把用户明确指定的单一颜色误报为模板。 */
 function collectLegacySeedFeatures(source: string): LegacySeedFeature[] {
   const features: LegacySeedFeature[] = []
+  const legacyBrand = /#c96442/i.exec(source)?.[0]
+  const legacyBrandHover = /#b45a3b/i.exec(source)?.[0]
+  if (legacyBrand && legacyBrandHover) {
+    features.push({ snippet: `${legacyBrand} / ${legacyBrandHover}` })
+  }
+
   const warmBackground = /#faf9f7/i.exec(source)?.[0]
   const warmSurface = /#fdfcfa/i.exec(source)?.[0]
   if (warmBackground && warmSurface) {
