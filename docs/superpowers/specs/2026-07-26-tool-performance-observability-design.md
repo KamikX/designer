@@ -106,7 +106,6 @@ File Tools ──► AnchorRegistry ──► MagicString Batch Editor ──►
 - 总模型调用次数、工具调用次数、工具失败次数
 - 累计 token 汇总
 - 是否触发工具、token 或错误熔断
-- `usage_run_counted_at`，第一次成功记录 step 时原子设置，保证日聚合中的 run 数只加一次
 
 应用启动时把遗留的 `running` 更新为 `interrupted`。
 
@@ -164,6 +163,20 @@ File Tools ──► AnchorRegistry ──► MagicString Batch Editor ──►
 `reported_calls` 用于区分明确为 0、完全未报告和部分报告。不能用 0 填充 provider 未返回的
 缓存字段。
 
+### `model_usage_run_days`
+
+这是长期聚合的短期去重桥表，主键为：
+
+```text
+run_id + UTC date + provider_key + model_id + scene + project_key
+```
+
+每个 step 的 token 归它实际发生的 UTC 日期。事务先 `INSERT OR IGNORE` 当日 run 维度；
+只有插入成功时才给同维度 `model_usage_daily.run_count` 加一。因此跨午夜 run 会在两个日期
+各计一次“当日活跃 run”，两个日期的平均每轮 token 都有分子和分母；同一天的多个 step
+仍只算一个 run。桥表跟诊断明细一样保留 7 天，超过窗口后不可能再收到该 run 的回调，
+删除不会影响已经聚合的日数据。
+
 SQLite 的可空列不能直接参与可靠的唯一 upsert，因为多个 `NULL` 不冲突。聚合表因此使用
 非空规范化维度键：
 
@@ -177,10 +190,10 @@ provider/project 的显示 ID 和名称另存快照，不对业务表建外键�
 
 ### 留存与同步
 
-- `ai_runs`、`ai_run_steps`、`tool_runs` 只保留 7 天。
+- `ai_runs`、`ai_run_steps`、`tool_runs`、`model_usage_run_days` 只保留 7 天。
 - `model_usage_daily` 长期保留，用户可单独清除。
 - 诊断清理每日启动后执行一次，每轮结束后可异步触发一次幂等清理。
-- 四张表都是本机数据，不进入 `change_log`，不参与项目同步或 artifact 导出。
+- 五张表都是本机数据，不进入 `change_log`，不参与项目同步或 artifact 导出。
 - 删除项目时诊断明细级联删除；长期用量没有业务外键，保留调用时的 project/provider
   快照和规范化维度键。
 
@@ -223,9 +236,10 @@ totalTokens
 2. upsert 当日 `model_usage_daily`；
 3. 更新 `ai_runs` 汇总。
 
-事务先用条件更新把 `ai_runs.usage_run_counted_at` 从 `NULL` 设为当前时间；只有受影响行数为
-1 时才给当日维度的 `run_count` 加一。后续 step 只增加 `step_count` 和 token，避免多 step
-run 被重复算成多个 run。run 跨越 UTC 日期时，run_count 归开始日，step/token 归实际发生日。
+事务用 `model_usage_run_days` 的复合主键去重；只有 `INSERT OR IGNORE` 实际插入一行时才给
+当日、当 provider/model/scene/project 维度的 `run_count` 加一。后续同维度 step 只增加
+`step_count` 和 token。run 跨 UTC 日期或极少数情况下在同一 run 切换模型时，各自维度都有
+对应的当日 run 分母。
 
 不能只用整轮 `result.usage`，否则中途失败的多 step 调用可能漏记，也无法按 step 查看缓存
 命中和性能。provider 未报告的字段保持 `null`，同时不增加对应 `reported_calls`。
@@ -339,12 +353,14 @@ type StringEditOperation =
   | { type: 'insert_after'; anchorId: string; content: string }
 ```
 
-内部映射：
+所有 anchor 必须是非空范围。执行前先按 anchor 合并操作，再统一映射为一次
+`MagicString.update(start, end, composedContent)`：
 
-- replace → `MagicString.update`
-- remove → `MagicString.remove`
-- insert_before → `MagicString.prependLeft`
-- insert_after → `MagicString.appendRight`
+- replace：核心内容为新内容；
+- remove：核心内容为空串；
+- 只有 insert：核心内容保留 anchor 原文；
+- insert_before：按请求数组顺序拼到核心内容之前；
+- insert_after：按请求数组顺序拼到核心内容之后。
 
 暂不开放任意正则替换和文本范围移动。文件移动继续用 `move_file`。
 
@@ -367,11 +383,10 @@ UTF-16 索引、emoji/surrogate pair 和 CRLF/LF 必须纳入测试。
 
 - replace/remove 使用非空半开区间；相邻区间允许，部分或完全重叠禁止；
 - 同一 anchor 最多一个 replace 或 remove；
-- insert 是零宽操作，只能发生在其 anchor 的 start（before）或 end（after）；
 - 同一 anchor 可组合 `insert_before + replace/remove + insert_after`；
-- 同一边界多个 insert 按请求数组顺序拼接成一个字符串后只调用一次 MagicString，避免
-  `prependLeft` 的同点顺序语义导致反转；
-- 其他 anchor 的 insert 落在 replace/remove 内部时禁止，恰好位于边界时允许；
+- 同一 anchor 多个 before/after 分别按请求数组顺序拼接；
+- 相邻 anchor 即使共享字符边界，也各自合成为独立的非空区间 update，不调用
+  `prependLeft` / `appendRight`，因此不存在插入附着到相邻 remove 后消失的问题；
 - 同一批次先把组合操作规范化和冲突检测完，再调用 MagicString，不能依赖库抛错决定业务
   语义。
 
@@ -531,7 +546,7 @@ instructions、messages 和 tool schema 序列化字符数按 `ceil(chars / 2)` 
 - 重叠区间整批回滚；
 - revision/hash 失效；
 - capture_range 的 1 起坐标、包含端点、trailing newline 和 UTF-16 边界；
-- 零宽插入、同边界多次插入顺序、相邻范围、包含/部分重叠和组合操作；
+- 同 anchor 多次插入顺序、相邻范围、包含/部分重叠和组合操作；
 - 800～1700 字符超长行；
 - 中文、emoji、surrogate pair；
 - CRLF/LF；
@@ -557,7 +572,8 @@ instructions、messages 和 tool schema 序列化字符数按 `ceil(chars / 2)` 
 - 未报告、明确 0、部分报告；
 - provider/model/project/场景聚合；
 - `NULL` 维度规范化、provider/project 删除后唯一键稳定；
-- 多 step run 的 run_count 只加一次；
+- 多 step run 在同日同维度只计一次，跨午夜按日各计一次；
+- `model_usage_run_days` 清理不改变已经聚合的日数据；
 - SDK total 与 allowlist 提取的 provider total 分离；
 - 7 天清理不删除长期用量；
 - 历史回填不伪造缓存和 step。
