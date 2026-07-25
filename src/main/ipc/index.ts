@@ -51,6 +51,7 @@ import { fetchRemoteModels } from '../ai/model-catalog'
 import { abortChat, sendChat } from '../ai/chat-service'
 import { answerQuestion } from '../ai/ask-user'
 import { BUILTIN_SKILLS } from '../ai/prompts/builtin-skills'
+import { catalog } from '../market'
 import { addRoot, grantPaths, listRoots, removeRoot } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
 import { reportPreviewError } from '../preview/errors'
@@ -106,6 +107,9 @@ export function registerIpc(): void {
   ipcMain.handle('project:save-settings', (_e, id: string, patch: SessionSettings) =>
     saveProjectSettings(id, patch)
   )
+
+  ipcMain.handle('market:skills', () => catalog().skills())
+  ipcMain.handle('market:mcp', () => catalog().mcp())
 
   ipcMain.handle('chat:list', () => listChats())
   ipcMain.handle('chat:create', () => createChat())

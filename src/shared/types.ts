@@ -448,6 +448,39 @@ export interface Skill {
 }
 
 /** 内置技能:随应用发布,用户不可编辑;alwaysOn 的还不可关闭 */
+/* ------------------------------------------------------------------ */
+/* 市场                                                                */
+/* ------------------------------------------------------------------ */
+
+export interface MarketSkill {
+  id: string
+  name: string
+  description: string
+  tags: string[]
+  content: string
+}
+
+/** MCP 服务要用户自己补的环境变量 */
+export interface EnvHint {
+  key: string
+  label: string
+  help?: string
+}
+
+export interface MarketMcp {
+  id: string
+  name: string
+  description: string
+  tags: string[]
+  transport: McpTransport
+  /** stdio 类:安装确认框里要**原样展示**的命令 */
+  command?: string
+  args?: string[]
+  url?: string
+  envHints?: EnvHint[]
+  homepage?: string
+}
+
 export interface BuiltinSkillView {
   id: string
   name: string
@@ -602,6 +635,11 @@ export interface DesignerApi {
   conversation: {
     /** 项目的 design 主会话,不存在则自动创建 */
     ensureDesign: (projectId: string) => Promise<Conversation>
+  }
+  /** 技能 / MCP 市场。清单目前内置,跟着版本发 */
+  market: {
+    skills: () => Promise<MarketSkill[]>
+    mcp: () => Promise<MarketMcp[]>
   }
   /** 独立的纯聊天会话(没有项目) */
   chatSession: {

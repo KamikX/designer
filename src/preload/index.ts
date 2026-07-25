@@ -27,6 +27,10 @@ const api: DesignerApi = {
   conversation: {
     ensureDesign: (projectId) => ipcRenderer.invoke('conversation:ensure-design', projectId)
   },
+  market: {
+    skills: () => ipcRenderer.invoke('market:skills'),
+    mcp: () => ipcRenderer.invoke('market:mcp')
+  },
   chatSession: {
     list: () => ipcRenderer.invoke('chat:list'),
     create: () => ipcRenderer.invoke('chat:create'),

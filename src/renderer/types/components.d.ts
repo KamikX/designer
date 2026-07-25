@@ -13,7 +13,6 @@ declare module 'vue' {
   export interface GlobalComponents {
     AAlert: typeof import('antdv-next')['Alert']
     AButton: typeof import('antdv-next')['Button']
-    ACard: typeof import('antdv-next')['Card']
     ACheckbox: typeof import('antdv-next')['Checkbox']
     ACheckboxGroup: typeof import('antdv-next')['CheckboxGroup']
     AColorPicker: typeof import('antdv-next')['ColorPicker']
