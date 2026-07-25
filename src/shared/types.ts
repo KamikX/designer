@@ -140,6 +140,20 @@ export interface AskQuestion {
   allowCustom?: boolean
 }
 
+/**
+ * 要用户填的密钥。
+ *
+ * 单独一类而不是复用普通问题:它必须渲染成密码框,而且**答案不能落进消息历史**
+ * ——历史会进下一轮上下文、会被同步、会出现在导出里。
+ */
+export interface AskSecret {
+  /** 环境变量名,如 GITHUB_TOKEN */
+  key: string
+  label: string
+  /** 去哪儿申请 */
+  help?: string
+}
+
 /** ask_user 工具的入参:一次最多问 4 题,别把用户当问卷填 */
 export interface AskUserInput {
   /** 一句话说明为什么要问 */
@@ -147,6 +161,8 @@ export interface AskUserInput {
   questions: AskQuestion[]
   /** 末尾的自由描述框 */
   notes?: { label: string; placeholder?: string }
+  /** 要用户填的密钥。渲染成密码框,答案不入库 */
+  secrets?: AskSecret[]
 }
 
 export interface AskUserAnswer {
@@ -156,6 +172,11 @@ export interface AskUserAnswer {
   notes?: string
   /** 用户点了跳过 / 中止 / 超时 */
   skipped?: boolean
+  /**
+   * 密钥答案。**主进程收到后立刻剥离**:存进加密文件,不写进 message parts。
+   * 之后这个字段在历史里永远是 undefined。
+   */
+  secrets?: Record<string, string>
 }
 
 /**
@@ -452,6 +473,17 @@ export interface Skill {
 /* 市场                                                                */
 /* ------------------------------------------------------------------ */
 
+/** 文件系统里已装好的技能 */
+export interface InstalledSkill {
+  name: string
+  description: string
+  /** app 本应用 | agents 跨工具共享 | claude 兼容位置 */
+  source: 'app' | 'agents' | 'claude'
+  dir: string
+  /** 格式上的问题,界面上标出来但不影响加载 */
+  warning?: string
+}
+
 export interface MarketSkill {
   id: string
   name: string
@@ -640,6 +672,8 @@ export interface DesignerApi {
   market: {
     skills: () => Promise<MarketSkill[]>
     mcp: () => Promise<MarketMcp[]>
+    /** 文件系统里已装好的技能(含来源) */
+    installedSkills: () => Promise<InstalledSkill[]>
   }
   /** 独立的纯聊天会话(没有项目) */
   chatSession: {

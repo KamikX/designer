@@ -32,6 +32,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@hyzyla/pdfium": "^2.1.13",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@shikijs/engine-javascript": "^4.3.1",
     "@shikijs/monaco": "^4.3.1",
     "@vue/compiler-sfc": "^3.5.40",

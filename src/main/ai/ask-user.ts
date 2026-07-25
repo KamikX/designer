@@ -3,6 +3,7 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 import type { AskUserAnswer, AskUserInput } from '../../shared/types'
+import { setSecrets } from '../mcp/secrets'
 
 /**
  * 交互式提问工具。
@@ -67,6 +68,35 @@ export interface AskUserContext {
   signal: AbortSignal
 }
 
+/**
+ * 发起一次提问并等作答。
+ *
+ * 抽出来给安装类工具复用:它们也要弹同一张卡片、也要阻塞等用户、也要剥离密钥。
+ * 各写一遍的话,密钥剥离这种**漏一处就出事**的逻辑迟早会有一处漏掉。
+ */
+export async function askUser(
+  context: AskUserContext,
+  ask: AskUserInput
+): Promise<{ answer: AskUserAnswer; configured: string[] }> {
+  const questionId = randomUUID()
+  const answer = await waitForAnswer(context, questionId, ask)
+
+  /*
+   * 密钥在这里就地剥离,**先于任何落库动作**。
+   *
+   * onAnswered 会把 answer 推进 message parts,而消息历史会进下一轮上下文、
+   * 会被同步、会出现在导出里。密钥一旦进去就再也拿不干净了。
+   */
+  const secrets = answer.secrets
+  if (secrets && Object.keys(secrets).length) {
+    setSecrets(secrets)
+    delete answer.secrets
+  }
+
+  context.onAnswered(questionId, ask, answer)
+  return { answer, configured: secrets ? Object.keys(secrets) : [] }
+}
+
 export function buildAskUserTool(context: AskUserContext): ToolSet {
   const tools = {
     ask_user: tool({
@@ -109,10 +139,8 @@ export function buildAskUserTool(context: AskUserContext): ToolSet {
       }),
       execute: async (input) => {
         const ask = input as AskUserInput
-        const questionId = randomUUID()
-        const answer = await waitForAnswer(context, questionId, ask)
-        context.onAnswered(questionId, ask, answer)
-        return renderAnswer(ask, answer)
+        const { answer, configured } = await askUser(context, ask)
+        return renderAnswer(ask, answer, configured)
       }
     })
   }
@@ -156,7 +184,15 @@ function waitForAnswer(
  * 不直接回 JSON:模型读散文比读结构体稳,而且这段会随后续每一步重发,
  * 散文也更短。
  */
-export function renderAnswer(ask: AskUserInput, answer: AskUserAnswer): string {
+/**
+ * @param configured 已配置的密钥名。**只给名字,永远不给值**——这段文本会作为
+ *        工具结果进模型的上下文
+ */
+export function renderAnswer(
+  ask: AskUserInput,
+  answer: AskUserAnswer,
+  configured: string[] = []
+): string {
   if (answer.skipped) {
     return '用户跳过了这次确认。请按你自己的判断继续,不要再问一次。'
   }
@@ -168,6 +204,11 @@ export function renderAnswer(ask: AskUserInput, answer: AskUserAnswer): string {
 
   const notes = answer.notes?.trim()
   if (notes) lines.push(`- 补充说明:${notes}`)
+
+  if (configured.length) {
+    // 只说配了哪些,不说是什么。模型不需要知道值,它只需要知道可以往下走了
+    lines.push(`- 已配置密钥:${configured.join('、')}(值已加密保存,你看不到也不需要看到)`)
+  }
 
   return `用户的选择:\n${lines.join('\n')}`
 }

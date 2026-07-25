@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
 import { ApiOutlined, BulbOutlined, CheckOutlined, LinkOutlined } from '@antdv-next/icons'
-import type { MarketMcp, MarketSkill, McpServer, Skill } from '@shared/types'
+import type { InstalledSkill, MarketMcp, MarketSkill, McpServer, Skill } from '@shared/types'
 
 /**
  * 技能 / MCP 市场。
@@ -21,24 +21,46 @@ import type { MarketMcp, MarketSkill, McpServer, Skill } from '@shared/types'
 const { token } = theme.useToken()
 const { message, modal } = App.useApp()
 
-const tab = ref<'skills' | 'mcp'>('skills')
+const tab = ref<'installed' | 'skills' | 'mcp'>('installed')
 
 const marketSkills = ref<MarketSkill[]>([])
 const marketMcp = ref<MarketMcp[]>([])
 const installedSkills = ref<Skill[]>([])
+const fileSkills = ref<InstalledSkill[]>([])
+
+/**
+ * 按来源分组。用户需要知道一个技能**装在哪** —— 全局那份是跨工具共享的,
+ * 改它会影响 Claude Code、Codex 里的使用;本应用那份只影响这里。
+ */
+const SOURCE_LABEL: Record<InstalledSkill['source'], { title: string; hint: string }> = {
+  app: { title: '本应用', hint: '~/.antd-designer/skills · 只在这里生效' },
+  agents: { title: '全局', hint: '~/.agents/skills · 其他 AI 工具共享' },
+  claude: { title: 'Claude', hint: '~/.claude/skills · 兼容位置' }
+}
+const grouped = computed(() =>
+  (['app', 'agents', 'claude'] as const)
+    .map((source) => ({
+      source,
+      ...SOURCE_LABEL[source],
+      items: fileSkills.value.filter((s) => s.source === source)
+    }))
+    .filter((g) => g.items.length)
+)
 const installedMcp = ref<McpServer[]>([])
 
 async function reload(): Promise<void> {
-  const [ms, mm, is, im] = await Promise.all([
+  const [ms, mm, is, im, fs] = await Promise.all([
     window.api.market.skills(),
     window.api.market.mcp(),
     window.api.skill.list(),
-    window.api.mcp.list()
+    window.api.mcp.list(),
+    window.api.market.installedSkills()
   ])
   marketSkills.value = ms
   marketMcp.value = mm
   installedSkills.value = is
   installedMcp.value = im
+  fileSkills.value = fs
 }
 onMounted(reload)
 
@@ -117,6 +139,9 @@ function installMcp(m: MarketMcp): void {
     </div>
 
     <a-tabs v-model:active-key="tab" size="small">
+      <a-tab-pane key="installed">
+        <template #tab><CheckOutlined /> 已装技能 ({{ fileSkills.length }})</template>
+      </a-tab-pane>
       <a-tab-pane key="skills">
         <template #tab><BulbOutlined /> 技能</template>
       </a-tab-pane>
@@ -125,7 +150,43 @@ function installMcp(m: MarketMcp): void {
       </a-tab-pane>
     </a-tabs>
 
-    <div class="market-grid">
+    <!-- 已装:按来源分组,标明位置 -->
+    <template v-if="tab === 'installed'">
+      <a-empty
+        v-if="fileSkills.length === 0"
+        description="还没有扫到技能。放到 ~/.agents/skills 或 ~/.antd-designer/skills 下即可"
+        style="margin-top: 60px"
+      />
+      <div v-for="group in grouped" :key="group.source" class="market-group">
+        <div class="market-group-head">
+          <span class="market-group-title">{{ group.title }}</span>
+          <span class="market-group-hint" :style="{ color: token.colorTextTertiary }">
+            {{ group.hint }}
+          </span>
+        </div>
+        <div class="market-grid">
+          <div
+            v-for="s in group.items"
+            :key="s.dir"
+            class="market-card"
+            :style="{ borderColor: token.colorBorderSecondary }"
+          >
+            <div class="market-card-head">
+              <span class="market-card-name">{{ s.name }}</span>
+              <a-tag v-if="s.warning" color="warning">格式问题</a-tag>
+            </div>
+            <div class="market-card-desc" :style="{ color: token.colorTextSecondary }">
+              {{ s.description }}
+            </div>
+            <div v-if="s.warning" class="market-card-warn" :style="{ color: token.colorWarning }">
+              {{ s.warning }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <div v-else class="market-grid">
       <template v-if="tab === 'skills'">
         <div
           v-for="s in marketSkills"
@@ -216,6 +277,31 @@ function installMcp(m: MarketMcp): void {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 12px;
   margin-top: 4px;
+}
+
+.market-group {
+  margin-top: 14px;
+}
+
+.market-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.market-group-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.market-group-hint {
+  font-size: 11px;
+}
+
+.market-card-warn {
+  font-size: 11px;
+  margin-top: 6px;
 }
 
 .market-card {

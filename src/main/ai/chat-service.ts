@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { parsePartialJson, stepCountIs, streamText } from 'ai'
 import type { WebContents } from 'electron'
 import type {
+  AskUserAnswer,
   ChatStreamEvent,
   Message,
   MessagePart,
@@ -25,12 +26,13 @@ import { buildTimeTools } from './time-tools'
 import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
 import { buildSkillTools } from '../skills/tools'
+import { buildInstallTools } from '../skills/install-tools'
 import { buildWebTools } from '../web/tools'
 import { closeBrowserSession } from '../web/session'
 import { FileStreamParser } from './file-stream-parser'
 import { SessionVfs } from './session-vfs'
 import { buildFileTools } from './tools'
-import { buildAskUserTool, releaseQuestions } from './ask-user'
+import { askUser, buildAskUserTool, releaseQuestions } from './ask-user'
 import { buildImageTools } from './image-tools'
 import { buildLocalTools, localScopePrompt } from './local-tools'
 import { addRoot, listRoots } from '../workspace/roots'
@@ -133,7 +135,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
    *
    * 这不算扩大权限:这些目录本来就是用户放技能的地方,而技能的全部意义就是被读。
    */
-  const fileSkills = scanSkills()
+  let fileSkills = scanSkills()
   const roots = [...userRoots, ...skillRoots(fileSkills)]
   // 上一版预览跑挂了的话,这一轮先让模型知道。纯聊天没有预览
   const previewError = project
@@ -232,6 +234,25 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             // 意识不到这一点——不给它这个,涉及日期的输出会自信地错
             ...buildTimeTools(),
             ...buildSkillTools(fileSkills),
+            // 装技能 / 装 MCP。两个都强制走 ask_user——它们改的是用户机器上的
+            // 持久状态,模型不该自己拍板
+            ...buildInstallTools({
+              ask: async (ask) => {
+                const askContext = {
+                  streamId,
+                  signal: abort.signal,
+                  emit: (questionId: string, input: typeof ask) =>
+                    emit({ streamId, type: 'question', questionId, ask: input }),
+                  onAnswered: (questionId: string, input: typeof ask, answer: AskUserAnswer) =>
+                    questionParts.push({ type: 'question', questionId, ask: input, answer })
+                }
+                return (await askUser(askContext, ask)).answer
+              },
+              onChanged: () => {
+                // 下一轮重扫,新装的技能才会出现在目录里
+                fileSkills = scanSkills()
+              }
+            }),
             ...buildWebTools(input.webSearch === true, streamId),
             ...buildAskUserTool({
               streamId,

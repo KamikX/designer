@@ -52,6 +52,7 @@ import { abortChat, sendChat } from '../ai/chat-service'
 import { answerQuestion } from '../ai/ask-user'
 import { BUILTIN_SKILLS } from '../ai/prompts/builtin-skills'
 import { catalog } from '../market'
+import { scanSkills } from '../skills/scan'
 import { addRoot, grantPaths, listRoots, removeRoot } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
 import { reportPreviewError } from '../preview/errors'
@@ -109,6 +110,8 @@ export function registerIpc(): void {
   )
 
   ipcMain.handle('market:skills', () => catalog().skills())
+  // 文件系统里已装的技能,市场里按来源分组显示
+  ipcMain.handle('market:installed-skills', () => scanSkills())
   ipcMain.handle('market:mcp', () => catalog().mcp())
 
   ipcMain.handle('chat:list', () => listChats())

@@ -29,6 +29,7 @@ const api: DesignerApi = {
   },
   market: {
     skills: () => ipcRenderer.invoke('market:skills'),
+    installedSkills: () => ipcRenderer.invoke('market:installed-skills'),
     mcp: () => ipcRenderer.invoke('market:mcp')
   },
   chatSession: {

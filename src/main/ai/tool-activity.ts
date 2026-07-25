@@ -40,6 +40,8 @@ const VERB: Record<string, string> = {
   note_image: '记录参考图要点',
   get_current_time: '查看当前时间',
   activate_skill: '加载技能',
+  install_skill: '安装技能',
+  install_mcp: '安装 MCP 服务',
   // 本地文件
   list_local_dir: '浏览目录',
   check_local_path: '检查路径',
@@ -93,6 +95,11 @@ export function labelFor(toolName: string, input: PartialInput): string {
   const path = str(input, 'path')
 
   switch (toolName) {
+    case 'install_skill':
+    case 'install_mcp': {
+      const target = str(input, 'name') ?? str(input, 'summary')
+      return target ? `${verb} ${target}` : verb
+    }
     case 'activate_skill': {
       const name = str(input, 'name')
       return name ? `${verb} ${name}` : verb

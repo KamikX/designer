@@ -32,6 +32,16 @@ const picked = ref<string[][]>(props.ask.questions.map(() => []))
 /** 每题的自定义输入 */
 const custom = ref<string[]>(props.ask.questions.map(() => ''))
 const notes = ref('')
+
+/**
+ * 密钥输入。
+ *
+ * 值只在这个组件里活到提交那一刻,提交后主进程立刻剥离进加密存储,**不写进
+ * 消息历史**。所以已答态里永远看不到它们——那是对的,不是显示丢了。
+ */
+const secrets = ref<Record<string, string>>(
+  Object.fromEntries((props.ask.secrets ?? []).map((s) => [s.key, '']))
+)
 const submitting = ref(false)
 
 const locked = computed(() => props.answer !== null || props.stale === true)
@@ -67,7 +77,15 @@ const selections = computed(() =>
   })
 )
 
-const canSubmit = computed(() => selections.value.some((s) => s.length > 0) || notes.value.trim())
+const canSubmit = computed(() => {
+  // 有必填的密钥就必须填完:少填一个,装出来的服务会带着空 token 启动,
+  // 然后报一个和"没配密钥"毫不相干的认证错误
+  const secretsFilled = (props.ask.secrets ?? []).every((s) => secrets.value[s.key]?.trim())
+  if (!secretsFilled) return false
+  return (
+    selections.value.some((s) => s.length > 0) || notes.value.trim() || props.ask.secrets?.length
+  )
+})
 
 function submit(skipped = false): void {
   if (locked.value || submitting.value) return
@@ -75,6 +93,8 @@ function submit(skipped = false): void {
   emit('submit', {
     selections: skipped ? [] : selections.value,
     notes: skipped ? undefined : notes.value.trim() || undefined,
+    // 摊成普通对象:IPC 是 structured clone,克隆不了响应式代理
+    ...(skipped || !props.ask.secrets?.length ? {} : { secrets: { ...secrets.value } }),
     ...(skipped ? { skipped: true } : {})
   })
 }
@@ -159,6 +179,19 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
         />
       </div>
 
+      <!-- 密钥:密码框,值不进消息历史 -->
+      <div v-for="secret in ask.secrets ?? []" :key="secret.key" class="question-block">
+        <div class="question-title">{{ secret.label }}</div>
+        <a-input-password
+          v-model:value="secrets[secret.key]"
+          :disabled="locked"
+          :placeholder="secret.key"
+          autocomplete="off"
+        />
+        <div v-if="secret.help" class="question-secret-help">{{ secret.help }}</div>
+        <div class="question-secret-help">加密保存在本机,不会出现在对话记录里</div>
+      </div>
+
       <div v-if="ask.notes" class="question-block">
         <div class="question-title">{{ ask.notes.label }}</div>
         <a-textarea
@@ -187,6 +220,12 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
 </template>
 
 <style scoped>
+.question-secret-help {
+  font-size: 11px;
+  opacity: 0.55;
+  margin-top: 4px;
+}
+
 .question-card {
   border: 1px solid transparent;
   border-radius: 12px;
