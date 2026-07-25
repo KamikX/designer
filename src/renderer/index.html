@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <title>Antd Designer</title>
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <!-- frame-src 放行 preview://(设计稿预览 iframe)和 asset://(本地资源) -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset:; frame-src preview:"
     />
   </head>
 

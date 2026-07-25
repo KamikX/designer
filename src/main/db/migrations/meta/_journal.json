@@ -8,6 +8,27 @@
       "when": 1784882632587,
       "tag": "0000_moaning_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784895421038,
+      "tag": "0001_amazing_paladin",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784903793777,
+      "tag": "0002_spicy_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784904333316,
+      "tag": "0003_wakeful_stature",
+      "breakpoints": true
     }
   ]
 }

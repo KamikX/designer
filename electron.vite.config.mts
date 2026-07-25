@@ -20,7 +20,9 @@ export default defineConfig({
   renderer: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        '@renderer': resolve('src/renderer/src'),
+        // 渲染层只允许从 shared 拿类型（契约层），不许伸手进 src/main
+        '@shared': resolve('src/shared')
       }
     },
     plugins: [

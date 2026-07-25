@@ -4,6 +4,23 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { patchConfig, readConfig } from './config'
 import { closeDb } from './db'
+import { cleanupSeededProviders } from './db/repo/provider'
+import { markStaleStreamingAsError } from './db/repo/message'
+import {
+  registerAppSchemes,
+  registerAssetHandler,
+  registerPreviewHandler
+} from './preview/protocol'
+import { startSyncEngine } from './sync/engine'
+
+// 特权 scheme 必须在 app ready 前注册,放模块顶层最不容易被挪错位置
+registerAppSchemes()
+
+// 冒烟测试/自动化联调用:DESIGNER_DEBUG_PORT=9223 pnpm dev 后可用 CDP 驱动。
+// 不设该变量时完全无效果
+if (process.env.DESIGNER_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.DESIGNER_DEBUG_PORT)
+}
 import { registerIpc } from './ipc'
 
 const isMac = process.platform === 'darwin'
@@ -89,7 +106,16 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // 首次调用会顺带初始化数据库并跑迁移；顺带清掉早期版本种下的预设行
+  cleanupSeededProviders()
+  // 上次异常退出遗留的 streaming 消息收尾成 error
+  markStaleStreamingAsError()
+
   registerIpc()
+  registerPreviewHandler()
+  registerAssetHandler()
+  // mode='local'(默认)时是 no-op;自建库同步引擎二期在这里点火
+  startSyncEngine()
 
   createWindow()
 

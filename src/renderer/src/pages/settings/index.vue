@@ -1,39 +1,115 @@
 <script setup lang="ts">
 import { theme } from 'antdv-next'
-import { useAppConfig } from '@renderer/components/config/config'
+import {
+  ApiOutlined,
+  BulbOutlined,
+  CloudSyncOutlined,
+  DatabaseOutlined,
+  DeploymentUnitOutlined,
+  SettingOutlined
+} from '@antdv-next/icons'
+import { useProviderStore } from '@renderer/stores/provider'
+import GeneralPanel from './components/GeneralPanel.vue'
+import ProviderPanel from './components/ProviderPanel.vue'
+import McpPanel from './components/McpPanel.vue'
+import SkillPanel from './components/SkillPanel.vue'
+import DataBackendPanel from './components/DataBackendPanel.vue'
+import StoragePanel from './components/StoragePanel.vue'
+
+/**
+ * 设置页:二级侧边栏形态。
+ * 左侧是设置项分组导航,右侧是对应的配置面板,和主侧栏形成两级结构。
+ */
 
 const { token } = theme.useToken()
-const { lang, dark, primaryColor, langOptions, colorPresets, resetTheme } = useAppConfig()
+const store = useProviderStore()
+store.load()
+
+const SECTIONS = [
+  { key: 'general', label: '通用', icon: SettingOutlined, component: GeneralPanel },
+  { key: 'providers', label: 'AI 供应商', icon: ApiOutlined, component: ProviderPanel },
+  { key: 'mcp', label: 'MCP 服务', icon: DeploymentUnitOutlined, component: McpPanel },
+  { key: 'skills', label: '技能', icon: BulbOutlined, component: SkillPanel },
+  { key: 'data', label: '数据与同步', icon: CloudSyncOutlined, component: DataBackendPanel },
+  { key: 'storage', label: '对象存储', icon: DatabaseOutlined, component: StoragePanel }
+] as const
+
+const active = ref<(typeof SECTIONS)[number]['key']>('general')
+
+const current = computed(() => SECTIONS.find((s) => s.key === active.value)!)
 </script>
 
 <template>
-  <a-card title="设置" :style="{ background: token.colorBgContainer }">
-    <template #extra>
-      <a-button size="small" @click="resetTheme">重置主题</a-button>
-    </template>
+  <div class="settings" :style="{ background: token.colorBgContainer }">
+    <div class="settings-sider" :style="{ borderColor: token.colorBorderSecondary }">
+      <div
+        v-for="s in SECTIONS"
+        :key="s.key"
+        class="settings-nav-item"
+        :class="{ 'settings-nav-item--active': active === s.key }"
+        :style="
+          active === s.key
+            ? { background: token.colorPrimaryBg, color: token.colorPrimary }
+            : undefined
+        "
+        @click="active = s.key"
+      >
+        <component :is="s.icon" />
+        <span>{{ s.label }}</span>
+      </div>
+    </div>
 
-    <a-descriptions :column="1" bordered size="small">
-      <a-descriptions-item label="语言">
-        <a-segmented v-model:value="lang" :options="langOptions" size="small" />
-      </a-descriptions-item>
-      <a-descriptions-item label="外观">
-        <a-switch
-          v-model:checked="dark"
-          checked-children="暗"
-          un-checked-children="亮"
-          size="small"
-        />
-      </a-descriptions-item>
-      <a-descriptions-item label="主题色">
-        <a-color-picker
-          v-model:value="primaryColor"
-          size="small"
-          value-format="hex"
-          :presets="colorPresets"
-          :disabled-alpha="true"
-          show-text
-        />
-      </a-descriptions-item>
-    </a-descriptions>
-  </a-card>
+    <div class="settings-content">
+      <div class="settings-content-title">{{ current.label }}</div>
+      <component :is="current.component" />
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.settings {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.settings-sider {
+  width: 168px;
+  flex-shrink: 0;
+  padding: 12px 8px;
+  border-right: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.settings-nav-item:not(.settings-nav-item--active):hover {
+  background: rgba(128, 128, 128, 0.1);
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 24px 24px;
+}
+
+.settings-content-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+</style>

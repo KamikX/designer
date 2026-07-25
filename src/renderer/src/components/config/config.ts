@@ -48,11 +48,6 @@ export const COLOR_PRESETS = [
   }
 ]
 
-/** 除主题色以外的 token 默认值 */
-const DEFAULT_TOKEN: ThemeConfig['token'] = {
-  borderRadius: 6
-}
-
 /** 除 locale / theme 之外的 ConfigProvider 选项 */
 export const PROVIDER_OPTIONS = {
   componentSize: 'middle'
@@ -102,11 +97,7 @@ const alpha = (color: string, a: number): string =>
 const buildTheme = (dark: boolean, primaryColor: string): ThemeConfig => ({
   algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
   token: {
-    ...DEFAULT_TOKEN,
-    colorPrimary: primaryColor,
-    // 卡片、弹层这些容器要半透明，玻璃才透得上来。
-    // 弹出层（Modal / Dropdown）保持不透明，浮在玻璃上更清楚。
-    ...(GLASS_ENABLED ? { colorBgContainer: alpha(dark ? '#141414' : '#ffffff', 0.72) } : {})
+    colorPrimary: primaryColor
   }
 })
 

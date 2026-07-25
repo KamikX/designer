@@ -21,6 +21,8 @@ export default defineConfig(
       '**/node_modules',
       '**/dist',
       '**/out',
+      // 预览运行时的第三方 vendor 大文件（babel/vue/react/tailwind），不 lint
+      'resources/**',
       'src/renderer/types/auto-imports.d.ts',
       'src/renderer/types/components.d.ts'
     ]

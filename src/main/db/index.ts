@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { ulid } from 'ulid'
 import { DB_FILE, ensureDataDirs } from '../paths'
 import { MIGRATIONS } from './migrations'
 import * as schema from './schema'
@@ -20,9 +21,57 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   sqlite.pragma('foreign_keys = ON')
 
   migrate(sqlite)
+  ensureSyncBase(sqlite)
 
   db = drizzle(sqlite, { schema })
   return db
+}
+
+/** 参与同步的业务表。change_log/local_meta 是同步设施自身，不在其列 */
+const SYNCED_TABLES = [
+  'projects',
+  'providers',
+  'models',
+  'conversations',
+  'messages',
+  'artifacts',
+  'artifact_files',
+  'assets',
+  'mcp_servers',
+  'skills'
+] as const
+
+/**
+ * 同步地基：device_id 与 change_log 触发器。
+ *
+ * 触发器不进迁移文件而是每次启动时删旧建新——触发器定义会随同步逻辑
+ * 演进，而"已发布迁移不可改"；DROP + CREATE 幂等且开销可忽略，
+ * 定义只在这一处维护。
+ *
+ * sync_applying 标志：将来 pull 应用远端数据时置 '1'，触发器的 WHEN
+ * 会跳过记录，避免拉下来的行再被记进 change_log 推回去，造成回环。
+ */
+function ensureSyncBase(conn: Database.Database): void {
+  conn.prepare(`INSERT OR IGNORE INTO local_meta (k, v) VALUES ('device_id', ?)`).run(ulid())
+  conn.prepare(`INSERT OR IGNORE INTO local_meta (k, v) VALUES ('sync_applying', '0')`).run()
+
+  const guard = `COALESCE((SELECT v FROM local_meta WHERE k='sync_applying'),'0') <> '1'`
+  for (const tbl of SYNCED_TABLES) {
+    for (const [suffix, event, rowRef, op] of [
+      ['ai', 'INSERT', 'NEW', 'upsert'],
+      ['au', 'UPDATE', 'NEW', 'upsert'],
+      ['ad', 'DELETE', 'OLD', 'delete']
+    ] as const) {
+      conn.exec(`DROP TRIGGER IF EXISTS trg_sync_${tbl}_${suffix}`)
+      conn.exec(
+        `CREATE TRIGGER trg_sync_${tbl}_${suffix} AFTER ${event} ON ${tbl}
+         WHEN ${guard}
+         BEGIN
+           INSERT INTO change_log (tbl, row_id, op) VALUES ('${tbl}', ${rowRef}.id, '${op}');
+         END`
+      )
+    }
+  }
 }
 
 /**

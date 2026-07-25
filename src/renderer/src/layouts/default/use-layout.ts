@@ -13,7 +13,7 @@
  * trafficLightPosition 的 x=6，右边缘到 64px。这个值不能再小，
  * 否则绿灯会溢出到内容区上面。
  */
-export const RAIL_WIDTH = 70
+export const RAIL_WIDTH = 72
 
 /**
  * 顶部拖拽条高度。
