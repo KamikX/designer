@@ -6,7 +6,7 @@ export interface CreateGroupMembersDependencies {
   createId: () => string
 }
 
-const INVALID_NAME = /[@[\]()\r\n]/
+const INVALID_NAME = /[@[\]()\r\n\u2028\u2029]/
 const MAX_NAME_LENGTH = 24
 const MAX_ID_ATTEMPTS = 100
 

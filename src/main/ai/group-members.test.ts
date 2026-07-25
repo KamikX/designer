@@ -104,12 +104,21 @@ describe('createGroupMembers', () => {
     expect(() => create([draft({ name: ' 用户 ' })])).toThrow(/保留名称/)
   })
 
-  it.each(['@设计师', '[设计师', '设计师]', '设计(师', '设计师)', '设计\n师'])(
+  it.each(['@设计师', '[设计师', '设计师]', '设计(师', '设计师)'])(
     '拒绝名称中的非法字符：%s',
     (name) => {
       expect(() => create([draft({ name })])).toThrow(/名称/)
     }
   )
+
+  it.each([
+    ['LF', '设计\n师'],
+    ['CR', '设计\r师'],
+    ['LINE SEPARATOR', '设计\u2028师'],
+    ['PARAGRAPH SEPARATOR', '设计\u2029师']
+  ])('拒绝名称中的 JS 行终止符：%s', (_label, name) => {
+    expect(() => create([draft({ name })])).toThrow(/名称/)
+  })
 
   it('拒绝超过 24 个字符的名称', () => {
     expect(() => create([draft({ name: '一'.repeat(25) })])).toThrow(/24/)
