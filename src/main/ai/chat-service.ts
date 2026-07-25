@@ -28,6 +28,7 @@ import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
 import { loadTargetTemplates } from '../skills/targets'
 import { renderTargetTemplates, targetContractPrompt } from './prompts/targets'
+import { renderStyleBriefPrompt } from './style-brief'
 import { connectMcpTools } from '../mcp/tools'
 import type { McpSession } from '../mcp/tools'
 import { buildSkillTools } from '../skills/tools'
@@ -343,7 +344,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             previewError,
             slopLint,
             skillCatalog: catalog,
-            targetContract: targetContractPrompt(targets, project.id),
+            styleBriefPrompt: renderStyleBriefPrompt(project, currentFiles.length > 0),
+            targetContract: targetContractPrompt(targets),
             targetTemplates: renderTargetTemplates(targetTemplates)
           })
         : buildChatPrompt({

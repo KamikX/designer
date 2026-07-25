@@ -31,21 +31,7 @@ const TARGET_ROLES: Record<DesignTarget, string> = {
   admin: '**中后台** —— 此刻你是信息架构师:密度即功能,装饰即噪音,克制到近乎无趣才是对的。'
 }
 
-/**
- * 风格骰子:从项目 id 派生的确定性数字。
- *
- * 模板里的风格维度表要求"别每次都选同一组",但模型看不见别的项目,
- * "换一组"没有依据——它只会一次次落回自己最顺手的默认。骰子给它一个
- * 项目间不同、项目内稳定的起点(稳定是为了不破坏 prompt 前缀缓存,
- * 也为了同一项目多轮迭代风格不漂移)。用户或 brief 的明确指向永远优先。
- */
-function styleDice(seed: string): number {
-  let h = 0
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0
-  return (Math.abs(h) % 5) + 1
-}
-
-export function targetContractPrompt(targets: DesignTarget[], projectId = ''): string {
+export function targetContractPrompt(targets: DesignTarget[]): string {
   if (targets.length === 0) return ''
 
   const roles = targets.map((t) => `- ${TARGET_ROLES[t]}`).join('\n')
@@ -70,12 +56,10 @@ ${roles}
 
 - 先按模板里的格式输出一行判读(这页给谁、做什么、什么气质),让用户在你写完
   两百行代码**之前**就能便宜地纠偏。
-- 判读里的空、brief 又确实没给,才用 ask_user 问:一轮最多问一次,一次不超过
-  3 题,每题给选项。用户跳过就按模板默认继续,不再问第二次。
+- 只有当前任务所必需、又无法从项目视觉方向或当前设计稿推断的信息才提问:一轮最多问一次,
+  一次不超过 3 题,每题给选项。风格方向遵守项目视觉方向段的首次确认和延续规则。
 - 用户的话命中模板「信号追问」表里的条目时,追**那个点**,不要问通用问卷。
-- **风格骰子:${styleDice(projectId)}**。模板风格维度表(以及 design-seed 色板
-  家族表)里几个选项都说得通时,选第 ${styleDice(projectId)} 个(数到头回绕),
-  别落回你最顺手的那组。用户或 brief 有明确指向时,永远听用户的,骰子作废。${multi}`
+${multi}`
 }
 
 /**

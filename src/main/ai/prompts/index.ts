@@ -42,6 +42,8 @@ export function buildSystemPrompt(
     slopLint?: string
     /** 文件系统技能的目录(渐进披露的 L1),由 skills/catalog 生成 */
     skillCatalog?: string
+    /** 项目视觉方向：首次确认 / 已有风格 / 延续现有文件三种分支，由 style-brief 生成 */
+    styleBriefPrompt?: string
     /** 端契约:勾选端的角色定位 + 提问纪律 + 多端交付结构,由 prompts/targets 生成 */
     targetContract?: string
     /** 勾选端的设计模板正文,组装期直接注入(不走 activate_skill) */
@@ -58,6 +60,7 @@ export function buildSystemPrompt(
     // ---- 项目稳定区 ----
     '你是一名资深产品 UI 设计师兼前端工程师,在桌面设计工具中与用户协作产出设计稿。',
     modeText,
+    options.styleBriefPrompt ?? '',
     options.targetContract ?? '',
     options.targetTemplates ?? '',
     project.description ? `项目背景:${project.description}` : '',

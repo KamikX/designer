@@ -34,6 +34,12 @@ describe('targetContractPrompt', () => {
     expect(out).toContain('多端交付结构')
     expect(out).toContain('平台切换 tab')
   })
+
+  it('端契约不再注入单一风格骰子', () => {
+    const out = targetContractPrompt(['web'])
+    expect(out).not.toContain('风格骰子')
+    expect(out).not.toContain('选第')
+  })
 })
 
 describe('loadTargetTemplates', () => {
@@ -65,18 +71,22 @@ describe('buildSystemPrompt 分区顺序', () => {
     updatedAt: ''
   } as Project
 
-  it('端契约在稳定区(文件树之前),lint 在可变区(文件树之后)', () => {
+  it('视觉方向在端契约和模板之前，lint 在文件树之后', () => {
     const out = buildSystemPrompt(project, [], {
       mode: 'tools',
+      styleBriefPrompt: '## 项目视觉方向\n\n冷灰、紧凑。',
       targetContract: targetContractPrompt(['landing']),
       targetTemplates: renderTargetTemplates([{ name: 'target-landing', body: '# 落地页模板体' }]),
       slopLint: '## 反AI味检查标记'
     })
     const contractAt = out.indexOf('本项目的端')
     const templateAt = out.indexOf('落地页模板体')
-    const filesAt = out.indexOf('当前设计稿')
+    const styleBriefAt = out.indexOf('项目视觉方向')
+    const filesAt = out.indexOf('## 当前设计稿')
     const lintAt = out.indexOf('反AI味检查标记')
+    expect(styleBriefAt).toBeGreaterThan(-1)
     expect(contractAt).toBeGreaterThan(-1)
+    expect(contractAt).toBeGreaterThan(styleBriefAt)
     expect(templateAt).toBeGreaterThan(contractAt)
     expect(filesAt).toBeGreaterThan(templateAt)
     expect(lintAt).toBeGreaterThan(filesAt)
