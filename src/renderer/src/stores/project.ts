@@ -37,6 +37,15 @@ export const useProjectStore = defineStore('project', {
       if (this.current?.id === id) this.current = updated
     },
 
+    /** 修改项目级视觉方向，并同步列表与当前工作台中的项目快照。 */
+    async setStyleBrief(id: string, styleBrief: string): Promise<void> {
+      const updated = await window.api.project.setStyleBrief(id, styleBrief)
+      if (!updated) return
+      const at = this.projects.findIndex((p) => p.id === id)
+      if (at >= 0) this.projects[at] = updated
+      if (this.current?.id === id) this.current = updated
+    },
+
     async remove(id: string): Promise<void> {
       await window.api.project.remove(id)
       this.projects = this.projects.filter((p) => p.id !== id)

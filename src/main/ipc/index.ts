@@ -32,7 +32,8 @@ import {
   listProjects,
   renameProject,
   saveProjectSettings,
-  setProjectLibs
+  setProjectLibs,
+  setProjectStyleBrief
 } from '../db/repo/project'
 import {
   createChat,
@@ -117,6 +118,9 @@ export function registerIpc(): void {
   ipcMain.handle('project:rename', (_e, id: string, name: string) => renameProject(id, name))
   ipcMain.handle('project:set-libs', (_e, id: string, libs: PreviewLib[]) =>
     setProjectLibs(id, libs)
+  )
+  ipcMain.handle('project:set-style-brief', (_e, id: string, styleBrief: string) =>
+    setProjectStyleBrief(id, styleBrief)
   )
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
   ipcMain.handle('project:save-settings', (_e, id: string, patch: SessionSettings) =>

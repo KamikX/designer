@@ -773,6 +773,8 @@ export interface DesignerApi {
     rename: (id: string, name: string) => Promise<Project | null>
     /** 修改依赖包。libs 不牵动文件树,创建后改是安全的(影响预览装配与提示词) */
     setLibs: (id: string, libs: PreviewLib[]) => Promise<Project | null>
+    /** 覆盖保存项目级视觉方向；空字符串表示清除 */
+    setStyleBrief: (id: string, styleBrief: string) => Promise<Project | null>
     remove: (id: string) => Promise<void>
     /** 合并保存工作台选择(模型/技能/MCP),只覆盖传进来的字段 */
     saveSettings: (id: string, patch: SessionSettings) => Promise<void>

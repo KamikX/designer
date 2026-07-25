@@ -2,6 +2,7 @@
 import { App, theme } from 'antdv-next'
 import { useProjectStore } from '@renderer/stores/project'
 import type { DesignMode, DesignTarget, PreviewLib, Stack } from '@shared/types'
+import { buildCreateProjectInput } from './create-project'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
 // 上下文,主题、语言、z-index 全用的是默认值
@@ -20,7 +21,8 @@ const form = reactive({
   designMode: 'design' as DesignMode,
   targets: [] as DesignTarget[],
   libs: [] as PreviewLib[],
-  description: ''
+  description: '',
+  styleBrief: ''
 })
 
 /**
@@ -86,17 +88,9 @@ async function submit(): Promise<void> {
   }
   creating.value = true
   try {
-    const project = await store.create({
-      name: form.name.trim(),
-      stack: form.stack,
-      designMode: form.designMode,
-      targets: [...form.targets],
-      // 组件库只在 vue3 栈有意义;切过栈的话别把残留勾选带进去
-      libs: form.stack === 'vue3' ? [...form.libs] : [],
-      description: form.description.trim()
-    })
+    const project = await store.create(buildCreateProjectInput(form))
     open.value = false
-    form.name = form.description = ''
+    form.name = form.description = form.styleBrief = ''
     form.targets = []
     form.libs = []
     emit('created', project.id)
@@ -227,6 +221,17 @@ async function submit(): Promise<void> {
             v-model:value="form.description"
             :rows="3"
             placeholder="一句话说明这个项目要做什么,会作为 AI 的背景信息"
+          />
+        </a-form-item>
+
+        <a-form-item
+          label="视觉风格"
+          extra="可描述色彩、明暗、信息密度、字体、圆角、动效等；留空时，AI 会在首次生成前询问。"
+        >
+          <a-textarea
+            v-model:value="form.styleBrief"
+            :rows="4"
+            placeholder="如：深色工业感，高信息密度，紧凑无衬线字体，卡片近直角，动效克制"
           />
         </a-form-item>
       </a-form>
