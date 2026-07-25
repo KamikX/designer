@@ -109,13 +109,37 @@ export interface SessionSettings {
   mcpIds?: string[]
   /** 是否开着联网。按会话记,不是全局——不然会出现"忘了它还开着" */
   webSearch?: boolean
-  /** 群组会话的成员角色 id 列表(conversations.kind='group' 时使用) */
-  members?: string[]
+  /**
+   * 群组会话成员。string[] 是旧群组的内置角色 id；新群组保存完整成员对象。
+   */
+  members?: string[] | GroupMember[]
 }
 
 /* ------------------------------------------------------------------ */
 /* 多 agent 协作群组                                                    */
 /* ------------------------------------------------------------------ */
+
+/** 新群组中持久化的可配置成员 */
+export interface GroupMember {
+  id: string
+  name: string
+  color: string
+  duty: string
+  deliverable: string
+  persona: string
+  /** models 表的行主键，不是供应商侧 modelId */
+  modelRowId: string
+  /** 文件系统技能名称 */
+  skillIds: string[]
+}
+
+/** 渲染层提交的成员草稿；持久 id 只能由主进程生成 */
+export type GroupMemberDraft = Omit<GroupMember, 'id'>
+
+export interface CreateGroupInput {
+  name: string
+  members: GroupMemberDraft[]
+}
 
 /** 群组角色的展示元数据。人设提示词在主进程,渲染层只需要这些 */
 export interface GroupRoleMeta {
@@ -127,6 +151,11 @@ export interface GroupRoleMeta {
   duty: string
   /** 产出物名称,如「需求列表」 */
   deliverable: string
+}
+
+/** 可复制成成员草稿的内置模板；模型和技能由用户另行选择 */
+export interface GroupMemberTemplate extends GroupRoleMeta {
+  persona: string
 }
 
 /** 群组流式事件,单通道按 conversationId 路由 */

@@ -1,4 +1,4 @@
-import type { GroupRoleMeta } from '../../../shared/types'
+import type { GroupMemberTemplate, GroupRoleMeta } from '../../../shared/types'
 
 /**
  * 协作群组的内置角色。
@@ -10,9 +10,7 @@ import type { GroupRoleMeta } from '../../../shared/types'
  * 产出一律是 markdown 文档,不是实现代码(字段表 / 结构树 / 伪代码可以)。
  */
 
-export interface GroupRole extends GroupRoleMeta {
-  persona: string
-}
+export type GroupRole = GroupMemberTemplate
 
 export const GROUP_ROLES: GroupRole[] = [
   {
@@ -108,5 +106,17 @@ export function roleMetas(): GroupRoleMeta[] {
     color,
     duty,
     deliverable
+  }))
+}
+
+/** 建群编辑器使用的模板副本；不预填模型和技能 */
+export function roleTemplates(): GroupMemberTemplate[] {
+  return GROUP_ROLES.map(({ id, name, color, duty, deliverable, persona }) => ({
+    id,
+    name,
+    color,
+    duty,
+    deliverable,
+    persona
   }))
 }
