@@ -16,7 +16,7 @@ import type {
   FetchModelsInput,
   McpServerInput,
   ModelSelection,
-  ProjectSettings,
+  SessionSettings,
   Provider,
   SkillInput
 } from '../../shared/types'
@@ -33,7 +33,8 @@ import {
   deleteConversation,
   ensureDesignConversation,
   listChats,
-  renameConversation
+  renameConversation,
+  saveConversationSettings
 } from '../db/repo/conversation'
 import {
   clearProviderKey,
@@ -102,7 +103,7 @@ export function registerIpc(): void {
   })
   ipcMain.handle('project:rename', (_e, id: string, name: string) => renameProject(id, name))
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
-  ipcMain.handle('project:save-settings', (_e, id: string, patch: ProjectSettings) =>
+  ipcMain.handle('project:save-settings', (_e, id: string, patch: SessionSettings) =>
     saveProjectSettings(id, patch)
   )
 
@@ -110,6 +111,9 @@ export function registerIpc(): void {
   ipcMain.handle('chat:create', () => createChat())
   ipcMain.handle('chat:rename', (_e, id: string, title: string) => renameConversation(id, title))
   ipcMain.handle('chat:delete', (_e, id: string) => deleteConversation(id))
+  ipcMain.handle('chat:save-settings', (_e, id: string, patch: SessionSettings) =>
+    saveConversationSettings(id, patch)
+  )
 
   ipcMain.handle('conversation:ensure-design', (_e, projectId: string) =>
     ensureDesignConversation(projectId)

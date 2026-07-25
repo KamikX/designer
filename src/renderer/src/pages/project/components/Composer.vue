@@ -23,7 +23,7 @@ import type { ChatAttachment } from '@renderer/stores/chat'
 import { reconcileIds } from '@renderer/stores/selection'
 import { MAX_FILES_AT_ONCE } from '@shared/limits'
 import { composeMessageBody, planAttachment } from '../attach'
-import type { GrantedRoot, McpServer, RootScope, Skill } from '@shared/types'
+import type { BuiltinSkillView, GrantedRoot, McpServer, RootScope, Skill } from '@shared/types'
 
 /**
  * 一体化输入框:无边框多行输入 + 底部工具条。
@@ -238,10 +238,26 @@ function onEnter(e: KeyboardEvent): void {
 const mcpServers = ref<McpServer[]>([])
 const skills = ref<Skill[]>([])
 
+/**
+ * 内置技能。它们由主进程无条件注入,用户关不掉——**正因为关不掉才更该让他
+ * 看见**:否则模型的行为里有一大块来源不明,用户会以为是模型自己的脾气。
+ *
+ * 只在设计模式下生效(纯聊天要的是一个干净的模型),所以列表也跟着模式走。
+ */
+const builtinSkills = ref<BuiltinSkillView[]>([])
+const activeBuiltins = computed(() =>
+  chatStore.projectId ? builtinSkills.value.filter((s) => s.alwaysOn) : []
+)
+
 async function loadToolbox(): Promise<void> {
-  const [m, s] = await Promise.all([window.api.mcp.list(), window.api.skill.list()])
+  const [m, s, b] = await Promise.all([
+    window.api.mcp.list(),
+    window.api.skill.list(),
+    window.api.skill.listBuiltin()
+  ])
   mcpServers.value = m
   skills.value = s
+  builtinSkills.value = b
   // null = 这个项目还没选过,按全局启用状态给默认值;
   // 已有值(含空数组)是项目存档恢复出来的,只清掉其中已被删除的 id
   // 只在内存里对齐,不写回存档:用户可能只是暂时把某个技能移走了,
@@ -254,7 +270,7 @@ async function loadToolbox(): Promise<void> {
 watch(() => chatStore.projectId, loadToolbox, { immediate: true })
 
 const mcpCount = computed(() => chatStore.mcpIds?.length ?? 0)
-const skillCount = computed(() => chatStore.skillIds?.length ?? 0)
+const skillCount = computed(() => (chatStore.skillIds?.length ?? 0) + activeBuiltins.value.length)
 
 function toggleId(list: string[] | null, id: string): string[] {
   const set = new Set(list ?? [])
@@ -375,7 +391,7 @@ function toggleId(list: string[] | null, id: string): string[] {
                 ? { color: token.colorPrimary, background: token.colorPrimaryBg }
                 : { color: token.colorTextSecondary }
             "
-            @click="chatStore.webSearch = !chatStore.webSearch"
+            @click="chatStore.setWebSearch(!chatStore.webSearch)"
           >
             <GlobalOutlined />
             <span>联网</span>
@@ -419,8 +435,33 @@ function toggleId(list: string[] | null, id: string): string[] {
           <template #content>
             <div class="toolbox-pop">
               <div class="toolbox-pop-title">本会话使用的技能</div>
+
+              <!-- 内置技能:关不掉,但必须让用户看见。否则模型行为里有一大块
+                   来源不明,他会以为是模型自己的脾气 -->
+              <template v-if="activeBuiltins.length">
+                <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
+                  内置(自动生效)
+                </div>
+                <label
+                  v-for="s in activeBuiltins"
+                  :key="s.id"
+                  class="toolbox-pop-row toolbox-pop-row--fixed"
+                >
+                  <a-checkbox :checked="true" disabled />
+                  <span class="toolbox-pop-name">{{ s.name }}</span>
+                  <span class="toolbox-pop-meta">{{ s.description }}</span>
+                </label>
+              </template>
+
+              <div
+                v-if="skills.length"
+                class="toolbox-pop-group"
+                :style="{ color: token.colorTextTertiary }"
+              >
+                自定义
+              </div>
               <a-empty
-                v-if="skills.length === 0"
+                v-if="skills.length === 0 && activeBuiltins.length === 0"
                 description="还没有配置技能"
                 :image-style="{ height: '48px' }"
               />
@@ -702,6 +743,17 @@ function toggleId(list: string[] | null, id: string): string[] {
 
 .toolbox-pop {
   width: 260px;
+}
+
+.toolbox-pop-group {
+  font-size: 11px;
+  padding: 6px 4px 2px;
+}
+
+/* 内置项不可勾选,压暗一点表明"看得见但动不了" */
+.toolbox-pop-row--fixed {
+  cursor: default;
+  opacity: 0.75;
 }
 
 .toolbox-pop-title {

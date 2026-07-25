@@ -65,22 +65,27 @@ export type Stack = 'html' | 'vue3' | 'react'
 export type DesignMode = 'design' | 'prototype'
 
 /**
- * 工作台里"上次选了什么",按项目记住。
+ * "上次选了什么"。设计项目和纯聊天各存各的。
  *
- * 为什么按项目而不是全局:不同项目本来就该配不同的模型和技能——给管理
- * 后台画图和给营销页画图,需要的技能集不一样。全局单值会让每次切项目
- * 都要重设一遍。
+ * 为什么不做成全局单值:不同项目本来就该配不同的模型和技能——给管理后台
+ * 画图和给营销页画图,需要的技能集不一样;聊天更是如此,查资料那条会话开着
+ * 联网,读代码那条不需要。全局单值会让每次切换都要重设一遍。
  *
- * 每个字段都可缺省,含义是"这个项目还没选过,按全局默认来"。注意 skillIds
- * 的 `[]` 和 `undefined` 不是一回事:前者是用户**明确一个都不要**,后者才是
- * 没选过——两者混为一谈会让"全部取消勾选"这个操作在重启后失效。
+ * 每个字段都可缺省,含义是"还没选过,按全局默认来"。注意 skillIds 的 `[]`
+ * 和 `undefined` 不是一回事:前者是用户**明确一个都不要**,后者才是没选过
+ * ——两者混为一谈会让"全部取消勾选"这个操作在重启后失效。
  */
-export interface ProjectSettings {
+export interface SessionSettings {
   providerId?: string
   modelId?: string
   skillIds?: string[]
   mcpIds?: string[]
+  /** 是否开着联网。按会话记,不是全局——不然会出现"忘了它还开着" */
+  webSearch?: boolean
 }
+
+/** @deprecated 名字留作过渡,内容与 SessionSettings 一致 */
+export type ProjectSettings = SessionSettings
 
 export interface Project {
   id: string
@@ -88,7 +93,7 @@ export interface Project {
   stack: Stack
   designMode: DesignMode
   description: string
-  settings: ProjectSettings | null
+  settings: SessionSettings | null
   createdAt: string
   updatedAt: string
 }
@@ -107,6 +112,8 @@ export interface Conversation {
   title: string
   /** 'design' 项目里的设计会话 | 'chat' 独立的纯聊天 */
   kind: 'design' | 'chat'
+  /** 这条会话"上次选了什么"。纯聊天靠它记住模型 / 技能 / MCP / 联网开关 */
+  settings: SessionSettings | null
   createdAt: string
   updatedAt: string
 }
@@ -590,7 +597,7 @@ export interface DesignerApi {
     rename: (id: string, name: string) => Promise<Project | null>
     remove: (id: string) => Promise<void>
     /** 合并保存工作台选择(模型/技能/MCP),只覆盖传进来的字段 */
-    saveSettings: (id: string, patch: ProjectSettings) => Promise<void>
+    saveSettings: (id: string, patch: SessionSettings) => Promise<void>
   }
   conversation: {
     /** 项目的 design 主会话,不存在则自动创建 */
@@ -602,6 +609,8 @@ export interface DesignerApi {
     create: () => Promise<Conversation>
     rename: (id: string, title: string) => Promise<void>
     remove: (id: string) => Promise<void>
+    /** 合并保存这条聊天的选择,只覆盖传进来的字段 */
+    saveSettings: (id: string, patch: SessionSettings) => Promise<void>
   }
   chat: {
     listMessages: (conversationId: string) => Promise<Message[]>

@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
-import type { Conversation } from '../../../shared/types'
+import type { Conversation, SessionSettings } from '../../../shared/types'
 import { getDb } from '../index'
 import { conversations } from '../schema'
 import type { ConversationRow } from '../schema'
@@ -80,6 +80,24 @@ export function touchConversation(id: string): void {
   getDb()
     .update(conversations)
     .set({ updatedAt: sql`(datetime('now'))` })
+    .where(eq(conversations.id, id))
+    .run()
+}
+
+/**
+ * 合并保存会话选择。
+ *
+ * 和 saveProjectSettings 一样用合并而不是覆盖:模型选择器、技能勾选、联网
+ * 开关是三个独立组件,各自变化时各存各的,整体覆盖会让后写的把前一个刚存的
+ * 抹掉。也一样不动 updatedAt——聊天列表按它排序,"换了个模型"不该让这条
+ * 会话跳到最前面。
+ */
+export function saveConversationSettings(id: string, patch: SessionSettings): void {
+  const current = getConversation(id)
+  if (!current) return
+  getDb()
+    .update(conversations)
+    .set({ settings: { ...current.settings, ...patch } })
     .where(eq(conversations.id, id))
     .run()
 }

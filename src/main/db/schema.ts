@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { ulid } from 'ulid'
-import type { ProjectSettings } from '../../shared/types'
+import type { SessionSettings } from '../../shared/types'
 
 /**
  * 表结构的唯一事实来源。
@@ -49,7 +49,7 @@ export const projects = sqliteTable(
      * (已经从模型长到技能和 MCP),每加一样都开一次迁移不划算;而它永远
      * 只按 project id 整取整存,没有查询需求,拆列换不来任何好处。
      */
-    settings: text('settings', { mode: 'json' }).$type<ProjectSettings>(),
+    settings: text('settings', { mode: 'json' }).$type<SessionSettings>(),
     ...timestamps
   },
   (table) => [index('idx_projects_updated_at').on(table.updatedAt)]
@@ -120,6 +120,13 @@ export const conversations = sqliteTable(
     title: text('title').notNull().default(''),
     /** 'design' 项目里的设计会话 | 'chat' 独立的纯聊天 */
     kind: text('kind').notNull().default('design'),
+    /**
+     * 这条会话"上次选了什么"。纯聊天靠它记住模型 / 技能 / MCP / 联网开关。
+     *
+     * 和 projects.settings 是同一个形状:设计会话的选择跟着项目走,聊天没有
+     * 项目,只能跟着会话。存 JSON 的理由也一样——这类字段注定还会加。
+     */
+    settings: text('settings', { mode: 'json' }).$type<SessionSettings>(),
     ...timestamps
   },
   (table) => [

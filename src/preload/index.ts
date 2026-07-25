@@ -31,7 +31,8 @@ const api: DesignerApi = {
     list: () => ipcRenderer.invoke('chat:list'),
     create: () => ipcRenderer.invoke('chat:create'),
     rename: (id, title) => ipcRenderer.invoke('chat:rename', id, title),
-    remove: (id) => ipcRenderer.invoke('chat:delete', id)
+    remove: (id) => ipcRenderer.invoke('chat:delete', id),
+    saveSettings: (id, patch) => ipcRenderer.invoke('chat:save-settings', id, patch)
   },
   provider: {
     list: () => ipcRenderer.invoke('provider:list'),

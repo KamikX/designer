@@ -77,7 +77,9 @@ async function reload(): Promise<void> {
 
 async function open(id: string): Promise<void> {
   activeId.value = id
-  chatStore.openChat(id)
+  // 传整条会话而不是 id:store 要从 settings 里恢复模型 / 技能 / 联网开关,
+  // 只给 id 的话它还得自己再查一次
+  chatStore.openChat(chats.value.find((c) => c.id === id) ?? null)
   await chatStore.openConversation(id)
   scrollToBottom(false)
 }
@@ -85,7 +87,7 @@ async function open(id: string): Promise<void> {
 /** 回起始页。会话真正创建推迟到发出第一句 */
 function startNew(): void {
   activeId.value = ''
-  chatStore.openChat('')
+  chatStore.openChat(null)
   chatStore.closeConversation()
 }
 

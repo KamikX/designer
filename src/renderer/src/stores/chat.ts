@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import type {
   AskUserAnswer,
+  Conversation,
   ChatStreamEvent,
   ChatUsage,
   Message,
   Project,
-  ProjectSettings,
+  SessionSettings,
   RootScope,
   SendChatResult,
   WorkspaceRoot
@@ -142,12 +143,27 @@ export const useChatStore = defineStore('chat', {
       this.mcpIds = saved?.mcpIds ?? null
     },
 
-    /** 合并写回。失败只记日志——记不住选择不该打断用户干活 */
-    persistSettings(patch: ProjectSettings): void {
-      if (!this.projectId) return
-      window.api.project.saveSettings(this.projectId, patch).catch((e) => {
-        console.error('[chat] 保存工作台选择失败:', e)
-      })
+    /**
+     * 合并写回。按模式路由:设计会话存到项目上,纯聊天存到这条会话上。
+     *
+     * 两种模式共用同一套选择器组件,所以归属判断只能放在这里——放到组件里
+     * 就得每个组件都判一次,漏一个就是"这个设置记不住"。
+     *
+     * 失败只记日志:记不住选择不该打断用户干活。
+     */
+    persistSettings(patch: SessionSettings): void {
+      const save = this.projectId
+        ? window.api.project.saveSettings(this.projectId, patch)
+        : this.conversationId
+          ? window.api.chatSession.saveSettings(this.conversationId, patch)
+          : null
+      save?.catch((e) => console.error('[chat] 保存选择失败:', e))
+    },
+
+    /** 联网开关。和技能一样要记住,否则每开一条会话都要重新点 */
+    setWebSearch(on: boolean): void {
+      this.webSearch = on
+      this.persistSettings({ webSearch: on })
     },
 
     /**
@@ -176,13 +192,16 @@ export const useChatStore = defineStore('chat', {
      * 聊天没有项目级设置,而 store 里那三个字段是跨模式共用的一份,不清的话
      * 上一个项目的模型和技能会漏进聊天里。
      */
-    openChat(conversationId: string): void {
-      if (this.projectId === '' && this.conversationId === conversationId) return
+    openChat(conversation: Conversation | null): void {
       this.projectId = ''
-      this.selected = null
-      this.skillIds = null
-      this.mcpIds = null
-      this.webSearch = false
+
+      // 无条件覆盖,哪怕存档是空的:这几个字段在 store 里是跨会话共用的一份,
+      // 不清的话上一条聊天(或上一个项目)的选择会静默漏到这一条里
+      const saved = conversation?.settings ?? null
+      this.selected = restoreModelChoice(saved)
+      this.skillIds = saved?.skillIds ?? null
+      this.mcpIds = saved?.mcpIds ?? null
+      this.webSearch = saved?.webSearch ?? false
     },
 
     /**
