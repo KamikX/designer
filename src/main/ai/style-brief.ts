@@ -67,6 +67,10 @@ export function buildStyleBriefTools(context: StyleBriefToolContext | null): Too
       }),
       execute: async (input) => {
         const styleBrief = input.styleBrief.trim()
+        const wasWriteBlocked = context.vfs.isWriteBlocked()
+        if (wasWriteBlocked && !styleBrief) {
+          return "错误:首次整体视觉方向尚未确认；请通过 purpose: 'style-brief' 的 ask_user 跳过以使用兜底风格，或保存用户明确的非空整体方向。"
+        }
         try {
           const saved = await context.save(styleBrief)
           if (!saved) throw new Error('项目不存在或未能保存。')

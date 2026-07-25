@@ -197,6 +197,11 @@ export class SessionVfs {
     this.writeBlockReason = null
   }
 
+  /** 当前回合的文件写入是否仍被闸门阻止。 */
+  isWriteBlocked(): boolean {
+    return this.writeBlockReason !== null
+  }
+
   private assertWritesAllowed(): void {
     if (this.writeBlockReason) throw new VfsError(this.writeBlockReason)
   }

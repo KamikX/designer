@@ -114,7 +114,29 @@ describe('buildStyleBriefTools', () => {
 
     expect(saved).toBe('冷灰、紧凑的数据工作台')
     expect(out).toContain('冷灰、紧凑的数据工作台')
+    expect((vfs as { isWriteBlocked: () => boolean }).isWriteBlocked()).toBe(false)
     expect(vfs.write('index.html', '<main />').path).toBe('index.html')
+  })
+
+  it('首次写入闸门锁住时拒绝空方向，不保存也不解锁', async () => {
+    let saves = 0
+    const vfs = new SessionVfs([])
+    vfs.blockWrites('等待整体视觉方向。')
+
+    const out = await call(
+      () => {
+        saves += 1
+        return project('')
+      },
+      { styleBrief: '   ' },
+      vfs
+    )
+
+    expect(out).toMatch(/^错误:/)
+    expect(out).toContain("purpose: 'style-brief'")
+    expect(saves).toBe(0)
+    expect((vfs as { isWriteBlocked: () => boolean }).isWriteBlocked()).toBe(true)
+    expect(() => vfs.write('index.html', '<main />')).toThrow(/等待整体视觉方向/)
   })
 
   it('空串会清除已保存的整体视觉方向', async () => {
