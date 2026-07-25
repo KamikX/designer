@@ -43,6 +43,7 @@ describe('renderStyleBriefPrompt', () => {
     expect(out).toContain('第一次写文件前')
     expect(out).toContain('ask_user')
     expect(out).toContain('set_style_brief')
+    expect(out).toContain("purpose: 'style-brief'")
     expect(out).toContain('用户跳过')
     expect(out).toContain('兜底风格')
     expect(out).toContain('色彩')
@@ -172,13 +173,24 @@ describe('buildStyleBriefTools', () => {
 })
 
 describe('首次风格写入闸门', () => {
-  it('仅在首次无方向且没有设计稿时锁住；跳过提问才解锁', () => {
+  it('只有带 style-brief 用途的跳过回答才解锁', () => {
     const gate = createInitialStyleWriteGate({ styleBrief: '', hasFiles: false })
 
     expect(gate.isLocked()).toBe(true)
-    gate.onStyleQuestionAnswered({ selections: [['深色']], skipped: false })
+    gate.onStyleQuestionAnswered(
+      { questions: [], purpose: undefined },
+      { selections: [], skipped: true }
+    )
     expect(gate.isLocked()).toBe(true)
-    gate.onStyleQuestionAnswered({ selections: [], skipped: true })
+    gate.onStyleQuestionAnswered(
+      { questions: [], purpose: 'style-brief' },
+      { selections: [['深色']], skipped: false }
+    )
+    expect(gate.isLocked()).toBe(true)
+    gate.onStyleQuestionAnswered(
+      { questions: [], purpose: 'style-brief' },
+      { selections: [], skipped: true }
+    )
     expect(gate.isLocked()).toBe(false)
   })
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { answerQuestion, buildAskUserTool, releaseQuestions, renderAnswer } from './ask-user'
 import type { AskUserAnswer, AskUserInput } from '../../shared/types'
 
@@ -68,6 +69,22 @@ async function untilEmitted(h: Harness): Promise<string> {
 }
 
 describe('ask_user 的收尾路径', () => {
+  it('首次整体视觉方向确认的 purpose 会经 schema 保留', () => {
+    const tools = buildAskUserTool({
+      streamId: 'purpose',
+      signal: new AbortController().signal,
+      emit: () => {},
+      onAnswered: () => {}
+    })
+    const parsed = (tools.ask_user.inputSchema as unknown as z.ZodType).safeParse({
+      ...ASK,
+      purpose: 'style-brief'
+    })
+
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data).toMatchObject({ purpose: 'style-brief' })
+  })
+
   it('正常作答:结果转成给模型看的文本,并回调存档', async () => {
     const h = harness()
     const pending = h.call()

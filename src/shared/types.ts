@@ -267,6 +267,8 @@ export interface AskSecret {
 export interface AskUserInput {
   /** 一句话说明为什么要问 */
   intro?: string
+  /** 仅首次整体视觉方向确认使用；其余普通提问不应影响文件写入闸门。 */
+  purpose?: 'style-brief'
   questions: AskQuestion[]
   /** 末尾的自由描述框 */
   notes?: { label: string; placeholder?: string }

@@ -355,9 +355,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               onAnswered: (questionId, ask, answer) => {
                 questionParts.push({ type: 'question', questionId, ask, answer })
                 // 安装类工具走它们自己的 askUser context，不会触发这个回调；
-                // 因此只有普通 ask_user 的"跳过"才能解除首次风格闸门。
-                initialStyleGate?.onStyleQuestionAnswered(answer)
-                if (initialStyleGate && !initialStyleGate.isLocked()) vfs.allowWrites()
+                // 其他普通 ask_user 也不能解锁；只有显式的首次风格确认才可以。
+                if (ask.purpose === 'style-brief') {
+                  initialStyleGate?.onStyleQuestionAnswered(ask, answer)
+                  if (initialStyleGate && !initialStyleGate.isLocked()) vfs.allowWrites()
+                }
               }
             }),
             ...buildLocalTools(roots, { canSeeImages, intent: input.text }),

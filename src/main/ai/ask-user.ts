@@ -105,10 +105,15 @@ export function buildAskUserTool(context: AskUserContext): ToolSet {
         '而问一次只要用户点几下。\n' +
         '适合问:风格倾向、配色、信息密度、目标人群、要不要某个模块。\n' +
         '不要问:实现细节、你自己能定的小事、用户已经在需求里说清楚的东西。\n' +
+        "仅首次整体视觉方向确认时传 purpose: 'style-brief'；其他提问不要传这个字段。\n" +
         `一次最多 ${MAX_QUESTIONS} 题,每题给 2-4 个**具体**的选项(不要"简约风/复杂风"这种废话选项),` +
         '选项配一句释义帮用户判断。用户可能跳过,跳过就按你的判断继续,不要再问第二次。',
       inputSchema: z.object({
         intro: z.string().optional().describe('一句话说明为什么要问,让用户知道这几题影响什么'),
+        purpose: z
+          .literal('style-brief')
+          .optional()
+          .describe('仅首次整体视觉方向确认使用；其他普通提问不要填写。'),
         questions: z
           .array(
             z.object({

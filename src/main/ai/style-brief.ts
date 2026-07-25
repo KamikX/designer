@@ -1,8 +1,7 @@
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
-import type { Project } from '../../shared/types'
-import type { AskUserAnswer } from '../../shared/types'
+import type { AskUserAnswer, AskUserInput, Project } from '../../shared/types'
 import { SessionVfs } from './session-vfs'
 
 export interface StyleFallback {
@@ -36,13 +35,13 @@ export function createInitialStyleWriteGate(input: {
   useTools?: boolean
 }): {
   isLocked: () => boolean
-  onStyleQuestionAnswered: (answer: AskUserAnswer) => void
+  onStyleQuestionAnswered: (ask: AskUserInput, answer: AskUserAnswer) => void
 } {
   let locked = (input.useTools ?? true) && !input.styleBrief.trim() && !input.hasFiles
   return {
     isLocked: () => locked,
-    onStyleQuestionAnswered: (answer) => {
-      if (answer.skipped) locked = false
+    onStyleQuestionAnswered: (ask, answer) => {
+      if (ask.purpose === 'style-brief' && answer.skipped) locked = false
     }
   }
 }
@@ -185,6 +184,6 @@ ${escapeMarkdownFence(styleBrief)}
   return `## 首次风格确认
 
 项目尚未记录视觉方向，也还没有设计稿。**第一次写文件前**先用 ask_user 确认用户的整体风格，
-给 2–3 个结合业务的具体方向并允许自由输入。若用户给出任何整体方向，必须先用 set_style_brief 保存后才能写文件；
+调用 ask_user 时必须传 purpose: 'style-brief'，并给 2–3 个结合业务的具体方向且允许自由输入。若用户给出任何整体方向，必须先用 set_style_brief 保存后才能写文件；
 用户跳过时才使用下面的兜底风格。\n\n${renderFallback(project.id)}`
 }
