@@ -47,11 +47,26 @@ export function createProject(input: CreateProjectInput): Project {
         // 空数组归一成 null:两者都是"没选",不该以两种形态存在库里
         targets: input.targets?.length ? input.targets : null,
         libs: input.libs?.length ? input.libs : null,
-        description: input.description ?? ''
+        description: input.description ?? '',
+        styleBrief: (input.styleBrief ?? '').trim()
       })
       .returning()
       .get()
   )
+}
+
+/**
+ * 覆盖保存项目视觉方向。它会影响后续生成结果，因此和改名一样更新项目时间，
+ * 让用户能在项目列表里看到这次有意义的修改。
+ */
+export function setProjectStyleBrief(id: string, styleBrief: string): Project | null {
+  const row = getDb()
+    .update(projects)
+    .set({ styleBrief: styleBrief.trim(), updatedAt: sql`(datetime('now'))` })
+    .where(eq(projects.id, id))
+    .returning()
+    .get()
+  return row ? toProject(row) : null
 }
 
 /**

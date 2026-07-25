@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `style_brief` text DEFAULT '' NOT NULL;

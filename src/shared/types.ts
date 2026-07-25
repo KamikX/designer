@@ -168,6 +168,8 @@ export interface Project {
   /** 勾选的组件库。null / [] 表示纯 Tailwind,预览不加载任何组件库 */
   libs: PreviewLib[] | null
   description: string
+  /** 用户定义的视觉方向；空字符串表示尚未定义 */
+  styleBrief: string
   settings: SessionSettings | null
   createdAt: string
   updatedAt: string
@@ -180,6 +182,7 @@ export interface CreateProjectInput {
   targets?: DesignTarget[]
   libs?: PreviewLib[]
   description?: string
+  styleBrief?: string
 }
 
 export interface Conversation {

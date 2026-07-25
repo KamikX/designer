@@ -49,6 +49,8 @@ export const projects = sqliteTable(
     /** 勾选的组件库(antdv-next 等),JSON 数组。null = 纯 Tailwind */
     libs: text('libs', { mode: 'json' }).$type<PreviewLib[]>(),
     description: text('description').notNull().default(''),
+    /** 项目的视觉方向；空字符串表示用户尚未定义 */
+    styleBrief: text('style_brief').notNull().default(''),
     /**
      * 工作台的"上次选了什么":模型、技能、MCP。
      *
