@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
 import { useProjectStore } from '@renderer/stores/project'
-import type { DesignMode, DesignTarget, PreviewLib, Stack } from '@shared/types'
-import { buildCreateProjectInput } from './create-project'
+import type { DesignTarget, PreviewLib, Stack } from '@shared/types'
+import {
+  buildCreateProjectInput,
+  createDefaultProjectForm,
+  resetProjectForm
+} from './create-project'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
 // 上下文,主题、语言、z-index 全用的是默认值
@@ -15,15 +19,7 @@ const emit = defineEmits<{ created: [projectId: string] }>()
 const { token } = theme.useToken()
 const store = useProjectStore()
 
-const form = reactive({
-  name: '',
-  stack: 'html' as Stack,
-  designMode: 'design' as DesignMode,
-  targets: [] as DesignTarget[],
-  libs: [] as PreviewLib[],
-  description: '',
-  styleBrief: ''
-})
+const form = reactive(createDefaultProjectForm())
 
 /**
  * 组件库选择,目前只对 vue3 栈开放。勾了之后预览环境会通过 import map
@@ -90,9 +86,7 @@ async function submit(): Promise<void> {
   try {
     const project = await store.create(buildCreateProjectInput(form))
     open.value = false
-    form.name = form.description = form.styleBrief = ''
-    form.targets = []
-    form.libs = []
+    resetProjectForm(form)
     emit('created', project.id)
   } catch (err) {
     message.error(err instanceof Error ? err.message : String(err))

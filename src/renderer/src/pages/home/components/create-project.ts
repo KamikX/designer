@@ -10,6 +10,23 @@ export interface CreateProjectForm {
   styleBrief: string
 }
 
+export function createDefaultProjectForm(): CreateProjectForm {
+  return {
+    name: '',
+    stack: 'html',
+    designMode: 'design',
+    targets: [],
+    libs: [],
+    description: '',
+    styleBrief: ''
+  }
+}
+
+/** 保留 reactive 容器本身，仅把字段恢复成新建项目的默认状态。 */
+export function resetProjectForm(form: CreateProjectForm): void {
+  Object.assign(form, createDefaultProjectForm())
+}
+
 /** 将表单状态整理成稳定的创建契约，避免 UI 分支把残留值带给主进程。 */
 export function buildCreateProjectInput(form: CreateProjectForm): CreateProjectInput {
   return {

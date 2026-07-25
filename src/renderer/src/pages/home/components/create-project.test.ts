@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildCreateProjectInput } from './create-project'
+import {
+  buildCreateProjectInput,
+  createDefaultProjectForm,
+  resetProjectForm
+} from './create-project'
 
 describe('buildCreateProjectInput', () => {
   it('清理自由文本两端空白并保留视觉方向字段', () => {
@@ -36,5 +40,32 @@ describe('buildCreateProjectInput', () => {
         styleBrief: '   '
       })
     ).toMatchObject({ libs: [], styleBrief: '' })
+  })
+})
+
+describe('resetProjectForm', () => {
+  it('原位恢复所有创建默认值', () => {
+    const form = createDefaultProjectForm()
+    form.name = '后台'
+    form.stack = 'react'
+    form.designMode = 'prototype'
+    form.targets = ['admin']
+    form.libs = ['antdv-next']
+    form.description = '订单管理'
+    form.styleBrief = '深色工业风'
+    const original = form
+
+    resetProjectForm(form)
+
+    expect(form).toBe(original)
+    expect(form).toEqual({
+      name: '',
+      stack: 'html',
+      designMode: 'design',
+      targets: [],
+      libs: [],
+      description: '',
+      styleBrief: ''
+    })
   })
 })
