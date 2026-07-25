@@ -4,8 +4,17 @@ import type { CreateProjectInput, Project } from '../../../shared/types'
 const state = vi.hoisted(() => ({
   creates: [] as Record<string, unknown>[],
   updates: [] as Record<string, unknown>[],
-  updateRows: [] as Project[]
+  updateRows: [] as Project[],
+  whereClauses: [] as unknown[]
 }))
+
+const eqSpy = vi.hoisted(() => vi.fn())
+
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>()
+  eqSpy.mockImplementation(actual.eq)
+  return { ...actual, eq: eqSpy }
+})
 
 vi.mock('../index', () => ({
   getDb: () => ({
@@ -26,13 +35,22 @@ vi.mock('../index', () => ({
     }),
     update: () => ({
       set: (values: Record<string, unknown>) => ({
-        where: () => ({
-          returning: () => ({
-            get: () => {
-              state.updates.push(values)
-              return state.updateRows.shift()
-            }
-          })
+        where: (condition: unknown) => {
+          state.whereClauses.push(condition)
+          return {
+            returning: () => ({
+              get: () => {
+                state.updates.push(values)
+                return state.updateRows.shift()
+              }
+            })
+          }
+        },
+        returning: () => ({
+          get: () => {
+            state.updates.push(values)
+            return state.updateRows.shift()
+          }
         })
       })
     })
@@ -40,6 +58,7 @@ vi.mock('../index', () => ({
 }))
 
 import { createProject, setProjectStyleBrief } from './project'
+import { projects } from '../schema'
 
 function projectInput(styleBrief?: string): CreateProjectInput {
   return {
@@ -71,6 +90,8 @@ describe('项目视觉方向', () => {
     state.creates.length = 0
     state.updates.length = 0
     state.updateRows.length = 0
+    state.whereClauses.length = 0
+    eqSpy.mockClear()
   })
 
   it('创建时去除视觉方向首尾空白', () => {
@@ -107,5 +128,7 @@ describe('项目视觉方向', () => {
 
   it('不存在的项目返回 null', () => {
     expect(setProjectStyleBrief('missing', '任意方向')).toBeNull()
+    expect(eqSpy).toHaveBeenCalledWith(projects.id, 'missing')
+    expect(state.whereClauses).toEqual([eqSpy.mock.results[0].value])
   })
 })

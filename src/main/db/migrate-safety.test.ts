@@ -2,6 +2,8 @@ import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { MIGRATIONS } from './migrations'
 
+const STYLE_BRIEF_MIGRATION_INDEX = 12
+
 /**
  * 迁移的两条安全底线。
  *
@@ -78,6 +80,31 @@ describe('全套迁移', () => {
     const db = new Database(':memory:')
     runMigrations(db)
     expect(db.pragma('foreign_key_check')).toEqual([])
+    db.close()
+  })
+
+  it('旧项目经过 0012 后的视觉方向默认为空字符串', () => {
+    const db = new Database(':memory:')
+
+    db.pragma('foreign_keys = OFF')
+    for (let version = 0; version < STYLE_BRIEF_MIGRATION_INDEX; version++) {
+      db.transaction(() => {
+        db.exec(MIGRATIONS[version])
+        db.pragma(`user_version = ${version + 1}`)
+      })()
+    }
+    db.pragma('foreign_keys = ON')
+
+    db.prepare(`INSERT INTO projects (id, name) VALUES ('legacy-project', '旧项目')`).run()
+    db.transaction(() => {
+      db.exec(MIGRATIONS[STYLE_BRIEF_MIGRATION_INDEX])
+      db.pragma(`user_version = ${STYLE_BRIEF_MIGRATION_INDEX + 1}`)
+    })()
+
+    expect(
+      db.prepare(`SELECT style_brief FROM projects WHERE id = 'legacy-project'`).get()
+    ).toEqual({ style_brief: '' })
+
     db.close()
   })
 
