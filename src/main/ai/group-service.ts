@@ -1,6 +1,7 @@
 import { streamText } from 'ai'
 import type { WebContents } from 'electron'
 import type { GroupSendInput, GroupStreamEvent, Message } from '../../shared/types'
+import { isLegacyGroupMembers } from '../../shared/group-members'
 import { getConversation, touchConversation } from '../db/repo/conversation'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { getModel } from '../db/repo/model'
@@ -46,7 +47,8 @@ export function sendGroupMessage(sender: WebContents, input: GroupSendInput): vo
   if (running.has(input.conversationId))
     throw new Error('上一条接力还在进行中,先等它结束或点停止。')
 
-  const members = conversation.settings?.members ?? []
+  const storedMembers = conversation.settings?.members
+  const members = isLegacyGroupMembers(storedMembers) ? storedMembers : []
   const emit = (event: GroupStreamEvent): void => {
     if (!sender.isDestroyed()) sender.send('group:stream', event)
   }
