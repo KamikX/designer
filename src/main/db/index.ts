@@ -86,13 +86,40 @@ function ensureSyncBase(conn: Database.Database): void {
  */
 function migrate(conn: Database.Database): void {
   const current = conn.pragma('user_version', { simple: true }) as number
+  if (current >= MIGRATIONS.length) return
 
-  for (let version = current; version < MIGRATIONS.length; version++) {
-    // SQLite 的 DDL 支持事务，迁移到一半崩了不会留下半张表
-    conn.transaction(() => {
-      conn.exec(MIGRATIONS[version])
-      conn.pragma(`user_version = ${version + 1}`)
-    })()
+  /*
+   * 外键**必须在事务外关掉**。
+   *
+   * SQLite 改列(改可空、加约束)只能靠"建新表 → 拷数据 → 删旧表 → 改名",
+   * drizzle 生成的 SQL 里也带着 `PRAGMA foreign_keys=OFF`。但那句话写在
+   * 迁移文件里就等于写在事务里,而 **PRAGMA foreign_keys 在事务内是静默
+   * no-op** ——不报错,值也不变。
+   *
+   * 后果不是"迁移失败",是**静默删数据**:外键还开着的时候 DROP TABLE 会
+   * 执行一次隐式 DELETE FROM,于是 messages 上那条 ON DELETE CASCADE 生效,
+   * 删 conversations 表把所有消息一起带走了。实测复现过:2 行 → 0 行。
+   *
+   * 所以在这里、事务之外关掉,跑完再打开。
+   */
+  conn.pragma('foreign_keys = OFF')
+  try {
+    for (let version = current; version < MIGRATIONS.length; version++) {
+      // SQLite 的 DDL 支持事务，迁移到一半崩了不会留下半张表
+      conn.transaction(() => {
+        conn.exec(MIGRATIONS[version])
+        conn.pragma(`user_version = ${version + 1}`)
+      })()
+    }
+  } finally {
+    conn.pragma('foreign_keys = ON')
+  }
+
+  // 关着外键跑完之后校一遍:重建表时漏拷一列、写错一个引用,都会在这里露出来。
+  // 只报不改——自动"修复"很可能是继续删数据
+  const dangling = conn.pragma('foreign_key_check') as unknown[]
+  if (dangling.length) {
+    console.error(`[db] 迁移后发现 ${dangling.length} 条悬空外键引用:`, dangling.slice(0, 5))
   }
 }
 

@@ -27,6 +27,6 @@ CREATE TABLE `__new_workspace_roots` (
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-INSERT INTO `__new_workspace_roots`("id", "project_id", "conversation_id", "path", "name", "created_at", "updated_at") SELECT "id", "project_id", "conversation_id", "path", "name", "created_at", "updated_at" FROM `workspace_roots`;--> statement-breakpoint
+INSERT INTO `__new_workspace_roots`("id", "project_id", "conversation_id", "path", "name", "created_at", "updated_at") SELECT "id", "project_id", NULL, "path", "name", "created_at", "updated_at" FROM `workspace_roots`;--> statement-breakpoint
 DROP TABLE `workspace_roots`;--> statement-breakpoint
 ALTER TABLE `__new_workspace_roots` RENAME TO `workspace_roots`;
