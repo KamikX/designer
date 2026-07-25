@@ -94,7 +94,10 @@ onBeforeUnmount(() => {
       </template>
     </a-alert>
 
-    <div class="preview-frame" :style="{ borderColor: token.colorBorderSecondary }">
+    <div
+      class="preview-frame"
+      :style="{ borderColor: token.colorBorderSecondary, background: token.colorBgContainer }"
+    >
       <iframe
         v-if="src"
         :key="`${src}-${reloadKey}`"
@@ -107,7 +110,15 @@ onBeforeUnmount(() => {
       <!-- 骨架屏盖在 iframe 上,而不是替换它:iframe 得先挂载才能开始加载。
            照着页面的样子摆(顶栏 / 侧栏 / 卡片),比一个居中转圈更能说明
            "马上出现的是一个页面" -->
-      <div v-if="loading && src" class="preview-skeleton">
+      <div
+        v-if="loading && src"
+        class="preview-skeleton"
+        :style="{
+          background: token.colorBgContainer,
+          '--sk-base': token.colorFillSecondary,
+          '--sk-highlight': token.colorFillTertiary
+        }"
+      >
         <div class="sk-topbar">
           <span class="sk sk-dot" />
           <span class="sk sk-line" style="width: 120px" />
@@ -155,19 +166,33 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
 }
 
+/*
+ * 容器跟随主题;**纸白挪到 iframe 上**(见下)。
+ *
+ * 这两层要分开:容器上出现的是我们自己的东西(空态、骨架屏),它们该跟着应用
+ * 的明暗走;而 iframe 里是用户的设计稿,那是另一套主题。之前两者共用一个写死
+ * 的 #fff,暗色模式下就是一大块刺眼的白。
+ */
 .preview-frame {
   flex: 1;
   min-height: 0;
   border: 1px solid transparent;
   border-radius: 6px;
   overflow: hidden;
-  /* 预览内容背景不透明:设计稿要在"纸"上看,不能透出毛玻璃 */
-  background: #fff;
 }
 
+/*
+ * 纸白给 iframe 自己,**不要跟着暗色模式变**。
+ *
+ * 用户的浅色设计稿如果没给 body 设背景,文档背景就是透明的,全靠这层白底撑着。
+ * 跟着应用主题变暗的话,浅色设计会变成深底配深字——直接不可读。
+ *
+ * 设计稿的明暗是设计稿自己的事,和应用界面的明暗无关。
+ */
 .preview-iframe {
   width: 100%;
   height: 100%;
+  background: #fff;
   border: 0;
   display: block;
 }
@@ -183,7 +208,6 @@ onBeforeUnmount(() => {
 .preview-skeleton {
   position: absolute;
   inset: 0;
-  background: #fff;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -233,7 +257,13 @@ onBeforeUnmount(() => {
  */
 .sk {
   border-radius: 6px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #f7f7f7 37%, #f0f0f0 63%);
+  /* 色值由外层按主题注入:写死的浅灰在暗色下是三条亮带,比没有骨架屏还显眼 */
+  background: linear-gradient(
+    90deg,
+    var(--sk-base) 25%,
+    var(--sk-highlight) 37%,
+    var(--sk-base) 63%
+  );
   background-size: 400% 100%;
   animation: sk-shimmer 1.4s ease-in-out infinite;
 }
