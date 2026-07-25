@@ -92,6 +92,18 @@ describe('tokenizeGroupMentions', () => {
     ])
   })
 
+  it('自然格式支持名称中成对出现的反引号', () => {
+    const member = { id: PM_ID, name: '前`端`' }
+    const text = '请 @前`端` 接棒'
+
+    expect(tokenizeGroupMentions(text, [member])).toEqual([
+      { type: 'text', text: '请 ' },
+      { type: 'member', memberId: PM_ID, name: member.name },
+      { type: 'text', text: ' 接棒' }
+    ])
+    expect(firstMention(text, [member])).toBe(PM_ID)
+  })
+
   it('代码围栏与行内代码中的提及保持普通文本', () => {
     const text = [
       '`@产品经理` 与 @产品经理',
@@ -136,6 +148,27 @@ describe('tokenizeGroupMentions', () => {
 
     expect(tokenizeGroupMentions(quotedOpen, MEMBERS)).toEqual([{ type: 'text', text: quotedOpen }])
     expect(tokenizeGroupMentions(plainOpen, MEMBERS)).toEqual([{ type: 'text', text: plainOpen }])
+  })
+
+  it('容器内未闭合围栏在 blockquote 或列表结束时停止', () => {
+    const quoted = ['> ```md', '> @产品经理', '块外 @UI 设计师'].join('\n')
+    const listed = ['- ~~~md', '  @产品经理', '块外 @UI 设计师'].join('\n')
+
+    expect(firstMention(quoted, MEMBERS)).toBe(UI_ID)
+    expect(firstMention(listed, MEMBERS)).toBe(UI_ID)
+  })
+
+  it('inline backtick 不能把合法 fence delimiter 当作关闭 run', () => {
+    const text = ['prefix ```', '```md', '@UI 设计师'].join('\n')
+
+    expect(tokenizeGroupMentions(text, MEMBERS)).toEqual([{ type: 'text', text }])
+    expect(firstMention(text, MEMBERS)).toBeNull()
+  })
+
+  it('backtick fence 的 info string 含反引号时不视为围栏', () => {
+    const text = ['```md`invalid', '@UI 设计师'].join('\n')
+
+    expect(firstMention(text, MEMBERS)).toBe(UI_ID)
   })
 
   it('大量不同长度的反引号 run 不会反复扫描文本后缀', () => {

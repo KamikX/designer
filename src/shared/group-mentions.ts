@@ -21,7 +21,13 @@ type MarkdownContainerToken = { type: 'blockquote' } | { type: 'list'; continuat
 
 interface MarkdownContainer {
   content: string
+  contentOffset: number
   tokens: MarkdownContainerToken[]
+}
+
+interface FenceOpening {
+  marker: string
+  markerOffset: number
 }
 
 interface BacktickRun {
@@ -58,9 +64,15 @@ function decodeCanonicalLabel(label: string): string {
 
 function indexBacktickRuns(text: string): Map<number, BacktickRun> {
   const runs: BacktickRun[] = []
+  const fenceDelimiterStarts = findFenceDelimiterStarts(text)
   let index = 0
 
   while (index < text.length) {
+    if (fenceDelimiterStarts.has(index)) {
+      while (text[index] === '`') index++
+      continue
+    }
+
     if (text[index] !== '`' || isBackslashEscaped(text, index)) {
       index++
       continue
@@ -103,8 +115,35 @@ function parseMarkdownContainer(line: string): MarkdownContainer {
       continue
     }
 
-    return { content, tokens }
+    return { content, contentOffset: offset, tokens }
   }
+}
+
+function parseFenceOpening(container: MarkdownContainer): FenceOpening | null {
+  const opening = container.content.match(/^( {0,3})(`{3,}|~{3,})(.*)$/)
+  if (!opening) return null
+  if (opening[2][0] === '`' && opening[3].includes('`')) return null
+  return {
+    marker: opening[2],
+    markerOffset: container.contentOffset + opening[1].length
+  }
+}
+
+function findFenceDelimiterStarts(text: string): Set<number> {
+  const starts = new Set<number>()
+  let lineStart = 0
+
+  while (lineStart < text.length) {
+    const lineEnd = text.indexOf('\n', lineStart)
+    const contentEnd = lineEnd === -1 ? text.length : lineEnd
+    const line = text.slice(lineStart, contentEnd).replace(/\r$/, '')
+    const opening = parseFenceOpening(parseMarkdownContainer(line))
+    if (opening?.marker[0] === '`') starts.add(lineStart + opening.markerOffset)
+    if (lineEnd === -1) break
+    lineStart = lineEnd + 1
+  }
+
+  return starts
 }
 
 function contentInMarkdownContainer(
@@ -151,12 +190,12 @@ function proseRanges(text: string): TextRange[] {
       const contentEnd = lineEnd === -1 ? text.length : lineEnd
       const line = text.slice(index, contentEnd).replace(/\r$/, '')
       const container = parseMarkdownContainer(line)
-      const opening = container.content.match(/^ {0,3}(`{3,}|~{3,})/)
+      const opening = parseFenceOpening(container)
 
       if (opening) {
         pushProse(index)
-        const marker = opening[1][0]
-        const minimumLength = opening[1].length
+        const marker = opening.marker[0]
+        const minimumLength = opening.marker.length
         let cursor = lineEnd === -1 ? text.length : lineEnd + 1
         let codeEnd = text.length
 
@@ -165,6 +204,10 @@ function proseRanges(text: string): TextRange[] {
           const closingContentEnd = closingLineEnd === -1 ? text.length : closingLineEnd
           const closingLine = text.slice(cursor, closingContentEnd).replace(/\r$/, '')
           const closingContent = contentInMarkdownContainer(closingLine, container.tokens)
+          if (closingContent == null) {
+            codeEnd = cursor
+            break
+          }
           const closing = closingContent?.match(/^ {0,3}(`+|~+)[ \t]*$/)
 
           if (closing && closing[1][0] === marker && closing[1].length >= minimumLength) {
@@ -248,11 +291,7 @@ function findMentions(
 
       const member = membersByLongestName.find((candidate) => {
         const end = index + candidate.name.length + 1
-        return (
-          text.startsWith(`@${candidate.name}`, index) &&
-          end <= range.end &&
-          hasEndBoundary(text, end)
-        )
+        return text.startsWith(`@${candidate.name}`, index) && hasEndBoundary(text, end)
       })
 
       if (member) {
