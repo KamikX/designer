@@ -1,4 +1,5 @@
 import type { GroupMember } from './types'
+import { isGroupMemberId } from './group-mentions'
 
 function isString(value: unknown): value is string {
   return typeof value === 'string'
@@ -9,6 +10,7 @@ function isGroupMember(value: unknown): value is GroupMember {
   const member = value as Record<string, unknown>
   return (
     isString(member.id) &&
+    isGroupMemberId(member.id) &&
     isString(member.name) &&
     isString(member.color) &&
     isString(member.duty) &&

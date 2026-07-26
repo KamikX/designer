@@ -76,7 +76,7 @@ describe('tokenizeGroupMentions', () => {
     expect(tokenizeGroupMentions(invalid, MEMBERS)).toEqual([{ type: 'text', text: invalid }])
   })
 
-  it('按完整名称边界识别旧格式，相似名称不误匹配', () => {
+  it('按完整名称边界识别自然名称提及，相似名称不误匹配', () => {
     expect(tokenizeGroupMentions('@产品经理 交给 @产品；@产品经理助理 不在群里', MEMBERS)).toEqual([
       { type: 'member', memberId: PM_ID, name: '产品经理' },
       { type: 'text', text: ' 交给 ' },

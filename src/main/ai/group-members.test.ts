@@ -11,6 +11,8 @@ import { isConfiguredGroupMembers, normalizeGroupMembers } from '../../shared/gr
 import { createGroupMembers, resolveGroupAgent } from './group-members'
 import { roleTemplates } from './prompts/group-roles'
 
+const MEMBER_ID = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
+
 function model(overrides: Partial<Model> = {}): Model {
   return {
     id: 'model-tools',
@@ -167,7 +169,7 @@ describe('createGroupMembers', () => {
 
 describe('normalizeGroupMembers', () => {
   it('只返回完整合法的 GroupMember[]', () => {
-    const member: GroupMember = { ...draft(), id: 'member-1' }
+    const member: GroupMember = { ...draft(), id: MEMBER_ID }
     const settings: SessionSettings = { members: [member] }
 
     expect(isConfiguredGroupMembers(settings.members)).toBe(true)
@@ -176,9 +178,10 @@ describe('normalizeGroupMembers', () => {
 
   it.each([
     ['缺失', undefined],
-    ['旧 string[]', ['pm', 'ui']],
+    ['string[]', ['pm', 'ui']],
+    ['完整形状但成员 ID 不是 ULID', [{ ...draft(), id: 'pm' }]],
     ['字段缺失的对象数组', [{ id: 'member-1', name: '产品经理' }]],
-    ['混合数组', [{ ...draft(), id: 'member-1' }, 'pm']]
+    ['混合数组', [{ ...draft(), id: MEMBER_ID }, 'pm']]
   ])('%s不被识别为 configured，也不生成展示成员', (_label, members) => {
     const untrusted = members as unknown
 

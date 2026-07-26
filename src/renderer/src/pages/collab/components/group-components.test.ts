@@ -493,13 +493,16 @@ describe('GroupComposer', () => {
     expect(wrapper.findComponent(Select).exists()).toBe(false)
   })
 
-  it('运行时损坏的 string[] 不生成候选，也不恢复公共模型选择器', () => {
+  it.each([
+    ['string[]', [template.id]],
+    ['完整形状但非 ULID 的对象数组', [{ ...configuredMember, id: template.id }]]
+  ])('运行时损坏的%s不崩溃、不生成候选，也不恢复公共模型选择器', (_label, members) => {
     const pinia = prepareStores()
     const collab = useCollabStore()
     collab.groups = [
       {
         ...createdGroup,
-        settings: { members: [template.id] }
+        settings: { members }
       } as unknown as Conversation
     ]
     collab.conversationId = createdGroup.id
@@ -583,7 +586,7 @@ describe('CollabPage group navigation', () => {
 })
 
 describe('GroupMentionText', () => {
-  it('高亮新旧有效提及，代码区与未知 ID 保持普通文本', () => {
+  it('高亮结构化与自然名称提及，代码区与未知 ID 保持普通文本', () => {
     const unknownId = '01BX5ZZKBKACTAV9WEVGEMMVRZ'
     const content = [
       `@[${configuredMember.name}](member:${MEMBER_ID}) 和 @${configuredMember.name}`,

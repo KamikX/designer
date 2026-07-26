@@ -297,7 +297,7 @@ store 处理 `chain-stopped`，清理 chaining/speaking 并把服务端 message 
 
 - [ ] **Step 6: 补 Mentions 和 tag 挂载测试**
 
-挂载 `GroupComposer` 验证候选选择生成规范提及；挂载 `GroupMentionText` 和 `GroupMarkdownStream` 验证旧式/结构化提及产生 `a-tag`，普通链接仍可点击。
+挂载 `GroupComposer` 验证候选选择生成规范提及；挂载 `GroupMentionText` 和 `GroupMarkdownStream` 验证结构化与自然名称提及产生 `a-tag`，普通链接仍可点击。
 
 - [ ] **Step 7: 运行 Web 类型检查和相关测试**
 

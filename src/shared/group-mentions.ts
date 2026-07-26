@@ -41,11 +41,7 @@ const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
 const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}_]/u
 const ASCII_PUNCTUATION_PATTERN = /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g
 
-function isMemberId(id: string): boolean {
-  return ULID_PATTERN.test(id)
-}
-
-function isConfiguredMemberId(id: string): boolean {
+export function isGroupMemberId(id: string): boolean {
   return ULID_PATTERN.test(id)
 }
 
@@ -337,7 +333,7 @@ function hasEndBoundary(text: string, index: number): boolean {
 
 function validMembers(members: readonly GroupMentionMember[]): GroupMentionMember[] {
   return members.filter(
-    (member) => isMemberId(member.id) && member.name.length > 0 && !member.name.includes('\n')
+    (member) => isGroupMemberId(member.id) && member.name.length > 0 && !member.name.includes('\n')
   )
 }
 
@@ -366,7 +362,7 @@ function findMentions(
       if (canonical) {
         const member = membersById.get(canonical[2])
         const name = decodeCanonicalLabel(canonical[1])
-        if (member && isConfiguredMemberId(canonical[2]) && member.name === name) {
+        if (member && isGroupMemberId(canonical[2]) && member.name === name) {
           mentions.push({ start: index, end: index + canonical[0].length, member })
           index += canonical[0].length
           continue
@@ -432,7 +428,7 @@ function hasUserMention(text: string, startAt: number): boolean {
 }
 
 export function createGroupMention(member: GroupMentionMember): string {
-  if (isConfiguredMemberId(member.id)) {
+  if (isGroupMemberId(member.id)) {
     return `@[${escapeCanonicalLabel(member.name)}](member:${member.id})`
   }
   throw new Error('群组成员 ID 必须是 ULID')

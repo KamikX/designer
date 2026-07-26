@@ -61,7 +61,7 @@ interface CreateGroupInput {
 
 ## 成员读取与发送契约
 
-`conversations.settings` 来自 JSON，运行时仍按不可信数据处理。共享 guard 只有在 `members` 是非空对象数组且每个对象都具备完整 `GroupMember` 字段时才判定为已配置；归一化函数直接返回该 `GroupMember[]`。字段缺失、混合数组、`string[]` 或 `members` 缺失都归一化为空数组，不猜测、不补造成员。
+`conversations.settings` 来自 JSON，运行时仍按不可信数据处理。共享 guard 只有在 `members` 是非空对象数组、每个对象都具备完整 `GroupMember` 字段且成员 ID 是 ULID 时才判定为已配置；归一化函数直接返回该 `GroupMember[]`。字段缺失、非法成员 ID、混合数组、`string[]` 或 `members` 缺失都归一化为空数组，不猜测、不补造成员。
 
 `GroupSendInput` 只包含 `conversationId` 和 `text`。输入区不提供公共模型选择器；每一棒始终使用成员自己的 `modelRowId` 和 `skillIds`。群组没有合法成员时，用户消息仍作为留言保存，但不会启动 Agent，也不会崩溃。
 
