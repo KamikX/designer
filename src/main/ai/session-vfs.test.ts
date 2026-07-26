@@ -557,3 +557,71 @@ describe('parsePatch', () => {
     expect(fs.writes.get('index.html')).toBe('<h1>你好</h1>\n<p>世界</p>\n')
   })
 })
+
+describe('SessionVfs 文件修订号', () => {
+  function seeded(): SessionVfs {
+    return new SessionVfs([{ path: 'a.css', content: 'body { color: red }\n' }])
+  }
+
+  it('初始修订号为 1,成功写入递增', () => {
+    const fs = seeded()
+    expect(fs.revisionOf('a.css')).toBe(1)
+    fs.edit('a.css', 'red', 'blue')
+    expect(fs.revisionOf('a.css')).toBe(2)
+    fs.write('a.css', 'body {}\n')
+    expect(fs.revisionOf('a.css')).toBe(3)
+  })
+
+  it('内容没变的写入不递增(no-op)', () => {
+    const fs = seeded()
+    fs.write('a.css', 'body { color: red }\n')
+    expect(fs.revisionOf('a.css')).toBe(1)
+  })
+
+  it('被拒绝的写入不递增', () => {
+    const fs = seeded()
+    fs.blockWrites('先确认视觉方向')
+    expect(() => fs.edit('a.css', 'red', 'blue')).toThrow(VfsError)
+    expect(fs.revisionOf('a.css')).toBe(1)
+  })
+
+  it('锚点没对上的编辑不递增', () => {
+    const fs = seeded()
+    expect(() => fs.edit('a.css', '不存在的锚点', 'x')).toThrow(VfsError)
+    expect(fs.revisionOf('a.css')).toBe(1)
+  })
+
+  it('新建文件从 1 起,删除后重建重新计数', () => {
+    const fs = seeded()
+    fs.write('b.css', 'p {}\n')
+    expect(fs.revisionOf('b.css')).toBe(1)
+    fs.remove('b.css')
+    expect(fs.revisionOf('b.css')).toBeNull()
+    fs.write('b.css', 'p { margin: 0 }\n')
+    expect(fs.revisionOf('b.css')).toBe(1)
+  })
+
+  it('事务失败时修订号与内容一起回滚', () => {
+    const fs = seeded()
+    expect(() =>
+      fs.transact(() => {
+        fs.edit('a.css', 'red', 'blue')
+        fs.write('b.css', 'p {}\n')
+        throw new VfsError('第三个文件锚点没对上')
+      })
+    ).toThrow(VfsError)
+    expect(fs.revisionOf('a.css')).toBe(1)
+    expect(fs.revisionOf('b.css')).toBeNull()
+    expect(fs.writes.size).toBe(0)
+  })
+
+  it('事务成功时多文件修订号一起生效', () => {
+    const fs = seeded()
+    fs.transact(() => {
+      fs.edit('a.css', 'red', 'blue')
+      fs.write('b.css', 'p {}\n')
+    })
+    expect(fs.revisionOf('a.css')).toBe(2)
+    expect(fs.revisionOf('b.css')).toBe(1)
+  })
+})

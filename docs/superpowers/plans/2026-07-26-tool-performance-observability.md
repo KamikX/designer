@@ -265,7 +265,7 @@ git commit -m "feat: trace AI run and tool lifecycle"
 - Modify: `src/main/ai/assistant.test.ts`
 - Create: `src/main/ai/model-entrypoints.test.ts`
 
-- [ ] **Step 1: Enumerate actual model calls and write a coverage test**
+- [x] **Step 1: Enumerate actual model calls and write a coverage test**
 
 Search with:
 
@@ -277,27 +277,27 @@ Expected current production call sites: chat, group, assistant, and provider tes
 creates a trace with `design|chat|group|assistant|provider_test` as appropriate. Inspect
 `summarize.ts`; only instrument `document_summary` if it actually invokes a language model.
 
-- [ ] **Step 2: Run the entry-point test and verify missing traces**
+- [x] **Step 2: Run the entry-point test and verify missing traces**
 
 Run: `pnpm vitest run src/main/ai/model-entrypoints.test.ts`
 
 Expected: FAIL because model calls do not create run/step rows.
 
-- [ ] **Step 3: Wire AI SDK lifecycle callbacks without changing generation behaviour**
+- [x] **Step 3: Wire AI SDK lifecycle callbacks without changing generation behaviour**
 
 Create the trace before each call, pass AI SDK model-call/tool-execution lifecycle callbacks, feed
 every `onStepEnd` to the collector, and finish the run in `finally`. Preserve any existing callbacks
 by composing them. Count provider connection tests as durable usage even though they have no
 message/project.
 
-- [ ] **Step 4: Verify multi-step partial usage and terminal states**
+- [x] **Step 4: Verify multi-step partial usage and terminal states**
 
 Run: `pnpm vitest run src/main/ai/model-entrypoints.test.ts src/main/ai/assistant.test.ts src/main/ai/group-chain.test.ts src/main/ai/full-stream-error.test.ts`
 
 Expected: PASS; a later-step failure still leaves earlier steps in daily usage, and abort/error are
 distinct.
 
-- [ ] **Step 5: Commit model instrumentation**
+- [x] **Step 5: Commit model instrumentation**
 
 ```bash
 git add src/main/ai/chat-service.ts src/main/ai/group-service.ts \
@@ -326,20 +326,20 @@ If an optional test file was not changed or created, omit it from `git add`; nev
 - Modify: `src/renderer/src/router/index.ts`
 - Modify: `src/renderer/src/layouts/default/menu.ts`
 
-- [ ] **Step 1: Write failing store tests for phase transitions and filters**
+- [x] **Step 1: Write failing store tests for phase transitions and filters**
 
 Verify `tool-input-start` maps to `preparing`, `onToolExecutionStart` maps to `executing`, and terminal
 states are `success|recoverable_error|fatal_error|aborted`. Test usage query parameters for date,
 provider, model, project, and scene, plus `null` display for unreported cache/reasoning fields.
 
-- [ ] **Step 2: Run renderer store tests and verify failure**
+- [x] **Step 2: Run renderer store tests and verify failure**
 
 Run: `pnpm vitest run src/renderer/src/stores/usage.test.ts src/renderer/src/stores/chat.test.ts`
 
 Expected: FAIL because the usage store and expanded lifecycle do not exist. If `chat.test.ts` does
 not exist, create it in this step and include the focused lifecycle cases.
 
-- [ ] **Step 3: Add narrow IPC/preload contracts**
+- [x] **Step 3: Add narrow IPC/preload contracts**
 
 Expose:
 
@@ -354,26 +354,26 @@ observability: {
 Do not expose SQL or mutation of trace rows. Fetch seven-day details lazily when the user opens the
 diagnostic drawer.
 
-- [ ] **Step 4: Implement truthful phase labels**
+- [x] **Step 4: Implement truthful phase labels**
 
 Change tool activity labels to “准备补丁/准备编辑” until execution starts, then “执行补丁/执行编辑”.
 Only show a local-performance warning when execution exceeds 500ms. Yellow recoverable entries
 remain visible after success with their recovery count; fatal errors remain red.
 
-- [ ] **Step 5: Implement diagnostics and independent usage page**
+- [x] **Step 5: Implement diagnostics and independent usage page**
 
 `RunDiagnostics.vue` shows total and first-output/first-file timing, step count, tool timeline,
 slowest step, recoveries, and detailed tokens. `/usage` shows day/provider/model/project/scene
 filters, cache hit ratio, average tokens per run, and per step; render “未报告”, not `0`, for missing
 metrics. Add a normal navigation entry without changing Settings panels.
 
-- [ ] **Step 6: Run store tests and typecheck**
+- [x] **Step 6: Run store tests and typecheck**
 
 Run: `pnpm vitest run src/renderer/src/stores/usage.test.ts src/renderer/src/stores/chat.test.ts && pnpm typecheck`
 
 Expected: PASS with no renderer/main contract mismatch.
 
-- [ ] **Step 7: Commit observability UI**
+- [x] **Step 7: Commit observability UI**
 
 ```bash
 git add src/shared/types.ts src/main/ipc/index.ts src/preload/index.ts \

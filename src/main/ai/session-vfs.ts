@@ -179,10 +179,31 @@ export class SessionVfs {
   /** 写入闸门:首次风格未确认、或视觉方向保存失败时阻止本回合再产出文件。 */
   private writeBlockReason: string | null = null
   private writesPermanentlyBlocked = false
+  /**
+   * 每个文件的修订号,**内容真的变了**才递增。锚点(AnchorRegistry)绑定
+   * 捕获时的修订号,校验用相等而非大小比较——删掉重建后计数归 1 也不会
+   * 让旧锚点复活,内容 hash 是第二道保险。
+   */
+  private revisions = new Map<string, number>()
 
   constructor(seed: ArtifactFile[]) {
     this.files = new Map(seed.map((f) => [f.path, f.content]))
     this.original = new Map(this.files)
+    for (const path of this.files.keys()) this.revisions.set(path, 1)
+  }
+
+  /** 当前修订号;文件不存在时为 null */
+  revisionOf(path: string): number | null {
+    return this.revisions.get(assertPath(path)) ?? null
+  }
+
+  /** 新文件记 1;内容没变(no-op)不动;变了递增 */
+  private bumpIfChanged(key: string, prev: string | undefined, next: string): void {
+    if (prev === undefined) {
+      this.revisions.set(key, 1)
+      return
+    }
+    if (prev !== next) this.revisions.set(key, (this.revisions.get(key) ?? 1) + 1)
   }
 
   /** 阻止后续文件改动；可选地丢弃本回合已累积的全部改动。 */
@@ -211,6 +232,15 @@ export class SessionVfs {
   }
 
   private discardChanges(): void {
+    // 内容整体回到回合起点:被动过的文件修订号继续前进(内容又变了一次),
+    // 本回合新建的文件消失、修订号一并清掉
+    for (const path of new Set([...this.touched, ...this.removed])) {
+      if (this.original.has(path)) {
+        this.revisions.set(path, (this.revisions.get(path) ?? 1) + 1)
+      } else {
+        this.revisions.delete(path)
+      }
+    }
     this.files.clear()
     for (const [path, content] of this.original) this.files.set(path, content)
     this.touched.clear()
@@ -403,6 +433,7 @@ export class SessionVfs {
   write(path: string, content: string): VfsPatch {
     this.assertWritesAllowed()
     const key = assertPath(path)
+    this.bumpIfChanged(key, this.files.get(key), content)
     this.files.set(key, content)
     this.touched.add(key)
     this.removed.delete(key)
@@ -415,6 +446,7 @@ export class SessionVfs {
     this.assertWritesAllowed()
     const { key, content } = this.mustGetForEdit(path)
     const next = applyEdit(content, { oldText, newText, replaceAll })
+    this.bumpIfChanged(key, content, next.content)
     this.files.set(key, next.content)
     this.touched.add(key)
     this.removed.delete(key)
@@ -450,6 +482,7 @@ export class SessionVfs {
       }
     }
 
+    this.bumpIfChanged(key, content, working)
     this.files.set(key, working)
     this.touched.add(key)
     this.removed.delete(key)
@@ -509,8 +542,10 @@ export class SessionVfs {
     if (origin === undefined) {
       // 本回合新建的:撤销就是让它不存在
       this.files.delete(key)
+      this.revisions.delete(key)
       return { patch: null, deleted: key }
     }
+    this.bumpIfChanged(key, this.files.get(key), origin)
     this.files.set(key, origin)
     return { patch: { path: key, oldText: '', newText: origin }, deleted: null }
   }
@@ -523,6 +558,7 @@ export class SessionVfs {
       throw new VfsError(`文件不存在:${key},无需删除。`)
     }
     this.files.delete(key)
+    this.revisions.delete(key)
     this.touched.delete(key)
     this.removed.add(key)
     return key
@@ -540,6 +576,7 @@ export class SessionVfs {
     const files = new Map(this.files)
     const touched = new Set(this.touched)
     const removed = new Set(this.removed)
+    const revisions = new Map(this.revisions)
     try {
       return run()
     } catch (err) {
@@ -549,6 +586,8 @@ export class SessionVfs {
       for (const k of touched) this.touched.add(k)
       this.removed.clear()
       for (const k of removed) this.removed.add(k)
+      this.revisions.clear()
+      for (const [k, v] of revisions) this.revisions.set(k, v)
       throw err
     }
   }
@@ -593,10 +632,12 @@ export class SessionVfs {
 
     for (const key of validDeletes) {
       this.files.delete(key)
+      this.revisions.delete(key)
       this.touched.delete(key)
       this.removed.add(key)
     }
     for (const [key, content] of validWrites) {
+      this.bumpIfChanged(key, this.files.get(key), content)
       this.files.set(key, content)
       this.touched.add(key)
       this.removed.delete(key)
