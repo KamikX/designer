@@ -24,6 +24,7 @@ import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
 import { buildSkillTools } from '../skills/tools'
 import { RunTraceCollector } from './run-trace'
+import { ToolBudgetGate, wrapToolsWithBudget } from './context-governor'
 import type { AdapterType } from '../../shared/types'
 
 /**
@@ -201,14 +202,19 @@ async function runChain(
             label: verbOf(event.toolCall.toolName)
           })
         },
-        tools: {
-          ...buildTimeTools(),
-          ...buildLocalTools(roots, {
-            canSeeImages: agent.model.abilities.includes('vision'),
-            intent: input.text
-          }),
-          ...buildSkillTools(selectedSkills)
-        },
+        // 与设计会话同一套硬预算语义:同步预留名额,单 step 超发的并行
+        // 调用原地拒绝,不产生副作用
+        tools: wrapToolsWithBudget(
+          {
+            ...buildTimeTools(),
+            ...buildLocalTools(roots, {
+              canSeeImages: agent.model.abilities.includes('vision'),
+              intent: input.text
+            }),
+            ...buildSkillTools(selectedSkills)
+          },
+          new ToolBudgetGate(MAX_TOOL_CALLS)
+        ),
         stopWhen: ({ steps }) => steps.reduce((n, s) => n + s.toolCalls.length, 0) >= MAX_TOOL_CALLS
       })
 

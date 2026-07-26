@@ -1,6 +1,11 @@
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import { renderTargetTemplates, targetContractPrompt } from './targets'
+import {
+  renderCompatNote,
+  renderTargetTemplates,
+  routeActiveTargets,
+  targetContractPrompt
+} from './targets'
 import { buildSystemPrompt } from './index'
 import { loadTargetTemplates } from '../../skills/targets'
 import type { FileSkill } from '../../skills/scan'
@@ -90,5 +95,61 @@ describe('buildSystemPrompt 分区顺序', () => {
     expect(templateAt).toBeGreaterThan(contractAt)
     expect(filesAt).toBeGreaterThan(templateAt)
     expect(lintAt).toBeGreaterThan(filesAt)
+  })
+})
+
+describe('routeActiveTargets 活动目标路由', () => {
+  const FILES = (...paths: string[]): { path: string }[] => paths.map((path) => ({ path }))
+
+  it('用户本轮明确端类型时优先', () => {
+    const route = routeActiveTargets({
+      targets: ['admin', 'landing', 'web'],
+      userText: '给中后台加一个 RBAC 权限管理页',
+      currentFiles: FILES('landing.html', 'web.html')
+    })
+    expect(route.active).toEqual(['admin'])
+    expect(route.compat).toEqual(['landing', 'web'])
+  })
+
+  it('本轮没点名时按 manifest/路径唯一确定', () => {
+    const route = routeActiveTargets({
+      targets: ['admin', 'landing'],
+      userText: '把表格列宽调一下',
+      currentFiles: FILES('admin.html', 'css/admin.css')
+    })
+    expect(route.active).toEqual(['admin'])
+  })
+
+  it('项目只有一个端时直接用它', () => {
+    const route = routeActiveTargets({
+      targets: ['mobile'],
+      userText: '随便改改',
+      currentFiles: []
+    })
+    expect(route.active).toEqual(['mobile'])
+    expect(route.compat).toEqual([])
+  })
+
+  it('无法唯一确定时不注入任何完整模板,全部走兼容契约', () => {
+    const route = routeActiveTargets({
+      targets: ['admin', 'landing'],
+      userText: '整体再精致一点',
+      currentFiles: FILES('admin.html', 'landing.html')
+    })
+    expect(route.active).toEqual([])
+    expect(route.compat).toEqual(['admin', 'landing'])
+  })
+
+  it('admin-only 轮次:完整 admin 模板,landing/web 只留兼容说明', () => {
+    const route = routeActiveTargets({
+      targets: ['admin', 'landing', 'web'],
+      userText: '继续完善后台的角色列表',
+      currentFiles: FILES('admin.html', 'landing.html', 'web.html')
+    })
+    expect(route.active).toEqual(['admin'])
+    const note = renderCompatNote(route.compat)
+    expect(note).toContain('落地页')
+    expect(note).toContain('Web 应用')
+    expect(note).not.toContain('模板正文')
   })
 })

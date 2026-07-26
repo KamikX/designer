@@ -41,6 +41,8 @@ export class RunContextLedger {
 
   private fingerprints = new Set<string>()
   private consecutiveWriteFailures = 0
+  /** 每个文件最近一次被读到的修订号,30 次阈值后的"禁止重读未变化文件"靠它 */
+  private readRevisions = new Map<string, number>()
   /** path → code → 次数 */
   private patchErrorCounts = new Map<string, Map<string, number>>()
   private fatalReason: string | null = null
@@ -77,6 +79,15 @@ export class RunContextLedger {
   /** 一次成功的定位类操作(read/search/capture)解除"连续写失败"的暂停 */
   noteLocate(): void {
     this.consecutiveWriteFailures = 0
+  }
+
+  /** 记录"读过这个文件的这个修订" */
+  noteRead(path: string, revision: number): void {
+    this.readRevisions.set(path, revision)
+  }
+
+  hasReadAtRevision(path: string, revision: number): boolean {
+    return this.readRevisions.get(path) === revision
   }
 
   /** 该文件是否已被禁用文本补丁(同错误码出现第二次) */

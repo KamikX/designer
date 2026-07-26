@@ -125,7 +125,9 @@ vi.mock('./lint-store', () => ({ pendingLint: () => '', recordLint: vi.fn() }))
 vi.mock('./prompts', () => ({ buildSystemPrompt: () => '' }))
 vi.mock('./prompts/chat', () => ({ buildChatPrompt: () => '' }))
 vi.mock('./prompts/targets', () => ({
+  renderCompatNote: () => '',
   renderTargetTemplates: () => '',
+  routeActiveTargets: () => ({ active: [], compat: [] }),
   targetContractPrompt: () => ''
 }))
 vi.mock('./style-brief', () => ({

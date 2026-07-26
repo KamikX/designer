@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto'
 import { parsePartialJson, streamText } from 'ai'
-import type { StepResult, ToolSet } from 'ai'
+import type { ModelMessage, StepResult, ToolSet } from 'ai'
 import type { WebContents } from 'electron'
 import type {
   AskUserAnswer,
@@ -27,7 +27,12 @@ import { buildTimeTools } from './time-tools'
 import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
 import { loadTargetTemplates } from '../skills/targets'
-import { renderTargetTemplates, targetContractPrompt } from './prompts/targets'
+import {
+  renderCompatNote,
+  renderTargetTemplates,
+  routeActiveTargets,
+  targetContractPrompt
+} from './prompts/targets'
 import {
   awaitMarkerUsageBeforeCommit,
   buildStyleBriefTools,
@@ -48,6 +53,12 @@ import { closeBrowserSession } from '../web/session'
 import { FileStreamParser } from './file-stream-parser'
 import { SessionVfs } from './session-vfs'
 import { RunContextLedger } from './run-context-ledger'
+import {
+  ContextGovernor,
+  HARD_TOOL_LIMIT,
+  ToolBudgetGate,
+  wrapToolsWithBudget
+} from './context-governor'
 import { buildFileTools } from './tools'
 import { askUser, buildAskUserTool, releaseQuestions } from './ask-user'
 import { buildImageTools } from './image-tools'
@@ -57,6 +68,7 @@ import type { RootScope } from '../workspace/roots'
 import { pendingPreviewError, previewErrorPrompt } from '../preview/errors'
 import { detectPaths } from '../workspace/detect'
 import { executingLabel, labelFor, preparingLabel, summarize, verbOf } from './tool-activity'
+import { normalizeStepUsage } from './usage'
 import { errorMessage, getLanguageModel } from './registry'
 import { RunTraceCollector } from './run-trace'
 import { mapToolErrorCode } from './tool-trace-sanitizer'
@@ -81,14 +93,10 @@ import { resolveAsset } from '../storage/service'
  */
 
 /**
- * 单回合内的工具调用**次数**上限,防跑飞。
- *
- * 按调用次数数而不是按步数:一步(一次模型生成)可以并行发多个工具调用,
- * 步数上限对"每步塞满并行调用"的模型形同虚设。触顶后不再发起新请求,
- * 已完成的改动照常落库。
+ * 工具调用预算交给 ContextGovernor 的 20/30/40 分级策略;这里只留计数
+ * 帮助区分触顶原因。按调用次数数而不是按步数:一步可以并行发多个调用,
+ * 步数上限对"每步塞满并行调用"的模型形同虚设。触顶后已完成的改动照常落库。
  */
-const MAX_TOOL_CALLS = 100
-
 function countToolCalls(steps: readonly StepResult<ToolSet>[]): number {
   return steps.reduce((n, s) => n + s.toolCalls.length, 0)
 }
@@ -235,11 +243,19 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     if (!sender.isDestroyed()) sender.send('chat:stream', event)
   }
 
+  const providerAdapter = provider.adapter as AdapterType
   const useTools = model.abilities.includes('tools')
   const canSeeImages = model.abilities.includes('vision')
   const vfs = new SessionVfs(currentFiles)
   /** 回合账本:锚点、指纹、失败熔断都以它为准,跟这一轮同生共死 */
   const runLedger = new RunContextLedger()
+  /** 同步名额闸门 + step 级治理:20 软阈值 / 30 禁重读 / 40 硬上限,3×/5× 窗口 */
+  const budgetGate = new ToolBudgetGate(HARD_TOOL_LIMIT)
+  const governor = new ContextGovernor({
+    ledger: runLedger,
+    gate: budgetGate,
+    contextWindow: model.contextWindow
+  })
   const initialStyleGate = project
     ? createInitialStyleWriteGate({
         styleBrief: project.styleBrief ?? '',
@@ -357,7 +373,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                     },
                     onDelete: (path) => emit({ streamId, type: 'file-delete', path })
                   },
-                  { ledger: runLedger }
+                  { ledger: runLedger, readGate: (path, rev) => governor.readGate(path, rev) }
                 )
               : {}),
             // 整体视觉方向是项目数据；纯聊天没有项目，因而不暴露此工具。
@@ -445,7 +461,13 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
        * 已注入的端技能要从 L1 目录里去掉,不然同一份内容出现两次白占预算。
        */
       const targets = project?.targets ?? []
-      const targetTemplates = project ? loadTargetTemplates(fileSkills, targets) : []
+      /*
+       * 活动目标路由:多端项目每轮只注入活动端的完整模板。完整模板动辄
+       * 几千 token,不活动的端只留一句兼容契约——代价是端切换那一轮会
+       * 破一次前缀缓存,换来的是每一步都少发几份全文。
+       */
+      const targetRoute = routeActiveTargets({ targets, userText: input.text, currentFiles })
+      const targetTemplates = project ? loadTargetTemplates(fileSkills, targetRoute.active) : []
       const injectedTargets = new Set(targetTemplates.map((t) => t.name))
       const catalogSkills = availableSkills.filter((s) => !injectedTargets.has(s.name))
       // 目录只列**本会话可用**的技能:纯聊天没勾就是空,连目录都不出现
@@ -462,7 +484,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               currentFiles.length > 0,
               useTools ? 'tools' : 'markers'
             ),
-            targetContract: targetContractPrompt(targets),
+            targetContract: [
+              targetContractPrompt(targetRoute.active),
+              renderCompatNote(targetRoute.compat)
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
             targetTemplates: renderTargetTemplates(targetTemplates)
           })
         : buildChatPrompt({
@@ -497,12 +524,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         abortSignal: abort.signal,
         // 运行追踪:模型请求与本地工具执行的精确相位。回调只观察不干预
         onLanguageModelCallStart: ({ callId }) => trace.modelCallStart(callId),
-        onLanguageModelCallEnd: (event) =>
+        onLanguageModelCallEnd: (event) => {
+          // step 用量立刻回流账本:治理器的 3×/5× 熔断以已上报值优先
+          runLedger.addUsage(normalizeStepUsage(event.usage, { adapter: providerAdapter }))
           trace.stepEnd(event.callId, event.usage, {
             finishReason: event.finishReason,
             responseTimeMs: event.performance?.responseTimeMs ?? null,
             timeToFirstOutputMs: event.performance?.timeToFirstOutputMs ?? null
-          }),
+          })
+        },
         onToolExecutionStart: (event) => {
           const id = event.toolCall.toolCallId
           trace.toolExecutionStart(id)
@@ -522,7 +552,18 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           toolExecMs.set(event.toolCall.toolCallId, Math.round(event.toolExecutionMs))
         },
         ...(tools
-          ? { tools, stopWhen: ({ steps }) => countToolCalls(steps) >= MAX_TOOL_CALLS }
+          ? {
+              // 所有工具共用同一个同步闸门:单个 step 一次吐出超额并行调用时,
+              // 只有预留到名额的会执行,其余原地返回 TOOL_BUDGET_EXCEEDED
+              tools: wrapToolsWithBudget(tools, budgetGate),
+              stopWhen: () => governor.shouldStop(),
+              prepareStep: ({ messages }: { messages: ModelMessage[] }) => {
+                // 序列化字符数做保守估算的分母;system 一并计入
+                const serializedChars = JSON.stringify(messages).length + (system?.length ?? 0)
+                const governed = governor.prepareStep({ messages, serializedChars })
+                return governed.messages ? { messages: governed.messages } : {}
+              }
+            }
           : {})
       })
 
@@ -700,15 +741,21 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
 
       // 触顶说明模型还没收手,按中止处理并在解说里交代
       const cappedOut =
-        useTools &&
-        (await result.finishReason) === 'tool-calls' &&
-        countToolCalls(await result.steps) >= MAX_TOOL_CALLS
+        useTools && (await result.finishReason) === 'tool-calls' && governor.shouldStop()
 
       const usage = markerUsage ?? (await result.usage)
       if (cappedOut) {
-        const note = `\n\n(已达单轮工具调用上限 ${MAX_TOOL_CALLS} 次,先停在这里。改动已保存,可以继续让我接着改。)`
+        // 分清是工具次数还是 token 预算触顶,诊断里也各记各的熔断
+        trace.setBreaker(countToolCalls(await result.steps) >= HARD_TOOL_LIMIT ? 'tool' : 'token')
+        const note = `\n\n(已达单轮预算上限(工具 ${HARD_TOOL_LIMIT} 次或累计输入超限),先停在这里。改动已保存,可以继续让我接着改。)`
         toolNarration += note
         emit({ streamId, type: 'delta', text: note })
+      }
+      // 本轮发生过致命一致性错误:绝不产出与 VFS 状态存疑的新版本
+      if (useTools && !runLedger.canFinalizeArtifact()) {
+        throw new Error(
+          `本轮发生致命一致性错误(${runLedger.fatalLockReason()}),已中止,不产出新版本。`
+        )
       }
       if (cappedOut) trace.setBreaker('tool')
       trace.finish(cappedOut || modelAborted ? 'aborted' : 'complete')
@@ -793,7 +840,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       usage,
       error,
       styleCommit,
-      ...(!isChat && keepWork && vfs.hasChanges
+      ...(!isChat && keepWork && vfs.hasChanges && runLedger.canFinalizeArtifact()
         ? {
             createArtifact: () =>
               createArtifactVersion({

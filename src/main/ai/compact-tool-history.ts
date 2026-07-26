@@ -28,6 +28,8 @@ export interface CompactionContext {
   completedWrites: WriteSummary[]
   recentErrors: ToolFailureSummary[]
   activatedSkills: Set<string>
+  /** 治理器附加的运行时提醒(预算/合并指引),跟账本一起,不另开消息 */
+  extraNotes?: string[]
 }
 
 /** 完整参数/结果在完成后就没有留存价值的写类工具 */
@@ -184,6 +186,9 @@ function renderLedger(ctx: CompactionContext, compactedCount: number): string | 
   }
   for (const skill of ctx.activatedSkills) {
     lines.push(`- 技能 ${skill} 已激活,正文见上文,仍然有效,不要重复激活`)
+  }
+  for (const note of ctx.extraNotes ?? []) {
+    lines.push(`- ${note}`)
   }
   if (lines.length === 0 && compactedCount === 0) return null
   if (compactedCount > 0) {

@@ -396,36 +396,36 @@ git commit -m "feat: show AI diagnostics and model usage"
 - Create: `src/main/ai/anchor-registry.ts`
 - Create: `src/main/ai/anchor-registry.test.ts`
 
-- [ ] **Step 1: Write failing VFS revision tests**
+- [x] **Step 1: Write failing VFS revision tests**
 
 Assert initial revision, increment-on-success, no increment for identical/no-op or rejected writes,
 atomic multi-file commit, and a single Monaco/file-patch event only after all files commit.
 
-- [ ] **Step 2: Write failing anchor coordinate tests**
+- [x] **Step 2: Write failing anchor coordinate tests**
 
 Cover 1-based inclusive line/column input, half-open internal offsets, omitted columns, optional
 trailing newline, LF/CRLF, Chinese text, emoji, rejection at a surrogate-pair midpoint, empty
 ranges, out-of-bounds coordinates, and stale revision/hash.
 
-- [ ] **Step 3: Run the focused tests**
+- [x] **Step 3: Run the focused tests**
 
 Run: `pnpm vitest run src/main/ai/session-vfs.test.ts src/main/ai/anchor-registry.test.ts`
 
 Expected: FAIL because VFS entries have no revision and anchors do not exist.
 
-- [ ] **Step 4: Refactor VFS entries and implement anchors**
+- [x] **Step 4: Refactor VFS entries and implement anchors**
 
 Store `{ content, revision }` internally while keeping compatibility helpers for callers that need
 plain strings. Anchor records contain only `id`, validated path, revision, start/end offsets, and
 content hash. All anchors are non-empty. Add invalidation helpers for committed file revisions.
 
-- [ ] **Step 5: Run VFS and anchor tests**
+- [x] **Step 5: Run VFS and anchor tests**
 
 Run: `pnpm vitest run src/main/ai/session-vfs.test.ts src/main/ai/anchor-registry.test.ts`
 
 Expected: PASS for UTF-16 and transaction/event semantics.
 
-- [ ] **Step 6: Commit revisions and anchors**
+- [x] **Step 6: Commit revisions and anchors**
 
 ```bash
 git add src/main/ai/session-vfs.ts src/main/ai/session-vfs.test.ts \
@@ -441,14 +441,14 @@ git commit -m "feat: add revision-bound edit anchors"
 - Create: `src/main/ai/string-edits.ts`
 - Create: `src/main/ai/string-edits.test.ts`
 
-- [ ] **Step 1: Add MagicString as a direct dependency**
+- [x] **Step 1: Add MagicString as a direct dependency**
 
 Run: `pnpm add magic-string`
 
 Expected: `package.json` and `pnpm-lock.yaml` list a direct runtime dependency, independent of any
 transitive lockfile entry.
 
-- [ ] **Step 2: Write failing editor tests**
+- [x] **Step 2: Write failing editor tests**
 
 Test replace/remove/insert-before/insert-after, multiple before/after order, one
 before+replace/remove+after composite, adjacent anchors, partially/fully overlapping anchors,
@@ -460,13 +460,13 @@ original-coordinate stability, multi-file success, multi-file rollback, stale/ha
 magic.update(anchor.startOffset, anchor.endOffset, before + core + after)
 ```
 
-- [ ] **Step 3: Run the editor test and verify failure**
+- [x] **Step 3: Run the editor test and verify failure**
 
 Run: `pnpm vitest run src/main/ai/string-edits.test.ts`
 
 Expected: FAIL because `MagicStringBatchEditor` does not exist.
 
-- [ ] **Step 4: Implement normalisation, conflict checks, compute, then commit**
+- [x] **Step 4: Implement normalisation, conflict checks, compute, then commit**
 
 Group operations by anchor, reject more than one replace/remove per anchor, sort non-empty ranges
 by original offsets, permit adjacency, and reject any actual overlap before calling MagicString.
@@ -474,13 +474,13 @@ Compute every output string first; only then call the VFS atomic commit and emit
 `prependLeft`/`appendRight`, persistent MagicString instances, regex replacement, movement, or
 sourcemaps.
 
-- [ ] **Step 5: Run editor and VFS tests**
+- [x] **Step 5: Run editor and VFS tests**
 
 Run: `pnpm vitest run src/main/ai/string-edits.test.ts src/main/ai/session-vfs.test.ts`
 
 Expected: PASS; failed batches leave content, revisions, and events unchanged.
 
-- [ ] **Step 6: Commit MagicString editing**
+- [x] **Step 6: Commit MagicString editing**
 
 ```bash
 git add package.json pnpm-lock.yaml src/main/ai/string-edits.ts src/main/ai/string-edits.test.ts
@@ -500,7 +500,7 @@ git commit -m "feat: add atomic MagicString edits"
 - Modify: `src/main/ai/tool-activity.test.ts`
 - Modify: `src/main/ai/prompts/protocol.ts`
 
-- [ ] **Step 1: Write failing tool contract tests**
+- [x] **Step 1: Write failing tool contract tests**
 
 Required behaviours:
 
@@ -516,37 +516,37 @@ Required behaviours:
 - three consecutive write failures require relocation/read;
 - identical tool/target/parameter fingerprints cannot execute twice.
 
-- [ ] **Step 2: Run tool tests and verify failure**
+- [x] **Step 2: Run tool tests and verify failure**
 
 Run: `pnpm vitest run src/main/ai/tool-result.test.ts src/main/ai/run-context-ledger.test.ts src/main/ai/tools.test.ts`
 
 Expected: FAIL for missing anchored tools and structured recovery.
 
-- [ ] **Step 3: Implement result helpers and the per-run ledger**
+- [x] **Step 3: Implement result helpers and the per-run ledger**
 
 Define the exact `ToolErrorCode` union from the spec plus `TOOL_BUDGET_EXCEEDED`. Fingerprints must
 hash canonicalised safe inputs in memory only; never persist full arguments. Classify upstream
 429/5xx/timeouts separately from local recoverable/fatal failures.
 
-- [ ] **Step 4: Add `capture_range`, match IDs, and `apply_string_edits`**
+- [x] **Step 4: Add `capture_range`, match IDs, and `apply_string_edits`**
 
 Construct schemas beside the current file tools. Keep the tool collection stable during a run.
 Register anchors in the run ledger and invalidate stale anchors after VFS commits. Send Monaco
 patch events only after successful atomic commit.
 
-- [ ] **Step 5: Update tool labels and prompt recovery contract**
+- [x] **Step 5: Update tool labels and prompt recovery contract**
 
 Add human labels for the two new tools and teach the protocol to switch on truncated/long lines or
 the first patch mismatch. Add an editability warning for single lines over 800 characters and
 recommend multiline arrays/columns/options without blocking saves.
 
-- [ ] **Step 6: Run all file-tool tests**
+- [x] **Step 6: Run all file-tool tests**
 
 Run: `pnpm vitest run src/main/ai/tool-result.test.ts src/main/ai/run-context-ledger.test.ts src/main/ai/tools.test.ts src/main/ai/tool-activity.test.ts src/main/ai/session-vfs.test.ts src/main/ai/string-edits.test.ts`
 
 Expected: PASS, including recovery and backwards compatibility.
 
-- [ ] **Step 7: Commit reliable tools**
+- [x] **Step 7: Commit reliable tools**
 
 ```bash
 git add src/main/ai/tool-result.ts src/main/ai/tool-result.test.ts \
@@ -563,7 +563,7 @@ git commit -m "feat: add anchored editing recovery"
 - Create: `src/main/ai/compact-tool-history.test.ts`
 - Create: `src/main/ai/compact-tool-history.integration.test.ts`
 
-- [ ] **Step 1: Write failing pure-function tests**
+- [x] **Step 1: Write failing pure-function tests**
 
 Construct AI SDK model messages containing text/reasoning plus parallel tool calls and tool results.
 Verify compaction:
@@ -580,13 +580,13 @@ Verify compaction:
 - updates that ledger idempotently;
 - validates with `modelMessageSchema`.
 
-- [ ] **Step 2: Run the pure tests and verify failure**
+- [x] **Step 2: Run the pure tests and verify failure**
 
 Run: `pnpm vitest run src/main/ai/compact-tool-history.test.ts`
 
 Expected: FAIL because the compactor is missing.
 
-- [ ] **Step 3: Implement call-ID selection and ledger replacement**
+- [x] **Step 3: Implement call-ID selection and ledger replacement**
 
 Treat the input as immutable. Filter individual parts rather than whole mixed messages. Build
 short summaries from `RunContextLedger` only—path/revision/result/error/recovery—and never place
@@ -594,19 +594,19 @@ full patch, file content, or raw tool arguments in the ledger. Use `activatedSki
 first successful skill body available and compact only later duplicate activations to the short
 ledger fact; do not remove the sole body needed for the run.
 
-- [ ] **Step 4: Add a fake multi-step model integration test**
+- [x] **Step 4: Add a fake multi-step model integration test**
 
 The fake model should reject invalid message schemas and inspect its second request. Assert a large
 completed patch and stale read are absent, while successful write facts and the next live anchor
 remain sufficient to continue.
 
-- [ ] **Step 5: Run compaction tests**
+- [x] **Step 5: Run compaction tests**
 
 Run: `pnpm vitest run src/main/ai/compact-tool-history.test.ts src/main/ai/compact-tool-history.integration.test.ts`
 
 Expected: PASS and the second-step serialised request is materially smaller.
 
-- [ ] **Step 6: Commit context compaction**
+- [x] **Step 6: Commit context compaction**
 
 ```bash
 git add src/main/ai/compact-tool-history.ts src/main/ai/compact-tool-history.test.ts \

@@ -61,6 +61,11 @@ export interface FileToolSink {
 export interface FileToolOptions {
   /** 回合账本。不传则各自新建(测试/纯编辑场景) */
   ledger?: RunContextLedger
+  /**
+   * 读闸门(ContextGovernor 提供):30 次调用后禁止重读未变化的文件。
+   * 返回拒绝文案表示拦下,null 放行。
+   */
+  readGate?: (path: string, revision: number) => string | null
 }
 
 function renderHits(hits: (SearchHit & { matchId?: string })[], withContext: boolean): string {
@@ -150,9 +155,17 @@ export function buildFileTools(
         )
       )
     }
+    // 30 次阈值后的"禁止重读未变化文件":程序化闸门,不赌模型自觉
+    if ((kind === 'read' || kind === 'locate') && path !== null && options.readGate) {
+      const denied = options.readGate(path, revision)
+      if (denied) return renderToolResult(toolError('TOOL_EXECUTION_FAILED', denied))
+    }
     try {
       const result = body()
-      if (kind === 'read' || kind === 'locate') ledger.noteLocate()
+      if (kind === 'read' || kind === 'locate') {
+        ledger.noteLocate()
+        if (path !== null) ledger.noteRead(path, revision)
+      }
       return capped(renderToolResult(result))
     } catch (err) {
       if (
@@ -160,6 +173,9 @@ export function buildFileTools(
         !(err instanceof AnchorError) &&
         !(err instanceof StringEditError)
       ) {
+        // 非预期异常是程序缺陷或本地一致性坏了:锁死后续写入并禁止产出
+        // 新版本——带着未知状态继续写,只会让 artifact 与 VFS 不一致
+        ledger.lockFatal(`工具 ${name} 发生非预期错误`)
         throw err
       }
       const result = classifyError(err)

@@ -65,6 +65,74 @@ ${multi}`
 }
 
 /**
+ * 活动目标路由:多端项目每轮只为**活动端**注入完整模板。
+ *
+ * 完整端模板动辄几千 token,三个端全量注入等于每一步都白付两份。判定按
+ * 确定性递减:用户本轮点名 > 文件路径唯一指向 > 项目只有一个端;都定不了
+ * 就一个完整模板都不注入,全部走一句话兼容契约——宁可让模型先声明切换,
+ * 也不为"可能用得上"付三倍稳定区。
+ */
+const TARGET_KEYWORDS: Record<DesignTarget, RegExp> = {
+  admin: /中后台|后台|admin|管理端|运营端/i,
+  landing: /落地页|landing|官网首页|营销页/i,
+  mobile: /移动端|手机|mobile|app\b|真机/i,
+  web: /web 应用|web应用|pc 端|pc端|桌面端/i
+}
+
+/** 文件路径 → 端的启发:多端交付结构约定每端一个入口/目录 */
+const TARGET_PATH_HINTS: Record<DesignTarget, RegExp> = {
+  admin: /(^|\/)admin[./]/,
+  landing: /(^|\/)landing[./]/,
+  mobile: /(^|\/)mobile[./]/,
+  web: /(^|\/)web[./]/
+}
+
+export interface TargetRouteInput {
+  targets: DesignTarget[]
+  userText: string
+  currentFiles: { path: string }[]
+}
+
+export interface TargetRoute {
+  /** 注入完整模板的端 */
+  active: DesignTarget[]
+  /** 只留一句兼容契约的端 */
+  compat: DesignTarget[]
+}
+
+export function routeActiveTargets(input: TargetRouteInput): TargetRoute {
+  const { targets } = input
+  if (targets.length <= 1) return { active: [...targets], compat: [] }
+
+  // 1. 用户本轮明确点名
+  const named = targets.filter((t) => TARGET_KEYWORDS[t].test(input.userText))
+  if (named.length >= 1) {
+    return { active: named, compat: targets.filter((t) => !named.includes(t)) }
+  }
+
+  // 2. 当前文件路径能唯一确定
+  const byPath = targets.filter((t) =>
+    input.currentFiles.some((f) => TARGET_PATH_HINTS[t].test(f.path))
+  )
+  if (byPath.length === 1) {
+    return { active: byPath, compat: targets.filter((t) => t !== byPath[0]) }
+  }
+
+  // 3. 定不下来:全部只给兼容契约
+  return { active: [], compat: [...targets] }
+}
+
+/** 非活动端的一句话兼容说明:告诉模型它们存在,但本轮没有模板正文 */
+export function renderCompatNote(compat: DesignTarget[]): string {
+  if (compat.length === 0) return ''
+  const names = compat.map((t) => TARGET_LABELS[t]).join('、')
+  return (
+    `本项目还勾选了:${names}。本轮未注入它们的完整端模板;` +
+    '如果这轮工作涉及这些端,先在判读里声明切换,下一轮会带上对应模板。'
+  )
+}
+
+/**
  * 端模板正文,组装期直接注入。
  *
  * 不走 activate_skill 有两个原因:一,路由已经由勾选决定,不该再赌模型
