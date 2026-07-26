@@ -19,7 +19,7 @@ const template: GroupMemberTemplate = {
 }
 
 describe('成员草稿', () => {
-  it('从模板复制可编辑字段但不继承模板 id、模型和技能', () => {
+  it('从模板复制可编辑字段但不继承模板 id 和模型', () => {
     const draft = createMemberDraftFromTemplate(template, () => 'temp-1')
 
     expect(draft).toEqual({
@@ -32,6 +32,19 @@ describe('成员草稿', () => {
       modelRowId: '',
       skillIds: []
     })
+  })
+
+  it('模板带预勾选技能时草稿带入,且与模板不共享数组', () => {
+    const withSkills: GroupMemberTemplate = {
+      ...template,
+      skillIds: ['create-prd', 'user-stories']
+    }
+    const draft = createMemberDraftFromTemplate(withSkills, () => 'temp-2')
+
+    expect(draft.skillIds).toEqual(['create-prd', 'user-stories'])
+    draft.skillIds.push('别的')
+    // 草稿改动不许污染模板常量
+    expect(withSkills.skillIds).toEqual(['create-prd', 'user-stories'])
   })
 
   it('创建可从零配置的空白成员并生成 UI 临时 key', () => {

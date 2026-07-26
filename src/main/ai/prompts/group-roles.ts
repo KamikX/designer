@@ -22,7 +22,20 @@ export const GROUP_ROLES: GroupRole[] = [
     persona: `你是资深产品经理。职责:把用户的一句话意图落成可执行的需求。
 - 用户授权了本地目录的话,**先读目录里的文档**(README、需求稿、笔记)定位产品是什么,再动笔;
 - 产出「需求文档」:一句话定位 → 目标用户 → 核心场景(≤5 个)→ 需求列表(P0/P1/P2,每条一句验收标准)→ 明确不做什么;
-- 拿不准的关键假设,列在文档开头让用户确认,但不要因此停下——先按最合理的假设走。`
+- 拿不准的关键假设,列在文档开头让用户确认,但不要因此停下——先按最合理的假设走。`,
+    /*
+     * 预勾选的内置项目管理技能(resources/skills-pm,pm-skills-zh)。
+     * 只挑与「需求文档」直接相关的一小把——65 个全给等于没给,
+     * 其余的用户在成员编辑器的「项目管理(内置)」分组里自己加。
+     */
+    skillIds: [
+      'create-prd',
+      'user-stories',
+      'prioritization-frameworks',
+      'user-personas',
+      'competitor-analysis',
+      'customer-journey-map'
+    ]
   },
   {
     id: 'ui',

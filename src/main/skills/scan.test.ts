@@ -241,3 +241,31 @@ describe('授权范围', () => {
     expect(roots[0].id).toBe('skill:vue')
   })
 })
+
+describe('内置项目管理技能(builtin-pm)', () => {
+  it('按分类目录嵌套扫描,来源标记为 builtin-pm', async () => {
+    const pmRoot = join(builtinHome, 'resources', 'skills-pm', 'execution')
+    writeSkill(pmRoot, 'create-prd', 'name: create-prd\ndescription: 编写 PRD')
+    writeSkill(pmRoot, 'user-stories', 'name: user-stories\ndescription: 用户故事')
+
+    const skills = await scan()
+    const prd = skills.find((s) => s.name === 'create-prd')
+    expect(prd?.source).toBe('builtin-pm')
+    expect(skills.find((s) => s.name === 'user-stories')?.source).toBe('builtin-pm')
+  })
+
+  it('用户目录的同名技能覆盖内置项目管理技能', async () => {
+    writeSkill(
+      join(builtinHome, 'resources', 'skills-pm', 'execution'),
+      'create-prd',
+      'name: create-prd\ndescription: 内置版'
+    )
+    writeSkill(agents, 'create-prd', 'name: create-prd\ndescription: 用户版')
+
+    const skills = await scan()
+    const prd = skills.filter((s) => s.name === 'create-prd')
+    expect(prd).toHaveLength(1)
+    expect(prd[0].source).toBe('agents')
+    expect(prd[0].description).toBe('用户版')
+  })
+})

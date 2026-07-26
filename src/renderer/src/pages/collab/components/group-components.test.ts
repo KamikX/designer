@@ -100,6 +100,12 @@ const installedSkills: InstalledSkill[] = [
     description: '内置技能',
     source: 'builtin',
     dir: '/skills/builtin'
+  },
+  {
+    name: 'create-prd',
+    description: '编写 PRD',
+    source: 'builtin-pm',
+    dir: '/skills-pm/execution/create-prd'
   }
 ]
 
@@ -276,6 +282,13 @@ describe('GroupMemberEditor', () => {
     expect(selects[1].props('options')).not.toContainEqual(
       expect.objectContaining({
         options: expect.arrayContaining([expect.objectContaining({ value: 'builtin-skill' })])
+      })
+    )
+    // 内置项目管理技能与设计内置不同:必须可选,且分组标签点名"项目管理"
+    expect(selects[1].props('options')).toContainEqual(
+      expect.objectContaining({
+        label: '项目管理(内置)',
+        options: expect.arrayContaining([expect.objectContaining({ value: 'create-prd' })])
       })
     )
   })

@@ -77,7 +77,10 @@ function errText(err: unknown): string {
  * 主进程的文件操作也只 scoped 在那个目录下。
  */
 const mySkills = computed(() => installed.value.filter((s) => s.source === 'app'))
-const builtinSkills = computed(() => installed.value.filter((s) => s.source === 'builtin'))
+// builtin-pm(内置项目管理技能)也算随应用发布的,归进同一个内置区展示
+const builtinSkills = computed(() =>
+  installed.value.filter((s) => s.source === 'builtin' || s.source === 'builtin-pm')
+)
 const globalSkills = computed(() =>
   installed.value.filter((s) => s.source === 'agents' || s.source === 'claude')
 )

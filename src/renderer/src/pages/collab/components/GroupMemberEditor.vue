@@ -30,6 +30,8 @@ const modelOptions = computed(() =>
 )
 
 const SOURCE_LABELS: Record<Exclude<InstalledSkill['source'], 'builtin'>, string> = {
+  // 内置项目管理技能排最前:这是群组场景的主打能力,用户自己的技能其次
+  'builtin-pm': '项目管理(内置)',
   app: '我的技能',
   agents: 'Agents 共享技能',
   claude: 'Claude 技能'

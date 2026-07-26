@@ -23,7 +23,12 @@ import type { WorkspaceRoot } from '../../shared/types'
  * 不可能的。
  */
 
-export type SkillSource = 'app' | 'agents' | 'claude' | 'builtin'
+/**
+ * builtin 与 builtin-pm 分开:builtin(craft/target/design-seed)在设计会话
+ * 里自动生效,而 builtin-pm(随应用发布的 65 个项目管理技能)只服务协作
+ * 群组——混在一个源里,设计会话的技能目录会被 65 个 PM 技能灌满。
+ */
+export type SkillSource = 'app' | 'agents' | 'claude' | 'builtin' | 'builtin-pm'
 
 export interface FileSkill {
   name: string
@@ -57,7 +62,9 @@ function sources(): { source: SkillSource; root: string }[] {
     { source: 'claude', root: join(home, '.claude', 'skills') },
     // 随应用发布的手艺规则与设计种子。**排最后**:用户想覆盖同名的那份时,
     // 放到前面任何一个目录里就行,不用改我们的代码
-    { source: 'builtin', root: builtinRoot() }
+    { source: 'builtin', root: builtinRoot() },
+    // 随应用发布的项目管理技能(pm-skills-zh,MIT)。同样可被用户目录覆盖
+    { source: 'builtin-pm', root: builtinPmRoot() }
   ]
 }
 
@@ -72,10 +79,19 @@ function sources(): { source: SkillSource; root: string }[] {
  * 存不存在由 scanRoot 自己判断。
  */
 function builtinRoot(): string {
+  return resourcesDir('skills')
+}
+
+/** 内置项目管理技能目录,打包处理与 builtinRoot 完全一致 */
+function builtinPmRoot(): string {
+  return resourcesDir('skills-pm')
+}
+
+function resourcesDir(name: string): string {
   try {
-    return join(electron.app.getAppPath(), 'resources', 'skills')
+    return join(electron.app.getAppPath(), 'resources', name)
   } catch {
-    return join(process.cwd(), 'resources', 'skills')
+    return join(process.cwd(), 'resources', name)
   }
 }
 

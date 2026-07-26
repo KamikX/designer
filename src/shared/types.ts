@@ -151,9 +151,11 @@ export interface GroupRoleMeta {
   deliverable: string
 }
 
-/** 可复制成成员草稿的内置模板；模型和技能由用户另行选择 */
+/** 可复制成成员草稿的内置模板；模型由用户另行选择 */
 export interface GroupMemberTemplate extends GroupRoleMeta {
   persona: string
+  /** 预勾选的内置技能(如产品经理的项目管理技能),用户可增删 */
+  skillIds?: string[]
 }
 
 /** 群组流式事件,单通道按 conversationId 路由 */
@@ -779,8 +781,11 @@ export interface McpServerInput {
 export interface InstalledSkill {
   name: string
   description: string
-  /** app 本应用 | agents 跨工具共享 | claude 兼容位置 | builtin 随应用发布 */
-  source: 'app' | 'agents' | 'claude' | 'builtin'
+  /**
+   * app 本应用 | agents 跨工具共享 | claude 兼容位置 | builtin 随应用发布 |
+   * builtin-pm 随应用发布的项目管理技能(只在协作群组里可选)
+   */
+  source: 'app' | 'agents' | 'claude' | 'builtin' | 'builtin-pm'
   dir: string
   /** 格式上的问题,界面上标出来但不影响加载 */
   warning?: string

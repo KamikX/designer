@@ -27,7 +27,8 @@ export function createMemberDraftFromTemplate(
     deliverable: template.deliverable,
     persona: template.persona,
     modelRowId: '',
-    skillIds: []
+    // 模板可以带预勾选技能(如产品经理的内置项目管理技能),用户可增删
+    skillIds: [...(template.skillIds ?? [])]
   }
 }
 
