@@ -527,6 +527,25 @@ describe('GroupMarkdownStream', () => {
     expect(wrapper.get('a[href="https://example.com"]').text()).toBe('官网')
   })
 
+  it('有效成员 ID 搭配错误或嵌套 label 时不伪装成 tag', async () => {
+    const wrapper = mount(GroupMarkdownStream, {
+      props: {
+        content: [
+          `[伪造](group-member:${MEMBER_ID})`,
+          `[@产品**经理**](group-member:${MEMBER_ID})`,
+          `[](group-member:${MEMBER_ID})`
+        ].join('\n\n'),
+        members: [configuredMember]
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.findComponent(Tag).exists()).toBe(false)
+    expect(wrapper.find('a').exists()).toBe(false)
+    expect(wrapper.text()).toContain('伪造')
+    expect(wrapper.text()).toContain('@产品经理')
+  })
+
   it('代码区、未知内部链接和流式半截提及不渲染 tag', async () => {
     const wrapper = mount(GroupMarkdownStream, {
       props: {
