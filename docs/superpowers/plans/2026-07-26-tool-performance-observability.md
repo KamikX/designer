@@ -627,13 +627,13 @@ git commit -m "feat: compact completed tool history"
 - Modify: `src/main/ai/tools.ts`
 - Modify: `src/main/ai/tools.test.ts`
 
-- [ ] **Step 1: Write failing target-routing tests**
+- [x] **Step 1: Write failing target-routing tests**
 
 Assert explicit current-turn target wins, then unique manifest/path, then single project target,
 otherwise only short compatibility contracts. An admin-only RBAC turn must include the full admin
 template and exclude full landing/web templates.
 
-- [ ] **Step 2: Write failing governor and synchronous gate tests**
+- [x] **Step 2: Write failing governor and synchronous gate tests**
 
 Cover:
 
@@ -651,19 +651,19 @@ Cover:
 - stable tool schemas are maintained until a capability is truly unavailable or a fatal lock
   applies.
 
-- [ ] **Step 3: Run routing/governor tests and verify failure**
+- [x] **Step 3: Run routing/governor tests and verify failure**
 
 Run: `pnpm vitest run src/main/ai/context-governor.test.ts src/main/ai/prompts/targets.test.ts src/main/ai/tools.test.ts`
 
 Expected: FAIL because `prepareStep` governance and reservation are absent.
 
-- [ ] **Step 4: Implement `ContextGovernor.prepareStep`**
+- [x] **Step 4: Implement `ContextGovernor.prepareStep`**
 
 Use `compactToolHistory`, target routing, ledger restrictions, and the final serialised
 instructions/messages/tool schemas to make each decision. Keep estimates separate from
 `DetailedUsage.reported`. Return an explicit terminal note when a hard budget ends the run.
 
-- [ ] **Step 5: Wrap every tool execute with one synchronous `ToolBudgetGate`**
+- [x] **Step 5: Wrap every tool execute with one synchronous `ToolBudgetGate`**
 
 `reserve(callId)` must mutate its in-memory reservation count before the execute promise starts, so
 parallel read or write calls cannot race beyond 40. Calls that fail reservation return
@@ -671,7 +671,7 @@ parallel read or write calls cannot race beyond 40. Calls that fail reservation 
 VFS/SQLite/artifact consistency error occurs, lock all subsequent writes and set a
 `forbidArtifactFinalization` flag in the run ledger.
 
-- [ ] **Step 6: Integrate `prepareStep` in design/chat and group loops**
+- [x] **Step 6: Integrate `prepareStep` in design/chat and group loops**
 
 Replace the chat hardcoded 100-call cap with shared 20/30/40 policies; keep group behaviour aligned.
 Compose with tracing from Task 4, and ensure step usage updates the same run ledger immediately.
@@ -681,14 +681,14 @@ new artifact. Add a service-level test that commits one valid edit, injects a fa
 failure, and verifies neither the partial/final VFS state nor markers are published as a new
 artifact.
 
-- [ ] **Step 7: Run context, prompt, and service tests**
+- [x] **Step 7: Run context, prompt, and service tests**
 
 Run: `pnpm vitest run src/main/ai/context-governor.test.ts src/main/ai/compact-tool-history.integration.test.ts src/main/ai/prompts/targets.test.ts src/main/ai/tools.test.ts src/main/ai/group-chain.test.ts src/main/ai/model-entrypoints.test.ts`
 
 Expected: PASS; only reserved calls produce VFS events and the next model request is schema-valid.
 Fatal consistency fixtures must also prove the artifact repository is never called.
 
-- [ ] **Step 8: Commit governance**
+- [x] **Step 8: Commit governance**
 
 ```bash
 git add src/main/ai/context-governor.ts src/main/ai/context-governor.test.ts \
@@ -707,13 +707,13 @@ git commit -m "feat: govern AI context and tool budgets"
 - Create: `docs/tool-performance-benchmark.md`
 - Modify: `docs/superpowers/specs/2026-07-26-tool-performance-observability-design.md` only if implementation evidence requires an explicitly documented deviation
 
-- [ ] **Step 1: Add the fixed synthetic fixture and baseline assertions**
+- [x] **Step 1: Add the fixed synthetic fixture and baseline assertions**
 
 The fixture must be about 25KB, contain seven files, modify five, and include deterministic
 800–1700-character lines. It must contain no copied user project data. Record exact fixture byte
 and line-size checks so future formatting cannot silently remove the stress case.
 
-- [ ] **Step 2: Add local editor and orchestration benchmark tests**
+- [x] **Step 2: Add local editor and orchestration benchmark tests**
 
 Measure atomic five-file edit duration across enough warm iterations to calculate p95; assert p95
 under 100ms on the project test environment. Separately run a deterministic fake-model scenario and
@@ -721,14 +721,14 @@ assert no truncation-driven `MATCH_NOT_FOUND`, no repeated identical failure, no
 tool calls, hard enforcement at 40, and fewer than 5 failed edit attempts per 100 attempted edit
 operations.
 
-- [ ] **Step 3: Add a database privacy audit**
+- [x] **Step 3: Add a database privacy audit**
 
 Execute representative design, local workspace, browser/web, ask-user, MCP, provider failure, and
 unknown-tool traces containing canary secrets. Query every text column in the five observability
 tables and assert no prompt, reasoning, file body, patch body, search term, absolute/basename path,
 answer, URL path/query, email, or credential survives.
 
-- [ ] **Step 4: Run the focused acceptance suite**
+- [x] **Step 4: Run the focused acceptance suite**
 
 Run:
 
@@ -744,7 +744,7 @@ pnpm vitest run \
 
 Expected: PASS, including p95, privacy, retention, atomicity, schema validity, and budget assertions.
 
-- [ ] **Step 5: Document measured before/after data**
+- [x] **Step 5: Document measured before/after data**
 
 In `docs/tool-performance-benchmark.md`, record fixture revision, machine/runtime, iterations,
 local edit p50/p95, first-file time from the deterministic harness, step/tool counts, detailed
@@ -752,7 +752,7 @@ tokens, cache reported/unreported state, and retry count. Clearly separate deter
 measurements from provider-network observations; do not claim a 15-second provider result without
 a real end-to-end sample.
 
-- [ ] **Step 6: Run complete verification**
+- [x] **Step 6: Run complete verification**
 
 Run:
 
@@ -767,7 +767,7 @@ Expected: all tests pass, typecheck/lint exit 0, and no whitespace errors. If un
 workspace changes fail a command, rerun the narrow affected suite and document the exact unrelated
 failure rather than modifying those files.
 
-- [ ] **Step 7: Inspect generated/changed data boundaries**
+- [x] **Step 7: Inspect generated/changed data boundaries**
 
 Run:
 
@@ -780,7 +780,7 @@ git status --short
 Expected: observability tables are absent from sync registration; any `reasoning` match is a numeric
 token field only; no raw prompt/file/patch storage; unrelated user files are not staged.
 
-- [ ] **Step 8: Commit benchmark and verification artifacts**
+- [x] **Step 8: Commit benchmark and verification artifacts**
 
 ```bash
 git add src/main/ai/fixtures/rbac-benchmark \
@@ -795,23 +795,23 @@ git commit -m "test: verify AI tool performance governance"
 **Files:**
 - Review all files committed in Tasks 1–11
 
-- [ ] **Step 1: Use the required verification skill**
+- [x] **Step 1: Use the required verification skill**
 
 Invoke `@superpowers:verification-before-completion` and rerun the commands it requires. Do not
 claim completion from earlier output.
 
-- [ ] **Step 2: Request a code review**
+- [x] **Step 2: Request a code review**
 
 Invoke `@superpowers:requesting-code-review` with the accepted spec, this plan, the implementation
 commit range, and explicit attention to privacy, transactionality, AI SDK message schemas,
 MagicString coordinate semantics, and parallel budget reservations.
 
-- [ ] **Step 3: Address blocking findings with focused tests**
+- [x] **Step 3: Address blocking findings with focused tests**
 
 For each accepted finding, first add or adjust a failing regression test, then implement the
 smallest fix and rerun the focused suite. Keep each logically separate fix in its own commit.
 
-- [ ] **Step 4: Re-run final verification and update benchmark evidence**
+- [x] **Step 4: Re-run final verification and update benchmark evidence**
 
 Run:
 
@@ -824,7 +824,7 @@ git diff --check
 
 Expected: all commands pass after review fixes and the benchmark document matches final code.
 
-- [ ] **Step 5: Finish the development branch**
+- [x] **Step 5: Finish the development branch**
 
 Invoke `@superpowers:finishing-a-development-branch` and offer the user its supported merge/PR
 options. Do not stage, discard, or commit unrelated dirty-worktree changes.
