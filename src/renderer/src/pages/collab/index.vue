@@ -17,7 +17,7 @@ import type { Conversation } from '@shared/types'
  */
 
 const { token } = theme.useToken()
-const { modal } = App.useApp()
+const { modal, message } = App.useApp()
 const collab = useCollabStore()
 
 const createOpen = ref(false)
@@ -46,6 +46,14 @@ function remove(group: Conversation): void {
 
 function onCreated(group: Conversation): void {
   void open(group.id)
+}
+
+async function resumeChain(): Promise<void> {
+  try {
+    await collab.resumeChain()
+  } catch (err) {
+    message.error(err instanceof Error ? err.message : String(err))
+  }
 }
 
 watch(
@@ -136,12 +144,19 @@ function scrollToBottom(smooth: boolean): void {
         <GroupMessage v-for="m in collab.messages" :key="m.id" :message="m" />
         <a-alert
           v-if="collab.error"
-          type="error"
+          :type="collab.resumeMember ? 'warning' : 'error'"
           :message="collab.error"
           show-icon
           closable
           @close="collab.error = ''"
-        />
+        >
+          <template v-if="collab.resumeMember" #action>
+            <!-- 拦停是有界循环的检查点:一键续棒 = 发一条 @成员 的新消息开新链 -->
+            <a-button size="small" :loading="collab.chainingHere" @click="resumeChain">
+              让「{{ collab.resumeMember.name }}」继续接力
+            </a-button>
+          </template>
+        </a-alert>
       </div>
       <div class="collab-composer">
         <GroupComposer />

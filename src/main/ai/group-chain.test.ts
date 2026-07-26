@@ -10,9 +10,16 @@ describe('GroupChainGuard', () => {
     expect(guard.enter('A')).toEqual({ ok: true })
   })
 
-  it('同一成员第三次参与时返回 member-limit', () => {
+  it('允许一轮完整的评审循环:产出→评审→修正→复审(同边两次)', () => {
     const guard = new GroupChainGuard()
-    for (const memberId of ['A', 'B', 'A', 'C']) {
+    for (const memberId of ['A', 'B', 'A', 'B']) {
+      expect(guard.enter(memberId)).toEqual({ ok: true })
+    }
+  })
+
+  it('同一成员第四次参与时返回 member-limit', () => {
+    const guard = new GroupChainGuard()
+    for (const memberId of ['A', 'B', 'A', 'C', 'A', 'B']) {
       expect(guard.enter(memberId)).toEqual({ ok: true })
     }
 
@@ -20,20 +27,20 @@ describe('GroupChainGuard', () => {
     expect(result).toMatchObject({ ok: false, reason: 'member-limit' })
     // 文案要用成员名、并告诉用户怎么手动继续——ULID 对用户毫无意义
     if (!result.ok) {
-      expect(result.message).toMatch(/「产品经理」.*两次/)
+      expect(result.message).toMatch(/「产品经理」.*3 次/)
       expect(result.message).toContain('@产品经理')
     }
   })
 
-  it('同一有向边第二次出现时返回 cycle-detected', () => {
+  it('同一有向边第三次出现时返回 cycle-detected', () => {
     const guard = new GroupChainGuard()
-    for (const memberId of ['A', 'B', 'C', 'A']) {
+    for (const memberId of ['A', 'B', 'A', 'B', 'A']) {
       expect(guard.enter(memberId)).toEqual({ ok: true })
     }
 
     const result = guard.enter('B')
     expect(result).toMatchObject({ ok: false, reason: 'cycle-detected' })
-    if (!result.ok) expect(result.message).toMatch(/走过一次.*循环/)
+    if (!result.ok) expect(result.message).toMatch(/走过 2 次.*绕圈/)
   })
 
   it('反向边不是重复边', () => {

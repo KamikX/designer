@@ -519,36 +519,39 @@ describe('链路停止与清理', () => {
     expect((await waitForTerminal()).type).toBe('chain-done')
   })
 
-  it('重复有向边发 cycle-detected，不再执行被拒绝的一棒', async () => {
+  it('同边第三次发 cycle-detected,允许前两次(完整评审返工),并带可续棒成员', async () => {
     const [a, b] = [member(0), member(1)]
     mocks.conversation = configuredConversation([a, b])
     mocks.models.set(a.modelRowId, model(a.modelRowId))
     mocks.models.set(b.modelRowId, model(b.modelRowId))
-    mocks.outputs.push(mention(b), mention(a), mention(b))
+    mocks.outputs.push(mention(b), mention(a), mention(b), mention(a), mention(b))
 
     sendGroupMessage(sender() as never, input(mention(a)))
     expect(await waitForTerminal()).toMatchObject({
       type: 'chain-stopped',
       reason: 'cycle-detected',
       // 拦停文案用成员名并告诉用户可以手动 @ 继续
-      message: expect.stringContaining('「成员1 → 成员2」')
+      message: expect.stringContaining('「成员1 → 成员2」'),
+      // 一键续棒靠它定位被拦的成员
+      nextMemberId: b.id
     })
-    expect(mocks.streamOptions).toHaveLength(3)
+    expect(mocks.streamOptions).toHaveLength(5)
     expect(mocks.events.some((event) => event.type === 'chain-done')).toBe(false)
   })
 
-  it('成员第三次参与发 member-limit', async () => {
+  it('成员第四次参与发 member-limit,第三次(复审)放行', async () => {
     const [a, b, c] = [member(0), member(1), member(2)]
     mocks.conversation = configuredConversation([a, b, c])
     for (const item of [a, b, c]) mocks.models.set(item.modelRowId, model(item.modelRowId))
-    mocks.outputs.push(mention(b), mention(a), mention(c), mention(a))
+    mocks.outputs.push(mention(b), mention(a), mention(c), mention(a), mention(b), mention(a))
 
     sendGroupMessage(sender() as never, input(mention(a)))
     expect(await waitForTerminal()).toMatchObject({
       type: 'chain-stopped',
-      reason: 'member-limit'
+      reason: 'member-limit',
+      nextMemberId: a.id
     })
-    expect(mocks.streamOptions).toHaveLength(4)
+    expect(mocks.streamOptions).toHaveLength(6)
   })
 
   it('第九位成员开始前发 hop-limit，不被 for 循环静默截断', async () => {

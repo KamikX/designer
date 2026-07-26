@@ -11,7 +11,7 @@ import type {
   Provider
 } from '@shared/types'
 import { normalizeGroupMembers } from '@shared/group-members'
-import { firstMention } from '@shared/group-mentions'
+import { createGroupMention, firstMention } from '@shared/group-mentions'
 import { useProviderStore } from './provider'
 
 /**
@@ -60,6 +60,11 @@ export const useCollabStore = defineStore('collab', {
     speakingAuthor: '' as string,
     /** 流事件里报上来的错误(发送失败的错误走 message.error,不进这里) */
     error: '' as string,
+    /**
+     * chain-stopped 时被拦下的成员 id:接力的三种拦停都是"有界循环"的
+     * 检查点而非终点,记下 TA 让页面给一键续棒按钮。空串 = 无可续。
+     */
+    resumeMemberId: '' as string,
     unsubscribe: null as (() => void) | null
   }),
 
@@ -85,6 +90,11 @@ export const useCollabStore = defineStore('collab', {
     /** 当前打开的群有没有接力在跑。别的群在后台跑不关这里的事 */
     chainingHere(state): boolean {
       return state.chaining[state.conversationId] === true
+    },
+    /** 一键续棒的目标成员;成员已被移出群时返回 null,按钮随之消失 */
+    resumeMember(state): GroupRoleMeta | null {
+      if (!state.resumeMemberId) return null
+      return this.memberRoles.find((role) => role.id === state.resumeMemberId) ?? null
     },
     /**
      * 模型选择器的数据源:只列带 tools 能力的模型。
@@ -124,6 +134,7 @@ export const useCollabStore = defineStore('collab', {
       this.systemPrompts = {}
       this.speakingAuthor = ''
       this.error = ''
+      this.resumeMemberId = ''
     },
 
     /** 回到空状态引导页 */
@@ -134,6 +145,7 @@ export const useCollabStore = defineStore('collab', {
       this.systemPrompts = {}
       this.speakingAuthor = ''
       this.error = ''
+      this.resumeMemberId = ''
     },
 
     async createGroup(input: CreateGroupInput): Promise<Conversation> {
@@ -164,6 +176,7 @@ export const useCollabStore = defineStore('collab', {
       const cid = this.conversationId
       if (!trimmed || !cid || this.chainingHere) return
       this.error = ''
+      this.resumeMemberId = ''
 
       const optimistic: Message = {
         id: `local-${Date.now()}`,
@@ -195,6 +208,18 @@ export const useCollabStore = defineStore('collab', {
         if (startsChain) delete this.chaining[cid]
         throw err
       }
+    },
+
+    /**
+     * 一键续棒:guard 拦停后,以一条新用户消息 @ 被拦的成员开新链。
+     * 走普通 send 而不是"恢复旧链":新链的 guard 计数重置,同时留下一条
+     * 可见的用户消息作为"人确认过继续"的记录。
+     */
+    async resumeChain(): Promise<void> {
+      const target = this.resumeMember
+      if (!target || this.chainingHere) return
+      await this.send(`${createGroupMention(target)} 请接着上一棒的交接继续`)
+      this.error = ''
     },
 
     /** 停止当前群的接力链 */
@@ -305,6 +330,7 @@ export const useCollabStore = defineStore('collab', {
           delete this.chaining[cid]
           this.speakingAuthor = ''
           this.error = event.message
+          this.resumeMemberId = event.nextMemberId ?? ''
           break
         }
         case 'error': {

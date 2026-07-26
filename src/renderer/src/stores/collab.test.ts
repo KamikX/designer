@@ -162,6 +162,48 @@ describe('棒内重试的界面复位', () => {
   })
 })
 
+describe('拦停后的一键续棒', () => {
+  it('chain-stopped 记下被拦成员,resumeChain 发结构化提及开新链', async () => {
+    const sent: string[] = []
+    const store = prepareStore(
+      vi.fn(async (input: { text: string }) => {
+        sent.push(input.text)
+      }) as unknown as DesignerApi['group']['send']
+    )
+
+    store.handleEvent({
+      type: 'chain-stopped',
+      conversationId: group.id,
+      reason: 'member-limit',
+      message: '「产品经理」已参与 3 次',
+      nextMemberId: member.id
+    })
+    expect(store.resumeMember?.name).toBe('产品经理')
+
+    await store.resumeChain()
+
+    // 续棒 = 一条带结构化提及的新用户消息:guard 随新链重置,且留下人为确认的痕迹
+    expect(sent[0]).toContain(`@[产品经理](member:${member.id})`)
+    expect(sent[0]).toContain('继续')
+    expect(store.resumeMemberId).toBe('')
+    expect(store.chainingHere).toBe(true)
+  })
+
+  it('被拦成员已不在群里时不给续棒入口', () => {
+    const store = prepareStore(vi.fn(async () => undefined))
+
+    store.handleEvent({
+      type: 'chain-stopped',
+      conversationId: group.id,
+      reason: 'hop-limit',
+      message: '到达上限',
+      nextMemberId: '01ARZ3NDEKTSV4RRFFQ69G5FB9'
+    })
+
+    expect(store.resumeMember).toBeNull()
+  })
+})
+
 describe('collab terminal message state', () => {
   it('意外收到 agent-done 时不把 aborted 消息覆盖成 complete', () => {
     const store = prepareStore(vi.fn(async () => undefined))

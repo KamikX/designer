@@ -65,9 +65,9 @@ pnpm build:mac / build:win
 
 ### 多 agent 协作群组(src/main/ai/group-service.ts)
 
-聊天室 + @ 接力:创建群组时把可配置成员完整保存为 `settings.members: GroupMember[]`，五个内置角色只作为建群模板；成员用 ULID 作为稳定身份，并各自携带人设、模型行和文件技能。用户 @ 成员发起，agent 产出 markdown 文档(消息即文档,没有 VFS/版本/代码)，每一棒使用该成员自己的模型与技能，末尾 @ 下一位继续。结构化提及与精确自然 `@成员名` 的解析统一在 `shared/group-mentions.ts`；`GroupChainGuard` 允许成员参与两次，同时拦截第三次参与、重复有向边和超过 8 棒。复用 conversations(kind='group')与 messages(author 存成员 ULID);事件走独立的 `group:stream` 通道;群聊记录拼成**单条** transcript(多条连续 user 消息有些供应商拒收)。agent 使用本地文件、时间和已选技能激活工具——本地文件按 workspace roots 的 conversationId 域授权。
+聊天室 + @ 接力:创建群组时把可配置成员完整保存为 `settings.members: GroupMember[]`，五个内置角色只作为建群模板；成员用 ULID 作为稳定身份，并各自携带人设、模型行和文件技能。用户 @ 成员发起，agent 产出 markdown 文档(消息即文档,没有 VFS/版本/代码)，每一棒使用该成员自己的模型与技能，末尾 @ 下一位继续。结构化提及与精确自然 `@成员名` 的解析统一在 `shared/group-mentions.ts`；`GroupChainGuard` 做**有界循环**:成员最多参与 3 次、同一有向交接最多 2 次(容纳一轮完整评审返工)、8 棒封顶;拦停不是终点——`chain-stopped` 带 `nextMemberId`,渲染层给「让 TA 继续接力」一键续棒(发新消息开新链,guard 随链重置,人是循环的检查点)。复用 conversations(kind='group')与 messages(author 存成员 ULID);事件走独立的 `group:stream` 通道;群聊记录拼成**单条** transcript(多条连续 user 消息有些供应商拒收)。agent 使用本地文件、时间和已选技能激活工具——本地文件按 workspace roots 的 conversationId 域授权。
 
-transcript 有上下文预算(`group-transcript.ts`,按成员模型 contextWindow 折算):超预算时把旧发言折叠成标题骨架存根,**用户消息、各成员最新一条、上一棒永不折叠**,末尾重述上一棒的交接指令。收棒后异步生成滚动「前情纪要」(`group-digest.ts`,存 `group_digests` 表——派生缓存,不进同步),折叠时纪要块替换被覆盖的存根;纪要生成失败静默降级为机械折叠,绝不阻塞接力链。
+transcript 有上下文预算(`group-transcript.ts`,按成员模型 contextWindow 折算):超预算时把旧发言折叠成标题骨架存根(带消息 id),**用户消息、各成员最新一条、上一棒永不折叠**,末尾重述上一棒的交接指令。收棒后异步生成滚动「前情纪要」(`group-digest.ts`,存 `group_digests` 表——派生缓存,不进同步),折叠时纪要块替换被覆盖的存根;纪要生成失败静默降级为机械折叠,绝不阻塞接力链。agent 需要被折叠的原文时用 `group-tools.ts` 的 list_group_messages / read_group_message 按行区间回读(只读幂等,共享工具预算,结果不落库)。
 
 ### 预览链路(src/main/preview/)
 

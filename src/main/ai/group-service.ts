@@ -19,6 +19,7 @@ import { maybeUpdateGroupDigest } from './group-digest'
 import { getGroupDigest } from '../db/repo/group-digest'
 import { buildTimeTools } from './time-tools'
 import { buildLocalTools } from './local-tools'
+import { buildGroupHistoryTools } from './group-tools'
 import { listRoots } from '../workspace/roots'
 import { labelFor, verbOf } from './tool-activity'
 import { GroupChainGuard } from './group-chain'
@@ -128,7 +129,9 @@ async function runChain(
         conversationId,
         type: 'chain-stopped',
         reason: guarded.reason,
-        message: guarded.message
+        message: guarded.message,
+        // 带上被拦的成员,渲染层给一键续棒(新消息开新链,guard 随链重置)
+        nextMemberId: current
       })
       return
     }
@@ -233,6 +236,7 @@ async function runChain(
             tools: wrapToolsWithBudget(
               {
                 ...buildTimeTools(),
+                ...buildGroupHistoryTools(conversationId, mentionMembers),
                 ...buildLocalTools(roots, {
                   canSeeImages: agent.model.abilities.includes('vision'),
                   intent: input.text
@@ -370,6 +374,7 @@ function buildAgentSystem(
 - **只产出 markdown 文档**,不写实现代码(字段表、结构树、伪代码可以)。文档以一级标题开头(如「# 需求文档:xxx」)。
 - 直接输出文档本身,不要客套与自我介绍。
 - 群聊记录里【角色名】开头的是各成员的发言,你自己的历史发言也在其中,不要重复已有内容,在其基础上推进。
+- 记录过长时较早的发言会被折叠成「结构存根 + 前情纪要」;需要逐字引用被折叠的原文时,用 read_group_message 按存根标注的消息 id 取回,长文档按行区间分段读。
 - 完成后在消息**末尾单独一行**决定下一棒:还需要谁接力就写「@角色名 一句话交代要做什么」;整条链路完成或需要用户决策时写「@用户 一句话总结」。**一次只 @ 一位。**`,
     hasRoots
       ? '- 用户授权了本地目录:先用 list_local / read_local_file 读里面的文档定位背景,再动笔。'

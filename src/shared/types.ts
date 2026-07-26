@@ -193,6 +193,8 @@ export type GroupStreamEvent = { conversationId: string } & (
       type: 'chain-stopped'
       reason: 'cycle-detected' | 'member-limit' | 'hop-limit'
       message: string
+      /** 被拦下的那位成员:渲染层据此给「让 TA 继续接力」的一键续棒按钮 */
+      nextMemberId?: string
     }
   | { type: 'error'; message: string; messageId?: string }
 )

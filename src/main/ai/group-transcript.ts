@@ -125,7 +125,8 @@ function stubText(entry: TranscriptEntry): string {
       ?.trim() ?? ''
   const skeleton = headings.length > 0 ? headings.join('\n') : `${entry.text.slice(0, 200)}…`
   const handoff = lastLine && !headings.includes(lastLine) ? `\n(结尾交接:${lastLine})` : ''
-  return `(这条较早的发言已折叠,全文 ${entry.text.length} 字,此处只保留结构)\n${skeleton}${handoff}`
+  // 带消息 id:需要逐字引用时,agent 可用 read_group_message 按 id 取回原文
+  return `(这条较早的发言已折叠,全文 ${entry.text.length} 字,此处只保留结构;原文可用 read_group_message 读取,消息 id: ${entry.id})\n${skeleton}${handoff}`
 }
 
 /**
