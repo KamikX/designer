@@ -1,0 +1,186 @@
+<script setup lang="ts">
+import { theme } from 'antdv-next'
+import type { InstalledSkill, Model, Provider } from '@shared/types'
+import type { MemberDraft } from '../member-drafts'
+
+interface ModelGroup {
+  provider: Provider
+  models: Model[]
+}
+
+const props = defineProps<{
+  modelGroups: readonly ModelGroup[]
+  skills: readonly InstalledSkill[]
+}>()
+
+const member = defineModel<MemberDraft>({ required: true })
+const { token } = theme.useToken()
+
+const modelOptions = computed(() =>
+  props.modelGroups
+    .map(({ provider, models }) => ({
+      label: provider.name,
+      options: models
+        .filter(
+          (model) => model.enabled && model.type === 'chat' && model.abilities.includes('tools')
+        )
+        .map((model) => ({ label: model.displayName, value: model.id }))
+    }))
+    .filter((group) => group.options.length > 0)
+)
+
+const SOURCE_LABELS: Record<Exclude<InstalledSkill['source'], 'builtin'>, string> = {
+  app: '我的技能',
+  agents: 'Agents 共享技能',
+  claude: 'Claude 技能'
+}
+
+const skillOptions = computed(() => {
+  const selectable = props.skills.filter((skill) => skill.source !== 'builtin')
+  const groups = (Object.keys(SOURCE_LABELS) as (keyof typeof SOURCE_LABELS)[]).flatMap(
+    (source) => {
+      const options = selectable
+        .filter((skill) => skill.source === source)
+        .map((skill) => ({
+          label: skill.name,
+          value: skill.name,
+          title: skill.description
+        }))
+      return options.length > 0 ? [{ label: SOURCE_LABELS[source], options }] : []
+    }
+  )
+
+  // 技能被卸载后仍保留一个可删除的选项，避免 Select 把未知值显示得像脏数据。
+  const installedNames = new Set(selectable.map((skill) => skill.name))
+  const missing = member.value.skillIds
+    .filter((name) => !installedNames.has(name))
+    .map((name) => ({ label: `${name}（已卸载）`, value: name }))
+  return missing.length > 0 ? [...groups, { label: '已失效', options: missing }] : groups
+})
+
+type TextField = 'name' | 'color' | 'duty' | 'deliverable' | 'persona'
+
+function updateText(field: TextField, value: unknown): void {
+  member.value = {
+    ...member.value,
+    [field]: typeof value === 'string' ? value : String(value ?? ''),
+    skillIds: [...member.value.skillIds]
+  }
+}
+
+function updateModel(value: unknown): void {
+  member.value = {
+    ...member.value,
+    modelRowId: typeof value === 'string' ? value : '',
+    skillIds: [...member.value.skillIds]
+  }
+}
+
+function updateSkills(value: unknown): void {
+  const skillIds = Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+  member.value = { ...member.value, skillIds }
+}
+</script>
+
+<template>
+  <div class="member-editor" :style="{ borderColor: token.colorBorderSecondary }">
+    <div class="member-editor-title">编辑成员</div>
+    <a-form layout="vertical" size="small">
+      <div class="member-editor-grid">
+        <a-form-item label="名称" required>
+          <a-input
+            data-testid="member-name"
+            :value="member.name"
+            :maxlength="24"
+            placeholder="如 需求策划"
+            @update:value="updateText('name', $event)"
+          />
+        </a-form-item>
+        <a-form-item label="头像颜色">
+          <a-input
+            data-testid="member-color"
+            :value="member.color"
+            type="color"
+            @update:value="updateText('color', $event)"
+          />
+        </a-form-item>
+      </div>
+
+      <a-form-item label="职责">
+        <a-input
+          data-testid="member-duty"
+          :value="member.duty"
+          placeholder="一句话说明负责什么"
+          @update:value="updateText('duty', $event)"
+        />
+      </a-form-item>
+      <a-form-item label="产出物">
+        <a-input
+          data-testid="member-deliverable"
+          :value="member.deliverable"
+          placeholder="如 需求文档"
+          @update:value="updateText('deliverable', $event)"
+        />
+      </a-form-item>
+      <a-form-item label="人设" required>
+        <a-textarea
+          data-testid="member-persona"
+          :value="member.persona"
+          :auto-size="{ minRows: 4, maxRows: 8 }"
+          placeholder="说明成员的专业背景、工作方式与交付要求"
+          @update:value="updateText('persona', $event)"
+        />
+      </a-form-item>
+      <a-form-item label="模型" required>
+        <a-select
+          data-testid="member-model"
+          :value="member.modelRowId || undefined"
+          :options="modelOptions"
+          show-search
+          option-filter-prop="label"
+          placeholder="选择支持工具调用的模型"
+          @update:value="updateModel"
+        />
+      </a-form-item>
+      <a-form-item label="技能" extra="内置技能由系统按场景启用，这里只配置可选技能。">
+        <a-select
+          data-testid="member-skills"
+          :value="member.skillIds"
+          :options="skillOptions"
+          mode="multiple"
+          show-search
+          option-filter-prop="label"
+          placeholder="搜索并选择技能"
+          @update:value="updateSkills"
+        />
+      </a-form-item>
+    </a-form>
+  </div>
+</template>
+
+<style scoped>
+.member-editor {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid;
+  border-radius: 12px;
+}
+
+.member-editor-title {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.member-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 10px;
+}
+
+.member-editor :deep(.ant-form-item) {
+  margin-bottom: 12px;
+}
+</style>

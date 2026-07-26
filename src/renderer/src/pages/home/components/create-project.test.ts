@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import {
   buildCreateProjectInput,
   createDefaultProjectForm,
-  resetProjectForm
+  resetProjectForm,
+  STYLE_BRIEF_FIELD_LABEL
 } from './create-project'
 
 describe('buildCreateProjectInput', () => {
@@ -74,8 +73,6 @@ describe('resetProjectForm', () => {
 
 describe('CreateProjectModal', () => {
   it('明确标注视觉风格可以留空', () => {
-    const source = readFileSync(join(__dirname, 'CreateProjectModal.vue'), 'utf8')
-
-    expect(source).toContain('label="视觉风格（可选）"')
+    expect(STYLE_BRIEF_FIELD_LABEL).toBe('视觉风格（可选）')
   })
 })

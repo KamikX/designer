@@ -47,7 +47,7 @@ import {
 } from '../db/repo/conversation'
 import { abortGroup, sendGroupMessage } from '../ai/group-service'
 import { createGroupMembers } from '../ai/group-members'
-import { roleMetas } from '../ai/prompts/group-roles'
+import { roleTemplates } from '../ai/prompts/group-roles'
 import {
   clearProviderKey,
   createProvider,
@@ -134,7 +134,7 @@ export function registerIpc(): void {
   ipcMain.handle('market:mcp', () => catalog().mcp())
 
   // 多 agent 协作群组
-  ipcMain.handle('group:roles', () => roleMetas())
+  ipcMain.handle('group:roles', () => roleTemplates())
   ipcMain.handle('group:list', () => listGroups())
   ipcMain.handle('group:create', (_e, input: CreateGroupInput) => {
     if (input == null || typeof input.name !== 'string' || !input.name.trim()) {

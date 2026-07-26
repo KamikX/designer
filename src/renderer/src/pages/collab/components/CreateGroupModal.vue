@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
+import { PlusOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
-import RoleAvatar from './RoleAvatar.vue'
-import type { Conversation } from '@shared/types'
-
-/**
- * 新建群组:群名 + 角色多选卡片。
- *
- * 默认全选五个角色——它们是一条完整的接力流水线,少了谁链条都可能在
- * 那一环断掉。用户明确知道自己不需要哪个环节时再取消。
- */
+import { useProviderStore } from '@renderer/stores/provider'
+import GroupMemberEditor from './GroupMemberEditor.vue'
+import GroupMemberList from './GroupMemberList.vue'
+import {
+  createBlankMemberDraft,
+  createMemberDraftFromTemplate,
+  moveMemberDraft,
+  removeMemberDraft,
+  toGroupMemberDrafts,
+  validateMemberDrafts
+} from '../member-drafts'
+import type { Conversation, GroupMemberTemplate, InstalledSkill } from '@shared/types'
+import type { MemberDraft, MoveDirection } from '../member-drafts'
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ created: [group: Conversation] }>()
@@ -17,22 +22,73 @@ const emit = defineEmits<{ created: [group: Conversation] }>()
 const { token } = theme.useToken()
 const { message } = App.useApp()
 const collab = useCollabStore()
+const providerStore = useProviderStore()
 
-const name = ref('')
-const picked = ref<string[]>([])
-const creating = ref(false)
+const name = shallowRef('')
+const members = ref<MemberDraft[]>([])
+const editingKey = shallowRef('')
+const skills = ref<InstalledSkill[]>([])
+const creating = shallowRef(false)
 
-// 每次打开都重置成默认态,上一次建群的残留不该带过来
-watch(open, (now) => {
-  if (!now) return
-  name.value = ''
-  picked.value = collab.roles.map((r) => r.id)
+const editingMember = computed(() => {
+  return members.value.find((member) => member.tempKey === editingKey.value) ?? null
 })
 
-function toggle(id: string): void {
-  picked.value = picked.value.includes(id)
-    ? picked.value.filter((x) => x !== id)
-    : [...picked.value, id]
+watch(
+  open,
+  (now) => {
+    if (!now) return
+    name.value = ''
+    members.value = []
+    editingKey.value = ''
+    void loadOptions()
+  },
+  { immediate: true }
+)
+
+async function loadOptions(): Promise<void> {
+  try {
+    const [, installed] = await Promise.all([
+      providerStore.load(),
+      window.api.market.installedSkills()
+    ])
+    skills.value = installed
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+function addTemplate(template: GroupMemberTemplate): void {
+  const draft = createMemberDraftFromTemplate(template)
+  members.value = [...members.value, draft]
+  editingKey.value = draft.tempKey
+}
+
+function addBlank(): void {
+  const draft = createBlankMemberDraft()
+  members.value = [...members.value, draft]
+  editingKey.value = draft.tempKey
+}
+
+function edit(tempKey: string): void {
+  editingKey.value = tempKey
+}
+
+function updateMember(member: MemberDraft): void {
+  members.value = members.value.map((current) =>
+    current.tempKey === member.tempKey ? member : current
+  )
+}
+
+function remove(tempKey: string): void {
+  const index = members.value.findIndex((member) => member.tempKey === tempKey)
+  members.value = removeMemberDraft(members.value, tempKey)
+  if (editingKey.value !== tempKey) return
+  editingKey.value = members.value[Math.min(index, members.value.length - 1)]?.tempKey ?? ''
+}
+
+function move(tempKey: string, direction: MoveDirection): void {
+  members.value = moveMemberDraft(members.value, tempKey, direction)
 }
 
 async function submit(): Promise<void> {
@@ -41,18 +97,27 @@ async function submit(): Promise<void> {
     message.warning('给群组起个名字')
     return
   }
-  if (picked.value.length === 0) {
-    message.warning('至少选择一个角色')
+
+  const validModelRowIds = new Set(
+    collab.toolModels.flatMap(({ models }) => models.map((model) => model.id))
+  )
+  const memberError = validateMemberDrafts(members.value, validModelRowIds)
+  if (memberError) {
+    message.warning(memberError)
     return
   }
+
   creating.value = true
   try {
-    // 摊成普通数组:IPC 是 structured clone,响应式代理传不过去
-    const created = await collab.createGroup(groupName, [...picked.value])
+    // 每层都摊成普通对象/数组，避免把 Vue Proxy 交给 structured clone。
+    const created = await collab.createGroup({
+      name: groupName,
+      members: toGroupMemberDrafts(members.value)
+    })
     open.value = false
     emit('created', created)
-  } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : String(error))
   } finally {
     creating.value = false
   }
@@ -64,46 +129,76 @@ async function submit(): Promise<void> {
     v-model:open="open"
     title="新建群组"
     :confirm-loading="creating"
-    :width="520"
+    :width="900"
     centered
     ok-text="建群"
     @ok="submit"
   >
-    <!-- 角色多起来时整体可能超过视口:内容封顶,内部滚 -->
     <div class="create-body">
-      <a-form layout="vertical" style="margin-top: 8px">
+      <a-form layout="vertical">
         <a-form-item label="群组名称" required>
           <a-input
             v-model:value="name"
+            data-testid="group-name"
             size="large"
             placeholder="如 官网改版专项 / 管理后台需求评审"
             @press-enter="submit"
           />
         </a-form-item>
-
-        <a-form-item label="成员角色">
-          <div class="role-grid">
-            <button
-              v-for="role in collab.roles"
-              :key="role.id"
-              type="button"
-              class="role-card"
-              :style="
-                picked.includes(role.id)
-                  ? { borderColor: role.color, boxShadow: `0 0 0 1px ${role.color}` }
-                  : { borderColor: token.colorBorderSecondary }
-              "
-              @click="toggle(role.id)"
-            >
-              <RoleAvatar :role="role" :size="24" />
-              <span class="role-card-name">{{ role.name }}</span>
-              <span class="role-card-duty" :style="{ color: token.colorTextTertiary }">
-                {{ role.duty }}
-              </span>
-            </button>
-          </div>
-        </a-form-item>
       </a-form>
+
+      <div class="template-head">
+        <span class="section-title">快捷模板</span>
+        <span class="section-hint" :style="{ color: token.colorTextTertiary }">
+          模板只复制职责与人设，模型和技能由你配置
+        </span>
+      </div>
+      <div class="template-row">
+        <a-button
+          v-for="role in collab.roles"
+          :key="role.id"
+          :data-testid="`add-template-${role.id}`"
+          size="small"
+          @click="addTemplate(role)"
+        >
+          <span class="template-dot" :style="{ background: role.color }" />
+          {{ role.name }}
+        </a-button>
+        <a-button data-testid="add-blank-member" size="small" type="dashed" @click="addBlank">
+          <template #icon><PlusOutlined /></template>
+          空白成员
+        </a-button>
+      </div>
+
+      <div class="member-layout">
+        <section class="member-column">
+          <div class="section-title">群组成员 · {{ members.length }}</div>
+          <GroupMemberList
+            :members="members"
+            :active-key="editingKey"
+            @edit="edit"
+            @remove="remove"
+            @move="move"
+          />
+        </section>
+
+        <section class="editor-column">
+          <GroupMemberEditor
+            v-if="editingMember"
+            :model-value="editingMember"
+            :model-groups="collab.toolModels"
+            :skills="skills"
+            @update:model-value="updateMember"
+          />
+          <div
+            v-else
+            class="editor-placeholder"
+            :style="{ color: token.colorTextTertiary, borderColor: token.colorBorderSecondary }"
+          >
+            添加或选择一位成员后，在这里配置它
+          </div>
+        </section>
+      </div>
     </div>
   </a-modal>
 </template>
@@ -113,45 +208,68 @@ async function submit(): Promise<void> {
   max-height: 70vh;
   overflow-y: auto;
   overscroll-behavior: contain;
+  padding: 4px 2px;
 }
 
-.role-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 8px;
+.template-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 
-.role-card {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  grid-template-areas: 'avatar name' 'avatar duty';
-  gap: 2px 10px;
-  text-align: left;
-  padding: 10px 12px;
-  border: 1px solid;
-  border-radius: 10px;
-  background: none;
-  cursor: pointer;
-  color: inherit;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
-}
-
-.role-card > :first-child {
-  grid-area: avatar;
-  align-self: center;
-}
-
-.role-card-name {
-  grid-area: name;
+.section-title {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
-.role-card-duty {
-  grid-area: duty;
+.section-hint {
   font-size: 11px;
-  line-height: 1.5;
+}
+
+.template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 8px 0 18px;
+}
+
+.template-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 50%;
+}
+
+.member-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(360px, 1.2fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.member-column,
+.editor-column {
+  min-width: 0;
+}
+
+.member-column > .section-title {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.editor-placeholder {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  border: 1px dashed;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .member-layout {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

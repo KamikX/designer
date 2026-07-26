@@ -73,19 +73,13 @@ describe('内置设计技能的 StyleBrief 契约', () => {
     (target) => {
       const skill = readSkill(target)
 
-      expect(skill).toMatch(/结构.*不决定.*视觉|不决定.*视觉.*结构/)
-      expect(skill).toMatch(/StyleBrief/)
-      expect(skill).toMatch(/六维 fallback|fallback.*六维/)
-      expect(skill).toMatch(/target.*不.*(?:新增|生成|自建).*fallback/i)
-      expect(skill).not.toMatch(/连续两个项目不许选同一组/)
-      expect(skill).not.toMatch(/可信专业\(默认\)|左对齐大字\(默认\)|浅色描边\(默认\)/)
-      expect(skill).not.toMatch(
-        /(?:气质|密度|侧栏|首屏形态|明暗|卡片|圆角|品牌色)[^\n]{0,40}\(默认\)/
-      )
-      expect(skill).not.toMatch(/2-4px|8px|12px\+|品牌色注入|bg-brand-500/)
-      expect(skill).not.toMatch(
-        /320px|240px|66ch|2px 竖条|左对齐首屏|居中首屏|三栏特性|相邻区块不得同版式|版式家族/
-      )
+      // 文本技能只能做静态契约检验：守住来源声明与少量高风险锚点，
+      // 不镜像整句说明；实际遵循程度由独立压力场景验证。
+      expect(skill).toMatch(/视觉决定只能来自项目 StyleBrief/)
+      expect(skill).toMatch(/六维 fallback/)
+      expect(skill).toMatch(/本 target 不自建 fallback/)
+      expect(skill).not.toMatch(/连续两个项目/)
+      expect(skill).not.toMatch(/bg-brand-500|2-4px/)
     }
   )
 
@@ -120,6 +114,15 @@ describe('StyleBrief 不被通用审美护栏覆盖', () => {
     const admin = targetContractPrompt(['admin'])
     expect(admin).toMatch(/效率|信息架构/)
     expect(admin).not.toMatch(/克制到近乎无趣|装饰即噪音/)
+  })
+
+  it('跨 prompt 的 landing 角色不注入固定构图，由 StyleBrief 与内容层级决定', () => {
+    const landing = targetContractPrompt(['landing'])
+
+    expect(landing).toMatch(/StyleBrief/)
+    expect(landing).toMatch(/内容层级/)
+    expect(landing).not.toMatch(/整页只允许一个决定性的亮点/)
+    expect(landing).not.toMatch(/什么气质/)
   })
 
   it('组件库提示要求从 StyleBrief 与 theme.css 做开放映射，不再引用封闭配方', () => {

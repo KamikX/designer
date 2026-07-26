@@ -803,8 +803,8 @@ export interface DesignerApi {
   }
   /** 多 agent 协作群组(聊天室) */
   group: {
-    /** 可用角色清单(内置,建群时勾选) */
-    roles: () => Promise<GroupRoleMeta[]>
+    /** 可复制成新成员草稿的内置快捷模板 */
+    roles: () => Promise<GroupMemberTemplate[]>
     list: () => Promise<Conversation[]>
     create: (input: CreateGroupInput) => Promise<Conversation>
     rename: (id: string, name: string) => Promise<void>

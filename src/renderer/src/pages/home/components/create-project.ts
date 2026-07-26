@@ -1,5 +1,7 @@
 import type { CreateProjectInput, DesignMode, DesignTarget, PreviewLib, Stack } from '@shared/types'
 
+export const STYLE_BRIEF_FIELD_LABEL = '视觉风格（可选）'
+
 export interface CreateProjectForm {
   name: string
   stack: Stack

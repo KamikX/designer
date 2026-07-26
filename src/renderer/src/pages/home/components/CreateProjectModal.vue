@@ -5,7 +5,8 @@ import type { DesignTarget, PreviewLib, Stack } from '@shared/types'
 import {
   buildCreateProjectInput,
   createDefaultProjectForm,
-  resetProjectForm
+  resetProjectForm,
+  STYLE_BRIEF_FIELD_LABEL
 } from './create-project'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
@@ -219,7 +220,7 @@ async function submit(): Promise<void> {
         </a-form-item>
 
         <a-form-item
-          label="视觉风格（可选）"
+          :label="STYLE_BRIEF_FIELD_LABEL"
           extra="可描述色彩、明暗、信息密度、字体、圆角、动效等；留空时，AI 会在首次生成前询问。"
         >
           <a-textarea

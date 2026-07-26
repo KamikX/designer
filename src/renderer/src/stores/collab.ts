@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import type {
   Conversation,
+  CreateGroupInput,
+  GroupMemberTemplate,
   GroupRoleMeta,
   GroupStreamEvent,
   Message,
@@ -8,6 +10,7 @@ import type {
   Model,
   Provider
 } from '@shared/types'
+import { normalizeGroupMembers } from '@shared/group-members'
 import { useProviderStore } from './provider'
 
 /**
@@ -34,8 +37,8 @@ export interface GroupActivity {
 export const useCollabStore = defineStore('collab', {
   state: () => ({
     groups: [] as Conversation[],
-    /** 内置角色元数据。建群勾选、头像取色都从这里查 */
-    roles: [] as GroupRoleMeta[],
+    /** 内置快捷模板。旧群展示和新群添加成员都从这里取。 */
+    roles: [] as GroupMemberTemplate[],
     /** 当前打开的群;空串表示停在空状态引导页 */
     conversationId: '' as string,
     messages: [] as Message[],
@@ -70,15 +73,22 @@ export const useCollabStore = defineStore('collab', {
 
   getters: {
     rolesById(state): Record<string, GroupRoleMeta> {
-      return Object.fromEntries(state.roles.map((r) => [r.id, r]))
+      const group = state.groups.find((item) => item.id === state.conversationId)
+      const members = normalizeGroupMembers(group?.settings?.members, state.roles).map((item) =>
+        item.kind === 'configured' ? item.member : item.role
+      )
+      // 当前群成员放在后面覆盖同 id 模板，新群始终展示成员自己的名称和颜色。
+      return Object.fromEntries([...state.roles, ...members].map((role) => [role.id, role]))
     },
     currentGroup(state): Conversation | null {
       return state.groups.find((g) => g.id === state.conversationId) ?? null
     },
     /** 当前群的成员角色(按建群时的勾选顺序) */
-    memberRoles(): GroupRoleMeta[] {
-      const members = this.currentGroup?.settings?.members ?? []
-      return members.map((id) => this.rolesById[id]).filter((r): r is GroupRoleMeta => r != null)
+    memberRoles(state): GroupRoleMeta[] {
+      const group = state.groups.find((item) => item.id === state.conversationId)
+      return normalizeGroupMembers(group?.settings?.members, state.roles).map((item) =>
+        item.kind === 'configured' ? item.member : item.role
+      )
     },
     /** 当前打开的群有没有接力在跑。别的群在后台跑不关这里的事 */
     chainingHere(state): boolean {
@@ -134,8 +144,11 @@ export const useCollabStore = defineStore('collab', {
       this.error = ''
     },
 
-    async createGroup(name: string, members: string[]): Promise<Conversation> {
-      const created = await window.api.group.create(name, [...members])
+    async createGroup(input: CreateGroupInput): Promise<Conversation> {
+      const created = await window.api.group.create({
+        name: input.name,
+        members: input.members.map((member) => ({ ...member, skillIds: [...member.skillIds] }))
+      })
       this.groups.unshift(created)
       return created
     },
@@ -183,8 +196,7 @@ export const useCollabStore = defineStore('collab', {
         await window.api.group.send({
           conversationId: cid,
           text: trimmed,
-          providerId: this.model.providerId,
-          modelId: this.model.modelId
+          fallbackModelRowId: this.model.modelId || undefined
         })
       } catch (err) {
         this.messages = this.messages.filter((m) => m.id !== optimistic.id)
