@@ -58,6 +58,18 @@ const skillOptions = computed(() => {
   return missing.length > 0 ? [...groups, { label: '已失效', options: missing }] : groups
 })
 
+/**
+ * 头像色板:内置角色模板的五个颜色 + 常用主色。用 presets 而不是让用户
+ * 在色轮上瞎点——群成员头像要在一排里互相区分,给一组挑好的比自由取色
+ * 更容易得到好结果;当然色板外仍可自由选。
+ */
+const COLOR_PRESETS = [
+  {
+    label: '推荐',
+    colors: ['#e8662c', '#722ed1', '#2f7fd6', '#31a06e', '#b23a48', '#1677ff', '#d4a017', '#13a8a8']
+  }
+]
+
 type TextField = 'name' | 'color' | 'duty' | 'deliverable' | 'persona'
 
 function updateText(field: TextField, value: unknown): void {
@@ -101,12 +113,16 @@ function updateSkills(value: unknown): void {
           />
         </a-form-item>
         <a-form-item label="头像颜色" html-for="member-color">
-          <a-input
+          <!-- valueFormat="hex":update:value 直接回 hex 字符串,存储形状不变 -->
+          <a-color-picker
             id="member-color"
             aria-label="成员头像颜色"
             data-testid="member-color"
             :value="member.color"
-            type="color"
+            value-format="hex"
+            disabled-alpha
+            show-text
+            :presets="COLOR_PRESETS"
             @update:value="updateText('color', $event)"
           />
         </a-form-item>

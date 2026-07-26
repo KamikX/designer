@@ -38,11 +38,10 @@ declare module 'vue' {
     ASkeleton: typeof import('antdv-next')['Skeleton']
     ASpace: typeof import('antdv-next')['Space']
     ASpaceCompact: typeof import('antdv-next')['SpaceCompact']
+    ASpin: typeof import('antdv-next')['Spin']
     ASplitter: typeof import('antdv-next')['Splitter']
     ASplitterPanel: typeof import('antdv-next')['SplitterPanel']
     ASwitch: typeof import('antdv-next')['Switch']
-    ATabPane: typeof import('antdv-next')['TabPane']
-    ATabs: typeof import('antdv-next')['Tabs']
     ATag: typeof import('antdv-next')['Tag']
     ATextarea: typeof import('antdv-next')['TextArea']
     ATooltip: typeof import('antdv-next')['Tooltip']
@@ -50,6 +49,5 @@ declare module 'vue' {
     ATypographyText: typeof import('antdv-next')['TypographyText']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    StopOutlined: typeof import('@antdv-next/icons')['StopOutlined']
   }
 }
