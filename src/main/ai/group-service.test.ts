@@ -67,6 +67,16 @@ vi.mock('./registry', () => ({
   errorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error))
 }))
 
+// 纪要是收棒后的后台增强,不在编排测试的关注面里;钉死避免碰真实 DB
+vi.mock('./group-digest', () => ({
+  maybeUpdateGroupDigest: vi.fn(async () => undefined)
+}))
+
+vi.mock('../db/repo/group-digest', () => ({
+  getGroupDigest: () => null,
+  saveGroupDigest: vi.fn()
+}))
+
 vi.mock('../skills/scan', () => ({
   scanSkills: mocks.scanSkills,
   skillRoots: mocks.skillRoots
@@ -520,7 +530,8 @@ describe('链路停止与清理', () => {
     expect(await waitForTerminal()).toMatchObject({
       type: 'chain-stopped',
       reason: 'cycle-detected',
-      message: expect.stringContaining('重复接力')
+      // 拦停文案用成员名并告诉用户可以手动 @ 继续
+      message: expect.stringContaining('「成员1 → 成员2」')
     })
     expect(mocks.streamOptions).toHaveLength(3)
     expect(mocks.events.some((event) => event.type === 'chain-done')).toBe(false)

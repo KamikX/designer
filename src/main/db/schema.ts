@@ -212,6 +212,23 @@ export const artifactFiles = sqliteTable(
   (table) => [uniqueIndex('uniq_artifact_files_path').on(table.artifactId, table.path)]
 )
 
+/**
+ * 群组会话的「前情纪要」:transcript 超预算折叠旧发言时,用它替代机械存根
+ * (见 ai/group-transcript.ts / ai/group-digest.ts)。
+ *
+ * 纯派生缓存——随时可以从 messages 重新生成,所以不进 SYNCED_TABLES,
+ * 也不需要 ULID 主键(一个会话恒只有一行,删会话级联删)。
+ */
+export const groupDigests = sqliteTable('group_digests', {
+  conversationId: text('conversation_id')
+    .primaryKey()
+    .references(() => conversations.id, { onDelete: 'cascade' }),
+  text: text('text').notNull(),
+  // 纪要已覆盖到这条消息(含);增量更新只喂这之后的新发言
+  coveredUntilId: text('covered_until_id').notNull(),
+  ...timestamps
+})
+
 // mcp_servers 与 skills 两张表已退役:MCP 收敛到 ~/.antd-designer/mcp.json,
 // 技能收敛到 ~/.antd-designer/skills 文件目录。双事实来源(DB + 文件)并存了
 // 一段时间,市场装进 DB、AI 装进文件、两边互相看不见——按约定直接删表不迁移。

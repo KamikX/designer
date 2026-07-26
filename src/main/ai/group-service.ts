@@ -4,17 +4,19 @@ import type {
   GroupMember,
   GroupSendInput,
   GroupStreamEvent,
-  Message,
   SessionSettings
 } from '../../shared/types'
 import { isConfiguredGroupMembers } from '../../shared/group-members'
-import { firstMention, mentionsToModelText, nextMention } from '../../shared/group-mentions'
+import { firstMention, nextMention } from '../../shared/group-mentions'
 import { getConversation, touchConversation } from '../db/repo/conversation'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { getLanguageModel, errorMessage } from './registry'
 import { isTransientAiError } from './ai-errors'
+import { buildGroupTranscript } from './group-transcript'
+import { maybeUpdateGroupDigest } from './group-digest'
+import { getGroupDigest } from '../db/repo/group-digest'
 import { buildTimeTools } from './time-tools'
 import { buildLocalTools } from './local-tools'
 import { listRoots } from '../workspace/roots'
@@ -117,7 +119,10 @@ async function runChain(
   let current: string | null = firstMemberId
 
   while (current && !abort.signal.aborted) {
-    const guarded = guard.enter(current)
+    const source = membersById.get(current)
+    if (!source) break
+    // 拦停提示是给用户看的,用成员名不用 ULID
+    const guarded = guard.enter(current, source.name)
     if (!guarded.ok) {
       emit({
         conversationId,
@@ -127,9 +132,6 @@ async function runChain(
       })
       return
     }
-
-    const source = membersById.get(current)
-    if (!source) break
     let agent: ResolvedGroupAgent | null = null
     let providerSlug: string | null = null
     let resolutionError: unknown = null
@@ -169,7 +171,14 @@ async function runChain(
       const roots = [...userRoots, ...skillRoots(selectedSkills)]
       const catalog = skillCatalog(selectedSkills, agent.model.contextWindow)
       const system = buildAgentSystem(agent, members, userRoots.length > 0, catalog)
-      const content = transcript(conversationId, message.id, agent.name, mentionMembers)
+      const content = buildGroupTranscript({
+        messages: listMessages(conversationId),
+        excludeId: message.id,
+        selfName: agent.name,
+        members: mentionMembers,
+        contextWindow: agent.model.contextWindow,
+        loadDigest: () => getGroupDigest(conversationId)
+      })
 
       for (let attempt = 1; ; attempt++) {
         text = ''
@@ -315,6 +324,14 @@ async function runChain(
       })
       if (!abort.signal.aborted) {
         emit({ conversationId, type: 'agent-done', messageId: message.id })
+        // 收棒后台滚动更新前情纪要,与下一棒并行;失败静默,下一棒退回机械折叠
+        void maybeUpdateGroupDigest({
+          conversationId,
+          members: mentionMembers,
+          providerId: agent.model.providerId,
+          modelId: agent.model.modelId,
+          contextWindow: agent.model.contextWindow
+        })
       }
       touchConversation(conversationId)
 
@@ -334,37 +351,6 @@ async function runChain(
   }
 
   emit({ conversationId, type: 'chain-done' })
-}
-
-/**
- * 群聊记录 → 单条 transcript 文本。
- *
- * 不映射成多条 user 消息:群里的发言本来就不满足"一问一答"的角色交替,
- * 有些供应商的 API 会直接拒绝连续同角色消息。拼成一份带【发言人】前缀的
- * 记录最稳,也最接近"读群聊"的心智。
- */
-function transcript(
-  conversationId: string,
-  excludeId: string,
-  selfName: string,
-  members: ReturnType<typeof memberMention>[]
-): string {
-  const membersById = new Map(members.map((member) => [member.id, member]))
-  const nameOf = (author: string | null | undefined): string =>
-    author === 'user' || !author ? '用户' : (membersById.get(author)?.name ?? author)
-
-  const lines = listMessages(conversationId)
-    .filter((m: Message) => m.id !== excludeId && m.status !== 'streaming')
-    .map((m: Message) => {
-      const text = m.parts
-        .map((p) => (p.type === 'text' ? p.text : ''))
-        .join('')
-        .trim()
-      return text ? `【${nameOf(m.author)}】\n${mentionsToModelText(text, members)}` : ''
-    })
-    .filter(Boolean)
-
-  return `以下是群聊记录(按时间顺序):\n\n${lines.join('\n\n---\n\n')}\n\n---\n\n现在轮到你(${selfName})发言。按你的职责与协作协议产出文档。`
 }
 
 function buildAgentSystem(

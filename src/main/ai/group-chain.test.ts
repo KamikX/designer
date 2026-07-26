@@ -16,9 +16,13 @@ describe('GroupChainGuard', () => {
       expect(guard.enter(memberId)).toEqual({ ok: true })
     }
 
-    const result = guard.enter('A')
+    const result = guard.enter('A', '产品经理')
     expect(result).toMatchObject({ ok: false, reason: 'member-limit' })
-    if (!result.ok) expect(result.message).toMatch(/成员.*两次/)
+    // 文案要用成员名、并告诉用户怎么手动继续——ULID 对用户毫无意义
+    if (!result.ok) {
+      expect(result.message).toMatch(/「产品经理」.*两次/)
+      expect(result.message).toContain('@产品经理')
+    }
   })
 
   it('同一有向边第二次出现时返回 cycle-detected', () => {
@@ -29,7 +33,7 @@ describe('GroupChainGuard', () => {
 
     const result = guard.enter('B')
     expect(result).toMatchObject({ ok: false, reason: 'cycle-detected' })
-    if (!result.ok) expect(result.message).toMatch(/重复.*接力/)
+    if (!result.ok) expect(result.message).toMatch(/走过一次.*循环/)
   })
 
   it('反向边不是重复边', () => {
