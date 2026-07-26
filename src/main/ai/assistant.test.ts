@@ -17,7 +17,12 @@ const state = {
   generate: vi.fn()
 }
 
-vi.mock('../config', () => ({ readConfig: () => ({ assistantModel: state.assistantModel }) }))
+vi.mock('../config', () => ({
+  readConfig: () => ({
+    assistantModel: state.assistantModel,
+    openaiCompat: { store: false, encryptedReasoning: false }
+  })
+}))
 vi.mock('../db/repo/model', () => ({ getModel: () => state.modelRow }))
 vi.mock('./registry', () => ({ getLanguageModel: () => ({}) as never }))
 vi.mock('ai', () => ({ generateText: (...args: unknown[]) => state.generate(...args) }))

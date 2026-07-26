@@ -38,6 +38,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('electron', () => ({ default: {}, app: {} }))
 
+// openaiCompatOptions 走真实现,只把配置钉死:防止单测碰真实文件系统
+vi.mock('../config', () => ({
+  readConfig: () => ({ openaiCompat: { store: false, encryptedReasoning: false } })
+}))
+
 vi.mock('../db/repo/conversation', () => ({
   getConversation: () => mocks.conversation,
   touchConversation: vi.fn()
@@ -319,6 +324,11 @@ describe('configured 群组成员级编排', () => {
       'language:provider-a/shared-chat',
       'language:provider-b/shared-chat'
     ])
+    // OpenAI 兼容参数必须每一棒都带:漏掉会在不持久化的中转站上复发
+    // "Item with id 'rs_...' not found"(多步工具调用回传 reasoning 条目 id)
+    for (const options of mocks.streamOptions) {
+      expect(options.providerOptions).toEqual({ openai: { store: false } })
+    }
     // builtin 设计技能在群组里不自动启用,但被显式勾选后必须生效
     expect(
       mocks.skillCatalog.mock.calls.map(([skills]) => skills.map((skill) => skill.name))

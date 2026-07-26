@@ -10,6 +10,7 @@ import { decryptSecret } from '../crypto'
 import { getProviderRowById } from '../db/repo/provider'
 import { listModels } from '../db/repo/model'
 import { RunTraceCollector } from './run-trace'
+import { openaiCompatOptions } from './provider-options'
 import type { KeyStorage } from '../crypto'
 
 /**
@@ -106,6 +107,8 @@ export async function testProvider(
       await generateText({
         model: getLanguageModel(providerId, target),
         prompt: 'ping',
+        // 连通性测试要和真实请求同参:兼容参数不同的话,"测试通过、一用就炸"
+        providerOptions: { openai: openaiCompatOptions() },
         maxOutputTokens: 8,
         onLanguageModelCallStart: ({ callId }) => trace.modelCallStart(callId),
         onLanguageModelCallEnd: (event) =>

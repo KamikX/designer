@@ -5,6 +5,7 @@ import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { getLanguageModel } from './registry'
 import { RunTraceCollector } from './run-trace'
+import { openaiCompatOptions } from './provider-options'
 import { summarizeForDesign, SUMMARIZE_THRESHOLD } from './summarize'
 import type { CompleteFn, SummarizeResult } from './summarize'
 
@@ -75,6 +76,8 @@ export async function condenseIfLong(text: string, hint?: string): Promise<Summa
       const result = await generateText({
         model: getLanguageModel(assistant.providerId, assistant.modelId),
         system,
+        // 与主链路同一套 OpenAI 兼容参数:辅助模型也可能配在中转站上
+        providerOptions: { openai: openaiCompatOptions() },
         messages: [{ role: 'user', content: user }],
         onLanguageModelCallStart: ({ callId }) => trace.modelCallStart(callId),
         onLanguageModelCallEnd: (event) =>

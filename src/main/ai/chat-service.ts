@@ -15,7 +15,7 @@ import type {
 import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
-import { readConfig } from '../config'
+import { openaiCompatOptions } from './provider-options'
 import { autoTitle, getConversation, touchConversation } from '../db/repo/conversation'
 import { getProject, setProjectStyleBrief, touchProject } from '../db/repo/project'
 import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/repo/artifact'
@@ -100,23 +100,6 @@ import { resolveAsset } from '../storage/service'
  */
 function countToolCalls(steps: readonly StepResult<ToolSet>[]): number {
   return steps.reduce((n, s) => n + s.toolCalls.length, 0)
-}
-
-/**
- * OpenAI 协议的兼容参数。
- *
- * 两个开关的取舍都在 AppConfig 的注释里。这里只强调一点:**默认值是按
- * "面对一个能力未知的中转站"来选的**,不是按直连 OpenAI 选的——后者的
- * 默认(store=true)恰恰是中转站下最容易出问题的配置。
- */
-function openaiCompatOptions(): Record<string, string[] | boolean> {
-  const { store, encryptedReasoning } = readConfig().openaiCompat
-  return {
-    store,
-    // include 只在开关打开时才出现在请求体里。传一个空数组也是"发了这个
-    // 字段",而不认识它的后端照样可能翻车
-    ...(encryptedReasoning ? { include: ['reasoning.encrypted_content'] } : {})
-  }
 }
 
 const running = new Map<string, AbortController>()

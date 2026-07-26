@@ -25,6 +25,7 @@ import { skillCatalog } from '../skills/catalog'
 import { buildSkillTools } from '../skills/tools'
 import { RunTraceCollector } from './run-trace'
 import { ToolBudgetGate, wrapToolsWithBudget } from './context-governor'
+import { openaiCompatOptions } from './provider-options'
 import type { AdapterType } from '../../shared/types'
 
 /**
@@ -177,6 +178,9 @@ async function runChain(
       const result = streamText({
         model: getLanguageModel(agent.model.providerId, agent.model.modelId),
         system,
+        // OpenAI 协议兼容参数,与设计/纯聊天同一套(见 provider-options.ts)。
+        // 群组 agent 带工具必然多步,漏掉它就会复发 rs_ 条目找不到的报错
+        providerOptions: { openai: openaiCompatOptions() },
         messages: [
           {
             role: 'user',
