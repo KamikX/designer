@@ -65,7 +65,7 @@ pnpm build:mac / build:win
 
 ### 多 agent 协作群组(src/main/ai/group-service.ts)
 
-聊天室 + @ 接力:创建群组时把可配置成员完整保存为 `settings.members: GroupMember[]`，五个内置角色只作为建群模板；成员用 ULID 作为稳定身份，并各自携带人设、模型行和文件技能。用户 @ 成员发起，agent 产出 markdown 文档(消息即文档,没有 VFS/版本/代码)，每一棒使用该成员自己的模型与技能，末尾 @ 下一位继续。结构化提及与精确自然 `@成员名` 的解析统一在 `shared/group-mentions.ts`；`GroupChainGuard` 允许成员参与两次，同时拦截第三次参与、重复有向边和超过 8 棒。复用 conversations(kind='group')与 messages(author 存成员 ULID);事件走独立的 `group:stream` 通道;群聊记录拼成**单条** transcript(多条连续 user 消息有些供应商拒收)。agent 只有本地文件工具 + 时间工具——按会话授权目录用的是 workspace roots 的 conversationId 域。
+聊天室 + @ 接力:创建群组时把可配置成员完整保存为 `settings.members: GroupMember[]`，五个内置角色只作为建群模板；成员用 ULID 作为稳定身份，并各自携带人设、模型行和文件技能。用户 @ 成员发起，agent 产出 markdown 文档(消息即文档,没有 VFS/版本/代码)，每一棒使用该成员自己的模型与技能，末尾 @ 下一位继续。结构化提及与精确自然 `@成员名` 的解析统一在 `shared/group-mentions.ts`；`GroupChainGuard` 允许成员参与两次，同时拦截第三次参与、重复有向边和超过 8 棒。复用 conversations(kind='group')与 messages(author 存成员 ULID);事件走独立的 `group:stream` 通道;群聊记录拼成**单条** transcript(多条连续 user 消息有些供应商拒收)。agent 使用本地文件、时间和已选技能激活工具——本地文件按 workspace roots 的 conversationId 域授权。
 
 ### 预览链路(src/main/preview/)
 
