@@ -1,4 +1,4 @@
-import type { Project } from '../../shared/types'
+import type { ChatUsage, Project } from '../../shared/types'
 import type { MarkerStyleCommitResult } from './style-brief'
 import { restoreMarkerStyleIfArtifactFailed } from './style-brief'
 
@@ -6,7 +6,7 @@ export type ChatFinalizeStatus = 'complete' | 'aborted' | 'error'
 
 export interface ChatFinalizeResult {
   status: ChatFinalizeStatus
-  usage: { inputTokens: number; outputTokens: number } | null
+  usage: ChatUsage | null
   artifactId: string | null
   error: unknown | null
 }

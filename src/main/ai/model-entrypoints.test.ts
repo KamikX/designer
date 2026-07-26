@@ -49,7 +49,8 @@ const state = vi.hoisted(() => ({
   messages: [] as unknown[],
   model: null as Model | null,
   llm: null as unknown,
-  msgCounter: 0
+  msgCounter: 0,
+  messageUpdates: [] as { id: string; patch: Record<string, unknown> }[]
 }))
 
 /* ---------- 数据库与外围 mock ---------- */
@@ -65,7 +66,8 @@ vi.mock('../db/repo/message', () => ({
     ...input
   }),
   listMessages: () => state.messages,
-  updateMessage: vi.fn()
+  updateMessage: (id: string, patch: Record<string, unknown>) =>
+    state.messageUpdates.push({ id, patch })
 }))
 vi.mock('../db/repo/model', () => ({
   getModel: () => state.model,
@@ -220,6 +222,7 @@ beforeEach(() => {
   obs.reset()
   state.messages = []
   state.msgCounter = 0
+  state.messageUpdates = []
 })
 
 describe('模型入口全覆盖', () => {
@@ -254,6 +257,15 @@ describe('模型入口全覆盖', () => {
     expect(obs.runFinishes[0].status).toBe('complete')
     // run 级首个输出时间被记录
     expect(obs.runFinishes[0].firstOutputAt).toBeTruthy()
+    // 消息落库的用量带上详细字段(缓存/思考细分),未报字段保持 null
+    const settled = state.messageUpdates.find((u) => u.patch.usage)
+    const usage = settled?.patch.usage as {
+      inputTokens: number
+      details?: { cacheReadTokens: number | null; reasoningTokens: number | null }
+    }
+    expect(usage.inputTokens).toBe(100)
+    expect(usage.details?.cacheReadTokens).toBe(40)
+    expect(usage.details?.reasoningTokens).toBe(8)
   })
 
   it('群组接力:scene=group,每一棒一个 run', async () => {

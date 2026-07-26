@@ -174,14 +174,26 @@ export function compactToolHistory(
   return out
 }
 
+/** 账本里各类事实的保留条数:账本是给模型看的摘要,自己不能反过来膨胀 */
+const MAX_LEDGER_WRITES = 20
+const MAX_LEDGER_ERRORS = 8
+
 function renderLedger(ctx: CompactionContext, compactedCount: number): string | null {
   const lines: string[] = []
-  for (const write of ctx.completedWrites) {
+  const writes = ctx.completedWrites.slice(-MAX_LEDGER_WRITES)
+  if (ctx.completedWrites.length > writes.length) {
+    lines.push(`- (更早还有 ${ctx.completedWrites.length - writes.length} 次已完成写入,从略)`)
+  }
+  for (const write of writes) {
     lines.push(
       `- 已完成写入:${write.path} @rev${write.revision}(${write.tool}${write.chars ? `,${write.chars} 字符` : ''})`
     )
   }
-  for (const error of ctx.recentErrors) {
+  const errors = ctx.recentErrors.slice(-MAX_LEDGER_ERRORS)
+  if (ctx.recentErrors.length > errors.length) {
+    lines.push(`- (更早还有 ${ctx.recentErrors.length - errors.length} 条失败记录,从略)`)
+  }
+  for (const error of errors) {
     lines.push(`- 失败记录:${error.tool} ${error.code}${error.path ? ` @ ${error.path}` : ''}`)
   }
   for (const skill of ctx.activatedSkills) {

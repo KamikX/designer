@@ -250,3 +250,30 @@ describe('消息合法性', () => {
     expect(textOf(out)).toContain('好的')
   })
 })
+
+describe('账本自身的体量', () => {
+  it('写入/失败记录只保留最近若干条,更早的折叠成计数', () => {
+    const messages: ModelMessage[] = [{ role: 'user', content: '改' }]
+    const out = compactToolHistory(
+      messages,
+      ctx({
+        completedWrites: Array.from({ length: 30 }, (_, i) => ({
+          path: `f${i}.css`,
+          revision: 1,
+          tool: 'write_file',
+          chars: 10
+        })),
+        recentErrors: Array.from({ length: 15 }, (_, i) => ({
+          tool: 'edit_file',
+          code: 'MATCH_NOT_FOUND' as const,
+          path: `f${i}.css`
+        }))
+      })
+    )
+    const ledger = String(out.at(-1)!.content)
+    // 最新的在,最早的被折叠
+    expect(ledger).toContain('f29.css')
+    expect(ledger).not.toContain('- 已完成写入:f0.css')
+    expect(ledger).toContain('更早')
+  })
+})

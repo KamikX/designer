@@ -5,6 +5,7 @@ import type { WebContents } from 'electron'
 import type {
   AskUserAnswer,
   ChatStreamEvent,
+  ChatUsage,
   Message,
   MessagePart,
   SendChatInput,
@@ -761,7 +762,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       trace.finish(cappedOut || modelAborted ? 'aborted' : 'complete')
       await finalize(cappedOut || modelAborted ? 'aborted' : 'complete', {
         inputTokens: usage.inputTokens ?? 0,
-        outputTokens: usage.outputTokens ?? 0
+        outputTokens: usage.outputTokens ?? 0,
+        // 详细细分(缓存/思考)来自回合账本的逐 step 累计;历史消息没有这块,
+        // 展示层把 undefined 当"历史未知"
+        details: runLedger.cumulativeUsage
       })
     } catch (err) {
       trace.finish(abort.signal.aborted ? 'aborted' : 'error')
@@ -807,7 +811,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   /** 唯一收尾入口：协调版本、StyleBrief 补偿、消息状态和结束事件。 */
   async function finalize(
     status: 'complete' | 'aborted' | 'error',
-    usage: { inputTokens: number; outputTokens: number } | null,
+    usage: ChatUsage | null,
     error?: unknown
   ): Promise<ChatFinalizeResult> {
     const narration = (useTools ? toolNarration : parser.narration).trim()
