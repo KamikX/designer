@@ -150,4 +150,109 @@ describe('chat finalize 协调器', () => {
     expect(result).toMatchObject({ status: 'complete', artifactId: null })
     expect(statuses).toEqual(['complete'])
   })
+
+  it('artifact 成功但 complete settle 失败后，用同一 artifact 重试一次 error 收尾', async () => {
+    let creates = 0
+    let settles = 0
+    let done = 0
+    const errors: Array<{ error: unknown; artifactId: string | null }> = []
+    const coordinator = createChatFinalizeCoordinator<{ id: string }>({
+      artifactId: (artifact) => artifact.id,
+      restoreStyle: () => project('旧方向'),
+      settle: (result) => {
+        settles += 1
+        if (settles === 1) throw new Error('message db failed')
+        expect(result).toMatchObject({ status: 'error', artifactId: 'artifact-shared' })
+      },
+      emitDone: () => {
+        done += 1
+      },
+      emitError: (error, artifactId) => errors.push({ error, artifactId })
+    })
+
+    await expect(
+      coordinator.finalize({
+        status: 'complete',
+        usage: { inputTokens: 1, outputTokens: 2 },
+        styleCommit: {
+          styleSaved: true,
+          previousStyleBrief: '旧方向',
+          hasFileOutput: true
+        },
+        createArtifact: () => {
+          creates += 1
+          return { id: 'artifact-shared' }
+        }
+      })
+    ).rejects.toThrow('message db failed')
+
+    const outerError = new Error('finalize failed')
+    const result = await coordinator.finalize({
+      status: 'error',
+      usage: null,
+      error: outerError,
+      styleCommit: {
+        styleSaved: true,
+        previousStyleBrief: '旧方向',
+        hasFileOutput: true
+      },
+      createArtifact: () => {
+        creates += 1
+        return { id: 'duplicate' }
+      }
+    })
+
+    expect(result).toMatchObject({
+      status: 'error',
+      artifactId: 'artifact-shared',
+      error: outerError
+    })
+    expect(creates).toBe(1)
+    expect(settles).toBe(2)
+    expect(done).toBe(0)
+    expect(errors).toEqual([{ error: outerError, artifactId: 'artifact-shared' }])
+  })
+
+  it('并发 finalize 共享同一 inFlight，artifact、settle 和事件都只执行一次', async () => {
+    let releaseCreate: ((artifact: { id: string }) => void) | undefined
+    const createPending = new Promise<{ id: string }>((resolve) => {
+      releaseCreate = resolve
+    })
+    const calls = { create: 0, settle: 0, done: 0, error: 0 }
+    const coordinator = createChatFinalizeCoordinator<{ id: string }>({
+      artifactId: (artifact) => artifact.id,
+      restoreStyle: () => project('旧方向'),
+      settle: () => {
+        calls.settle += 1
+      },
+      emitDone: () => {
+        calls.done += 1
+      },
+      emitError: () => {
+        calls.error += 1
+      }
+    })
+    const request = {
+      status: 'complete' as const,
+      usage: { inputTokens: 1, outputTokens: 2 },
+      styleCommit: {
+        styleSaved: false,
+        previousStyleBrief: '',
+        hasFileOutput: true
+      },
+      createArtifact: () => {
+        calls.create += 1
+        return createPending
+      }
+    }
+
+    const first = coordinator.finalize(request)
+    const second = coordinator.finalize(request)
+    expect(second).toBe(first)
+    releaseCreate?.({ id: 'artifact-concurrent' })
+
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toBe(b)
+    expect(calls).toEqual({ create: 1, settle: 1, done: 1, error: 0 })
+  })
 })

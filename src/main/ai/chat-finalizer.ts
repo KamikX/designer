@@ -35,22 +35,25 @@ export function createChatFinalizeCoordinator<Artifact>(input: {
 }): {
   finalize: (request: ChatFinalizeRequest<Artifact>) => Promise<ChatFinalizeResult>
 } {
-  let settled: ChatFinalizeResult | null = null
+  let completed: ChatFinalizeResult | null = null
+  let inFlight: Promise<ChatFinalizeResult> | null = null
+  let artifactPhaseCompleted = false
+  let artifactId: string | null = null
+  let artifactFailed = false
+  let artifactError: unknown | null = null
 
-  return {
-    finalize: async (request) => {
-      if (settled) return settled
-
-      let status = request.status
-      let usage = request.usage
-      let artifactId: string | null = null
-      let error: unknown | null = request.error ?? null
-
+  const run = async (request: ChatFinalizeRequest<Artifact>): Promise<ChatFinalizeResult> => {
+    // artifact 是回合级阶段，不属于某一次 settle 尝试。第一次进入后无论
+    // 成功、失败或无需创建，后续错误收尾都只能复用该决定。
+    if (!artifactPhaseCompleted) {
+      artifactPhaseCompleted = true
       if (request.createArtifact) {
         try {
           const artifact = await request.createArtifact()
           artifactId = input.artifactId(artifact)
-        } catch (artifactError) {
+        } catch (createError) {
+          artifactFailed = true
+          artifactError = createError
           try {
             await restoreMarkerStyleIfArtifactFailed({
               commit: request.styleCommit,
@@ -58,19 +61,45 @@ export function createChatFinalizeCoordinator<Artifact>(input: {
               restore: input.restoreStyle
             })
           } catch (restoreError) {
-            error = restoreError
+            artifactError = restoreError
           }
-          status = 'error'
-          usage = null
-          error ??= artifactError
         }
       }
-
-      settled = { status, usage, artifactId, error }
-      await input.settle(settled)
-      if (status === 'error') input.emitError(error, artifactId)
-      else input.emitDone(settled)
-      return settled
     }
+
+    const result: ChatFinalizeResult = {
+      status: artifactFailed ? 'error' : request.status,
+      usage: artifactFailed ? null : request.usage,
+      artifactId,
+      // 重试 error settle 时使用第二次请求携带的外层错误；没有新错误时
+      // 才回退到首次 artifact / 补偿错误。
+      error: request.error ?? (artifactFailed ? artifactError : null)
+    }
+
+    await input.settle(result)
+    if (result.status === 'error') input.emitError(result.error, result.artifactId)
+    else input.emitDone(result)
+    // 只有消息状态和对应事件都成功后，才把回合标为完成。
+    completed = result
+    return result
   }
+
+  const finalize = (request: ChatFinalizeRequest<Artifact>): Promise<ChatFinalizeResult> => {
+    if (completed) return Promise.resolve(completed)
+    if (inFlight) return inFlight
+
+    const current = run(request)
+    inFlight = current
+    void current.then(
+      () => {
+        if (inFlight === current) inFlight = null
+      },
+      () => {
+        if (inFlight === current) inFlight = null
+      }
+    )
+    return current
+  }
+
+  return { finalize }
 }
