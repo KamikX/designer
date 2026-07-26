@@ -166,6 +166,50 @@ describe('buildStyleBriefTools', () => {
     expect(out).toContain('已清除')
   })
 
+  it('无文件项目清除已有方向后重新锁住本轮文件写入', async () => {
+    const vfs = new SessionVfs([])
+    const entry = buildStyleBriefTools({
+      projectId: 'project-style-brief',
+      initialHasFiles: false,
+      vfs,
+      save: (value) => project(value)
+    }).set_style_brief
+
+    const out = String(
+      await entry.execute!({ styleBrief: '   ' }, {
+        toolCallId: 'style',
+        messages: []
+      } as never)
+    )
+
+    expect(out).toContain('下一轮')
+    expect(vfs.isWriteBlocked()).toBe(true)
+    expect(() => vfs.write('index.html', '<main />')).toThrow(/下一轮/)
+  })
+
+  it('无文件项目先写文件再清除方向时丢弃本轮首稿并保持锁住', async () => {
+    const vfs = new SessionVfs([])
+    const discarded: unknown[] = []
+    vfs.write('index.html', '<main>无凭据首稿</main>')
+    const entry = buildStyleBriefTools({
+      projectId: 'project-style-brief',
+      initialHasFiles: false,
+      vfs,
+      save: (value) => project(value),
+      onDiscard: (changes) => discarded.push(changes)
+    }).set_style_brief
+
+    await entry.execute!({ styleBrief: '' }, {
+      toolCallId: 'style',
+      messages: []
+    } as never)
+
+    expect(vfs.hasChanges).toBe(false)
+    expect(vfs.has('index.html')).toBe(false)
+    expect(vfs.isWriteBlocked()).toBe(true)
+    expect(discarded).toHaveLength(1)
+  })
+
   it('保存失败会丢弃本轮改动并永久拒绝后续写入', async () => {
     const vfs = new SessionVfs([])
     vfs.write('draft.html', '<main>临时</main>')
@@ -363,6 +407,32 @@ describe('commitMarkerStyleBrief', () => {
         }
       })
     ).rejects.toThrow('文件标记未闭合')
+    expect(saves).toBe(0)
+    expect(vfs.hasChanges).toBe(false)
+  })
+
+  it('带视觉方向且声明非法路径时先拒绝整轮，不保存方向也不灌入合法文件', async () => {
+    const parser = marker(
+      '<antdStyleBrief>\n冷灰数据台\n</antdStyleBrief>\n' +
+        '<antdFile path="index.html">\n<main />\n</antdFile>\n' +
+        '<antdFile path="../escape.html">\n坏文件\n</antdFile>'
+    )
+    const vfs = new SessionVfs([])
+    let saves = 0
+
+    await expect(
+      commitMarkerStyleBrief({
+        parser,
+        vfs,
+        initialStyleBrief: '',
+        initialHasFiles: false,
+        outcome: 'complete',
+        save: () => {
+          saves += 1
+          return project('冷灰数据台')
+        }
+      })
+    ).rejects.toThrow(/路径/)
     expect(saves).toBe(0)
     expect(vfs.hasChanges).toBe(false)
   })

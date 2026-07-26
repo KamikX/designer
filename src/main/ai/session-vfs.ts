@@ -566,6 +566,11 @@ export class SessionVfs {
    * 灌入 markers 协议(FileStreamParser)的产出。两条协议路线共用同一个
    * 落库出口,chat-service 的 finalize 只认 VFS 一个来源。
    */
+  validateIngestPaths(writes: Map<string, string>, deletes: Set<string>): void {
+    for (const path of deletes) assertPath(path)
+    for (const path of writes.keys()) assertPath(path)
+  }
+
   ingest(writes: Map<string, string>, deletes: Set<string>): void {
     // 这一路的路径来自模型自由书写的标记,非法的直接丢弃而不是抛——
     // 一个坏路径不该让整回合的产出都落不了库

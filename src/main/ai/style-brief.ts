@@ -19,8 +19,12 @@ export type StyleBriefPromptMode = 'tools' | 'markers'
 export interface StyleBriefToolContext {
   /** 只由项目设计会话传入；纯聊天传 null，因而不会暴露本工具。 */
   projectId: string
+  /** 回合开始时是否已有设计稿；清空无文件项目的方向后，本轮必须重新上锁。 */
+  initialHasFiles?: boolean
   vfs: SessionVfs
   save: (styleBrief: string) => Project | null | Promise<Project | null>
+  /** 保存成功后的事务记账，不负责持久化。 */
+  onSaved?: (styleBrief: string) => void
   /** 保存失败后撤回此前已推到渲染层的本轮文件预览。 */
   onDiscard?: (changes: ReturnType<SessionVfs['changes']>) => void
 }
@@ -83,6 +87,37 @@ export async function restoreMarkerStyleIfArtifactFailed(input: {
 }
 
 /**
+ * 单回合只允许尝试一次版本创建；失败时补偿同回合伴随文件保存的 StyleBrief。
+ * 第二次 commit 只负责让上层完成错误消息收尾，不会重试同一个失败版本。
+ */
+export function createStyleArtifactTransaction<Artifact>(input: {
+  restore: (styleBrief: string) => Project | null | Promise<Project | null>
+}): {
+  commit: (
+    styleCommit: MarkerStyleCommitResult,
+    create: () => Artifact | Promise<Artifact>
+  ) => Promise<Artifact | null>
+} {
+  let attempted = false
+  return {
+    commit: async (styleCommit, create) => {
+      if (!styleCommit.hasFileOutput || attempted) return null
+      attempted = true
+      try {
+        return await create()
+      } catch (error) {
+        await restoreMarkerStyleIfArtifactFailed({
+          commit: styleCommit,
+          artifactCreated: false,
+          restore: input.restore
+        })
+        throw error
+      }
+    }
+  }
+}
+
+/**
  * markers 协议的视觉方向提交边界。
  *
  * StyleBrief 与文件同属一条模型输出，却不在同一个存储里：前者进入项目，
@@ -119,6 +154,9 @@ export async function commitMarkerStyleBrief(input: {
   if (parser.styleProtocolAfterFile) {
     throw new Error('视觉方向或兜底风格标记必须先于文件输出，已拒绝保存和文件改动。')
   }
+  // 旧 markers 会容忍并忽略非法路径；一旦声明 StyleBrief / fallback，
+  // 文件与方向就是同一事务，必须在保存方向之前验证全部路径。
+  if (hasStyleProtocol) vfs.validateIngestPaths(parser.files, parser.deleted)
 
   const hasFileOutput = result.hasFileOutput
   const isInitialProject = !input.initialStyleBrief.trim() && !input.initialHasFiles
@@ -181,6 +219,7 @@ export function buildStyleBriefTools(context: StyleBriefToolContext | null): Too
         try {
           const saved = await context.save(styleBrief)
           if (!saved) throw new Error('项目不存在或未能保存。')
+          context.onSaved?.(styleBrief)
         } catch {
           const changes = context.vfs.changes()
           context.vfs.blockWrites('未能保存项目视觉方向，本轮已丢弃文件改动且不再允许写入。', {
@@ -191,10 +230,21 @@ export function buildStyleBriefTools(context: StyleBriefToolContext | null): Too
           return '错误:未能保存项目视觉方向，本轮文件改动已丢弃，后续写入已拒绝。'
         }
 
-        context.vfs.allowWrites()
+        if (!styleBrief && context.initialHasFiles === false) {
+          const changes = context.vfs.changes()
+          context.vfs.blockWrites(
+            '视觉方向已清除且项目尚无设计稿；请在下一轮重新确认后再写文件。',
+            { discardChanges: true }
+          )
+          if (changes.length > 0) context.onDiscard?.(changes)
+        } else {
+          context.vfs.allowWrites()
+        }
         return styleBrief
           ? `已更新视觉方向，本轮立即生效：${styleBrief}`
-          : '已清除项目视觉方向，本轮立即生效：后续将按当前设计稿或首次确认规则处理。'
+          : context.initialHasFiles === false
+            ? '已清除项目视觉方向；项目尚无设计稿，请在下一轮重新确认整体方向后再生成首稿。'
+            : '已清除项目视觉方向，本轮立即生效：后续将按当前设计稿处理。'
       }
     })
   }

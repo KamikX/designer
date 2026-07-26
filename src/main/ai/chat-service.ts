@@ -32,9 +32,9 @@ import {
   awaitMarkerUsageBeforeCommit,
   buildStyleBriefTools,
   commitMarkerStyleBrief,
+  createStyleArtifactTransaction,
   createInitialStyleWriteGate,
   markerCompletionOutcome,
-  restoreMarkerStyleIfArtifactFailed,
   renderStyleBriefPrompt
 } from './style-brief'
 import type { MarkerStyleCommitResult } from './style-brief'
@@ -236,8 +236,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   /** 一旦开始等待 usage 或提交 markers，catch 绝不对同一轮二次提交。 */
   let markerCommitAttempted = false
   let markerCommit: MarkerStyleCommitResult | null = null
-  let markerArtifactCreated = false
-  let markerCompensationAttempted = false
+  let toolStyleSaved = false
+  const styleArtifactTransaction = project
+    ? createStyleArtifactTransaction<ReturnType<typeof createArtifactVersion>>({
+        restore: (styleBrief) => setProjectStyleBrief(project.id, styleBrief)
+      })
+    : null
   /** tools 路的解说自己累计;markers 路用 parser.narration */
   let toolNarration = ''
   /** 本回合的问答,按发生顺序;finalize 时连答案一起存进消息 */
@@ -316,8 +320,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               project
                 ? {
                     projectId: project.id,
+                    initialHasFiles: currentFiles.length > 0,
                     vfs,
                     save: (styleBrief) => setProjectStyleBrief(project.id, styleBrief),
+                    onSaved: () => {
+                      toolStyleSaved = true
+                    },
                     onDiscard: (changes) => {
                       for (const change of changes) {
                         if (!vfs.existedAtStart(change.path)) {
@@ -583,7 +591,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         toolNarration += note
         emit({ streamId, type: 'delta', text: note })
       }
-      finalize(cappedOut || modelAborted ? 'aborted' : 'complete', {
+      await finalize(cappedOut || modelAborted ? 'aborted' : 'complete', {
         inputTokens: usage.inputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0
       })
@@ -591,23 +599,22 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       if (!useTools && !markerCommitAttempted && !markerCommitRejected) {
         await commitMarkers(abort.signal.aborted ? 'aborted' : 'error')
       }
-      if (!markerCompensationAttempted) {
-        markerCompensationAttempted = true
-        try {
-          await restoreMarkerStyleIfArtifactFailed({
-            commit: markerCommit,
-            artifactCreated: markerArtifactCreated,
-            restore: (styleBrief) => setProjectStyleBrief(project!.id, styleBrief)
-          })
-        } catch (restoreError) {
-          console.error('[ai] 设计稿版本失败后未能恢复项目视觉方向:', restoreError)
-        }
-      }
       if (abort.signal.aborted) {
         // 中止不算错误:已执行的工具调用 / 已解析完成的文件照常成版本
-        finalize('aborted', null)
+        try {
+          await finalize('aborted', null)
+        } catch (finalizeError) {
+          console.error('[ai] 中止回合创建版本失败:', finalizeError)
+          await finalize('aborted', null)
+        }
       } else {
-        const artifactId = finalize('error', null)
+        let artifactId: string | null = null
+        try {
+          artifactId = await finalize('error', null)
+        } catch (finalizeError) {
+          console.error('[ai] 错误回合创建版本失败:', finalizeError)
+          artifactId = await finalize('error', null)
+        }
         emit({ streamId, type: 'error', message: errorMessage(err), artifactId })
       }
     } finally {
@@ -641,10 +648,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   }
 
   /** @returns 本轮落库的版本 id,没有改动则为 null */
-  function finalize(
+  async function finalize(
     status: 'complete' | 'aborted' | 'error',
     usage: { inputTokens: number; outputTokens: number } | null
-  ): string | null {
+  ): Promise<string | null> {
     const narration = (useTools ? toolNarration : parser.narration).trim()
     const writes = vfs.writes
     const deletes = vfs.deletes
@@ -661,16 +668,28 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     let artifactId: string | null = null
     // 纯聊天没有产物这个概念,连判断都不用做
     if (!isChat && keepWork && vfs.hasChanges) {
-      const artifact = createArtifactVersion({
-        projectId: project!.id,
-        messageId: assistantMessage.id,
-        baseArtifactId: base?.id ?? null,
-        writes,
-        deletes,
-        summary: narration.slice(0, 200)
-      })
-      artifactId = artifact.id
-      if (!useTools) markerArtifactCreated = true
+      const styleCommit: MarkerStyleCommitResult = useTools
+        ? {
+            styleSaved: toolStyleSaved,
+            previousStyleBrief: project!.styleBrief ?? '',
+            hasFileOutput: true
+          }
+        : (markerCommit ?? {
+            styleSaved: false,
+            previousStyleBrief: project!.styleBrief ?? '',
+            hasFileOutput: true
+          })
+      const artifact = await styleArtifactTransaction!.commit(styleCommit, () =>
+        createArtifactVersion({
+          projectId: project!.id,
+          messageId: assistantMessage.id,
+          baseArtifactId: base?.id ?? null,
+          writes,
+          deletes,
+          summary: narration.slice(0, 200)
+        })
+      )
+      artifactId = artifact?.id ?? null
 
       /*
        * 检查本轮产物,结果留到下一轮进提示词。
@@ -678,8 +697,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
        * 提示词里写"不要用靛蓝"只是倾向,模型仍然会用;而"你第 12 行有 #6366f1"
        * 是事实,绕不过去。这条回流是我们相对纯提示词方案唯一的结构性优势。
        */
-      const findings = [...writes].flatMap(([path, content]) => lintArtifact(path, content))
-      if (findings.length) recordLint(project!.id, artifact.id, findings)
+      if (artifact) {
+        const findings = [...writes].flatMap(([path, content]) => lintArtifact(path, content))
+        if (findings.length) recordLint(project!.id, artifact.id, findings)
+      }
     }
 
     // 顺序:解说 → 问答 → 文件。回放时不完全等于流式当时的先后,但
