@@ -783,9 +783,17 @@ export interface InstalledSkill {
   description: string
   /**
    * app 本应用 | agents 跨工具共享 | claude 兼容位置 | builtin 随应用发布 |
-   * builtin-pm 随应用发布的项目管理技能(只在协作群组里可选)
+   * builtin-pm/fullstack/ui/agent 随应用发布的领域技能包(只在协作群组里可选)
    */
-  source: 'app' | 'agents' | 'claude' | 'builtin' | 'builtin-pm'
+  source:
+    | 'app'
+    | 'agents'
+    | 'claude'
+    | 'builtin'
+    | 'builtin-pm'
+    | 'builtin-fullstack'
+    | 'builtin-ui'
+    | 'builtin-agent'
   dir: string
   /** 格式上的问题,界面上标出来但不影响加载 */
   warning?: string

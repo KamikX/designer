@@ -269,3 +269,28 @@ describe('内置项目管理技能(builtin-pm)', () => {
     expect(prd[0].description).toBe('用户版')
   })
 })
+
+describe('其余内置领域技能包', () => {
+  it('fullstack / ui / agent 三个根各自带来源标记', async () => {
+    writeSkill(
+      join(builtinHome, 'resources', 'skills-fullstack', 'frontend'),
+      'vue3',
+      'name: vue3\ndescription: Vue3'
+    )
+    writeSkill(
+      join(builtinHome, 'resources', 'skills-ui'),
+      'baseline-ui',
+      'name: baseline-ui\ndescription: 基线'
+    )
+    writeSkill(
+      join(builtinHome, 'resources', 'skills-agent'),
+      'code-review-and-quality',
+      'name: code-review-and-quality\ndescription: 评审'
+    )
+
+    const skills = await scan()
+    expect(skills.find((s) => s.name === 'vue3')?.source).toBe('builtin-fullstack')
+    expect(skills.find((s) => s.name === 'baseline-ui')?.source).toBe('builtin-ui')
+    expect(skills.find((s) => s.name === 'code-review-and-quality')?.source).toBe('builtin-agent')
+  })
+})
