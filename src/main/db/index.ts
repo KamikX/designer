@@ -4,6 +4,10 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { ulid } from 'ulid'
 import { DB_FILE, ensureDataDirs } from '../paths'
 import { MIGRATIONS } from './migrations'
+// 与 repo/ai-observability 构成模块环(它只在调用期取 getDb),求值期互不
+// 引用,静态引入是安全的。别改回动态 import:该模块在别处已被静态引入,
+// 动态引入分不出 chunk,只会换来 Rollup 的 EFFECTIVE_DYNAMIC_IMPORT 警告
+import { cleanupDiagnostics, markInterruptedRuns } from './repo/ai-observability'
 import * as schema from './schema'
 
 let sqlite: Database.Database | null = null
@@ -30,19 +34,17 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
 
 /**
  * 观测数据的启动维护:上次退出没收尾的 run 标 interrupted,再做一次
- * 幂等的七天留存清理。放 setImmediate + 动态 import:一不阻塞首窗启动,
- * 二避免 db/index ↔ repo 的模块环在求值期互相引用。
+ * 幂等的七天留存清理。放 setImmediate:不阻塞首窗启动,也保证执行时
+ * getDb() 的模块级 db 已经赋值完毕。
  */
 function scheduleObservabilityMaintenance(): void {
   setImmediate(() => {
-    void import('./repo/ai-observability')
-      .then((repo) => {
-        repo.markInterruptedRuns()
-        repo.cleanupDiagnostics(new Date().toISOString())
-      })
-      .catch((err) => {
-        console.warn('[db] 观测维护失败:', err instanceof Error ? err.message : err)
-      })
+    try {
+      markInterruptedRuns()
+      cleanupDiagnostics(new Date().toISOString())
+    } catch (err) {
+      console.warn('[db] 观测维护失败:', err instanceof Error ? err.message : err)
+    }
   })
 }
 
