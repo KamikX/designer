@@ -4,6 +4,8 @@
 (vue/react/antd/nodejs/spring/python/database/ddd/devops/testing),经裁剪:
 
 - 只保留与协作群组角色(产设计文档)相关的技能;每技能自带 LICENSE.txt;
+- 例外:`frontend/antdv-next` 不来自上游组织,是由 antdv-next 官方文档生成的
+  技能(替换掉了上游的 ant-design-vue——本应用的组件库就是 antdv-next);
 - 只带文本类参考资料(md/txt/代码示例),字体、音频、图片等二进制一律不带;
 - 目录结构:`<分类>/<技能>/SKILL.md`,技能身份就是目录名;
 - 这些技能只在协作群组的成员编辑器(「全栈工程(内置)」分组)可选;

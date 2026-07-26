@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { firstMention, nextMention } from '../../../shared/group-mentions'
+import { GROUP_ROLES, roleTemplates } from './group-roles'
 
 /**
  * @ 接力的路由解析。错了链条要么断(接不到下一棒)要么疯
@@ -17,6 +18,19 @@ const MEMBERS = [
   { id: '01J00000000000000000000001', name: '前端工程师' },
   { id: QA_ID, name: '测试工程师' }
 ]
+
+describe('roleTemplates:建群编辑器拿到的模板', () => {
+  it('预勾选技能要透传(曾经在这里被剥掉,编辑器永远拿不到默认技能)', () => {
+    const fe = roleTemplates().find((role) => role.id === 'fe')
+    expect(fe?.skillIds).toContain('antdv-next')
+  })
+
+  it('返回的是副本:改模板数组不能污染 GROUP_ROLES', () => {
+    const pm = roleTemplates().find((role) => role.id === 'pm')
+    pm?.skillIds?.push('入侵技能')
+    expect(GROUP_ROLES.find((role) => role.id === 'pm')?.skillIds).not.toContain('入侵技能')
+  })
+})
 
 describe('firstMention:用户消息里的第一棒', () => {
   it('识别 @产品经理', () => {

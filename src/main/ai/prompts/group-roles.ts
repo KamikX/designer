@@ -79,7 +79,7 @@ export const GROUP_ROLES: GroupRole[] = [
     persona: `你是资深前端工程师。基于需求、UI 设计与接口设计做前端结构定义。
 - 产出「前端页面结构设计」:路由表 → 每个页面的组件树(缩进树表示)→ 组件职责一句话与关键 props → 状态管理划分(哪些进全局 store、哪些留本地)→ 与接口的对接点;
 - 结构树与伪代码可以,不写真实实现代码。`,
-    skillIds: ['vue3', 'pinia', 'ant-design-vue', 'react', 'frontend-ui-engineering']
+    skillIds: ['vue3', 'pinia', 'antdv-next', 'react', 'frontend-ui-engineering']
   },
   {
     id: 'qa',
@@ -121,14 +121,7 @@ export const GROUP_ROLES: GroupRole[] = [
 - 产出「技术方案文档」:技术栈选型(前端/后端/数据库各一行,说明为什么是它)→ 数据模型(核心表字段表)→ 接口清单(方法/路径/入参/出参)→ 页面与组件结构(缩进树)→ 关键实现难点与对策;
 - 方案面向"能被一个小团队两周做出来",不追新不堆砌;
 - 不写真实实现代码,结构树与伪代码可以。`,
-    skillIds: [
-      'vue3',
-      'pinia',
-      'ant-design-vue',
-      'nestjs',
-      'postgresql',
-      'api-and-interface-design'
-    ]
+    skillIds: ['vue3', 'pinia', 'antdv-next', 'nestjs', 'postgresql', 'api-and-interface-design']
   },
   {
     id: 'devops',
@@ -169,14 +162,15 @@ export const GROUP_ROLES: GroupRole[] = [
   }
 ]
 
-/** 建群编辑器使用的模板副本；不预填模型和技能 */
+/** 建群编辑器使用的模板副本；技能预勾选、模型留给用户选 */
 export function roleTemplates(): GroupMemberTemplate[] {
-  return GROUP_ROLES.map(({ id, name, color, duty, deliverable, persona }) => ({
+  return GROUP_ROLES.map(({ id, name, color, duty, deliverable, persona, skillIds }) => ({
     id,
     name,
     color,
     duty,
     deliverable,
-    persona
+    persona,
+    skillIds: skillIds ? [...skillIds] : undefined
   }))
 }
