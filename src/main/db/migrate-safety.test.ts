@@ -83,6 +83,32 @@ describe('全套迁移', () => {
     db.close()
   })
 
+  it('0013 之后五张观测表存在,且不含任何正文类列', () => {
+    const db = new Database(':memory:')
+    runMigrations(db)
+    const tables = (
+      db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as { name: string }[]
+    ).map((r) => r.name)
+    for (const t of [
+      'ai_runs',
+      'ai_run_steps',
+      'tool_runs',
+      'model_usage_daily',
+      'model_usage_run_days'
+    ]) {
+      expect(tables).toContain(t)
+      // 隐私底线:观测表不许有 prompt / 正文 / 补丁类列
+      const cols = (db.prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map(
+        (c) => c.name
+      )
+      expect(cols).not.toContain('prompt')
+      expect(cols).not.toContain('content')
+      expect(cols).not.toContain('patch')
+      expect(cols.some((c) => c === 'reasoning')).toBe(false)
+    }
+    db.close()
+  })
+
   it('旧项目经过 0012 后的视觉方向默认为空字符串', () => {
     const db = new Database(':memory:')
 

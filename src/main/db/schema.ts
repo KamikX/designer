@@ -277,6 +277,225 @@ export type AssetRow = typeof assets.$inferSelect
  * 不做成一个通用的 ownerId:那样就没有外键级联了,删项目/删会话时要靠
  * 应用代码记得清理,迟早漏。两个各自带级联的可空外键更省心。
  */
+/* ------------------------------------------------------------------ */
+/* AI 可观测性(本机数据,不同步)                                        */
+/*                                                                      */
+/* 五张表分两类:                                                        */
+/* - 诊断明细(ai_runs / ai_run_steps / tool_runs)+ 去重桥表             */
+/*   (model_usage_run_days)只保留 7 天;                                */
+/* - 日聚合(model_usage_daily)长期保留,用户可单独清除。                 */
+/*                                                                      */
+/* 长期聚合表不建业务外键:provider / project 删除后用量必须还在,        */
+/* 靠非空规范化维度键(provider_key / project_key)保证唯一 upsert        */
+/* 可靠——SQLite 里多个 NULL 互不冲突,可空列做不了唯一维度。             */
+/* 任何表都不许出现 prompt、reasoning、文件正文或补丁正文。              */
+/* ------------------------------------------------------------------ */
+
+export const aiRuns = sqliteTable(
+  'ai_runs',
+  {
+    id: id(),
+    /** 关联消息/会话只存快照 id,不建外键——消息删了诊断照样能看 7 天 */
+    messageId: text('message_id'),
+    conversationId: text('conversation_id'),
+    /** 项目删除时诊断跟着走,这是诊断三表唯一的业务级联入口 */
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    providerId: text('provider_id'),
+    providerSlug: text('provider_slug').notNull().default(''),
+    modelId: text('model_id').notNull().default(''),
+    /** design | chat | group | assistant | document_summary | provider_test */
+    scene: text('scene').notNull(),
+    /** running | complete | error | aborted | interrupted */
+    status: text('status').notNull().default('running'),
+    startedAt: text('started_at').notNull(),
+    endedAt: text('ended_at'),
+    firstOutputAt: text('first_output_at'),
+    firstFileChangeAt: text('first_file_change_at'),
+    modelCallCount: integer('model_call_count').notNull().default(0),
+    toolCallCount: integer('tool_call_count').notNull().default(0),
+    toolFailureCount: integer('tool_failure_count').notNull().default(0),
+    /** 累计 token;null = 从未有 step 上报过对应字段 */
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    sdkTotalTokens: integer('sdk_total_tokens'),
+    toolBreaker: integer('tool_breaker', { mode: 'boolean' }).notNull().default(false),
+    tokenBreaker: integer('token_breaker', { mode: 'boolean' }).notNull().default(false),
+    errorBreaker: integer('error_breaker', { mode: 'boolean' }).notNull().default(false),
+    ...timestamps
+  },
+  (table) => [
+    index('idx_ai_runs_message').on(table.messageId),
+    index('idx_ai_runs_started').on(table.startedAt),
+    index('idx_ai_runs_project').on(table.projectId)
+  ]
+)
+
+export const aiRunSteps = sqliteTable(
+  'ai_run_steps',
+  {
+    id: id(),
+    runId: text('run_id')
+      .notNull()
+      .references(() => aiRuns.id, { onDelete: 'cascade' }),
+    /** AI SDK 的 callId,与 run_id 一起构成幂等收尾的键 */
+    callId: text('call_id').notNull(),
+    stepNumber: integer('step_number').notNull().default(0),
+    providerId: text('provider_id'),
+    providerSlug: text('provider_slug').notNull().default(''),
+    modelId: text('model_id').notNull().default(''),
+    startedAt: text('started_at').notNull(),
+    firstOutputAt: text('first_output_at'),
+    endedAt: text('ended_at'),
+    stepTimeMs: integer('step_time_ms'),
+    responseTimeMs: integer('response_time_ms'),
+    timeToFirstOutputMs: integer('time_to_first_output_ms'),
+    /** pending | complete | error | aborted。请求发出即插入,抛错也不消失 */
+    status: text('status').notNull().default('pending'),
+    /**
+     * 用量附加状态机:pending → ended_without_usage → aggregated。
+     * onLanguageModelCallEnd 与 onStepEnd 哪个先到都行,聚合恰好发生一次。
+     */
+    usageState: text('usage_state').notNull().default('pending'),
+    inputTokens: integer('input_tokens'),
+    inputNoCacheTokens: integer('input_no_cache_tokens'),
+    cacheReadTokens: integer('cache_read_tokens'),
+    cacheWriteTokens: integer('cache_write_tokens'),
+    outputTokens: integer('output_tokens'),
+    outputTextTokens: integer('output_text_tokens'),
+    reasoningTokens: integer('reasoning_tokens'),
+    sdkTotalTokens: integer('sdk_total_tokens'),
+    providerTotalTokens: integer('provider_total_tokens'),
+    /** UsageReportedFields JSON,区分明确 0 与未上报 */
+    usageReported: text('usage_reported'),
+    finishReason: text('finish_reason'),
+    httpStatus: integer('http_status'),
+    /** 已映射的脱敏错误码,不是原始 error message */
+    errorCode: text('error_code'),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex('uniq_ai_run_steps_call').on(table.runId, table.callId),
+    index('idx_ai_run_steps_run').on(table.runId)
+  ]
+)
+
+export const toolRuns = sqliteTable(
+  'tool_runs',
+  {
+    id: id(),
+    runId: text('run_id')
+      .notNull()
+      .references(() => aiRuns.id, { onDelete: 'cascade' }),
+    callId: text('call_id').notNull(),
+    stepNumber: integer('step_number').notNull().default(0),
+    toolName: text('tool_name').notNull(),
+    inputStartedAt: text('input_started_at'),
+    inputCompletedAt: text('input_completed_at'),
+    execStartedAt: text('exec_started_at'),
+    execCompletedAt: text('exec_completed_at'),
+    inputChars: integer('input_chars'),
+    outputChars: integer('output_chars'),
+    affectedFileCount: integer('affected_file_count'),
+    /** 经 ToolTraceSanitizer 白名单产出的脱敏目标,绝不放原始入参 */
+    targetSummary: text('target_summary'),
+    /** running | success | recoverable_error | fatal_error | aborted */
+    status: text('status').notNull().default('running'),
+    errorCode: text('error_code'),
+    /** 二次脱敏后的摘要,上限 240 字符 */
+    errorSummary: text('error_summary'),
+    recovered: integer('recovered', { mode: 'boolean' }).notNull().default(false),
+    breakerTripped: integer('breaker_tripped', { mode: 'boolean' }).notNull().default(false),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex('uniq_tool_runs_call').on(table.runId, table.callId),
+    index('idx_tool_runs_run').on(table.runId)
+  ]
+)
+
+export const modelUsageDaily = sqliteTable(
+  'model_usage_daily',
+  {
+    id: id(),
+    /** UTC 日期(YYYY-MM-DD),按 step 实际发生日归属 */
+    date: text('date').notNull(),
+    /** 非空规范化维度键:provider ID,内部调用用稳定场景键 */
+    providerKey: text('provider_key').notNull(),
+    providerId: text('provider_id'),
+    providerSlug: text('provider_slug').notNull().default(''),
+    modelId: text('model_id').notNull(),
+    scene: text('scene').notNull(),
+    /** `project:<id>` 或 'none' */
+    projectKey: text('project_key').notNull(),
+    projectId: text('project_id'),
+    stepCount: integer('step_count').notNull().default(0),
+    runCount: integer('run_count').notNull().default(0),
+    /** 和数默认 0;是否有意义看对应 reported_calls——0/0 即"未报告" */
+    inputTokens: integer('input_tokens').notNull().default(0),
+    inputNoCacheTokens: integer('input_no_cache_tokens').notNull().default(0),
+    cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+    cacheWriteTokens: integer('cache_write_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    outputTextTokens: integer('output_text_tokens').notNull().default(0),
+    reasoningTokens: integer('reasoning_tokens').notNull().default(0),
+    sdkTotalTokens: integer('sdk_total_tokens').notNull().default(0),
+    providerTotalTokens: integer('provider_total_tokens').notNull().default(0),
+    reportedInputCalls: integer('reported_input_calls').notNull().default(0),
+    reportedNoCacheCalls: integer('reported_no_cache_calls').notNull().default(0),
+    reportedCacheReadCalls: integer('reported_cache_read_calls').notNull().default(0),
+    reportedCacheWriteCalls: integer('reported_cache_write_calls').notNull().default(0),
+    reportedOutputCalls: integer('reported_output_calls').notNull().default(0),
+    reportedTextCalls: integer('reported_text_calls').notNull().default(0),
+    reportedReasoningCalls: integer('reported_reasoning_calls').notNull().default(0),
+    reportedSdkTotalCalls: integer('reported_sdk_total_calls').notNull().default(0),
+    reportedProviderTotalCalls: integer('reported_provider_total_calls').notNull().default(0),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex('uniq_model_usage_daily_dim').on(
+      table.date,
+      table.providerKey,
+      table.modelId,
+      table.scene,
+      table.projectKey
+    )
+  ]
+)
+
+/**
+ * 日聚合的 run 去重桥表:INSERT OR IGNORE 成功才给当日维度 run_count +1。
+ * 只保留 7 天——窗口过后不可能再收到该 run 的回调,删除不影响已聚合数据。
+ */
+export const modelUsageRunDays = sqliteTable(
+  'model_usage_run_days',
+  {
+    id: id(),
+    runId: text('run_id').notNull(),
+    date: text('date').notNull(),
+    providerKey: text('provider_key').notNull(),
+    modelId: text('model_id').notNull(),
+    scene: text('scene').notNull(),
+    projectKey: text('project_key').notNull(),
+    ...timestamps
+  },
+  (table) => [
+    uniqueIndex('uniq_model_usage_run_days_dim').on(
+      table.runId,
+      table.date,
+      table.providerKey,
+      table.modelId,
+      table.scene,
+      table.projectKey
+    ),
+    index('idx_model_usage_run_days_date').on(table.date)
+  ]
+)
+
+export type AiRunRow = typeof aiRuns.$inferSelect
+export type AiRunStepRow = typeof aiRunSteps.$inferSelect
+export type ToolRunRow = typeof toolRuns.$inferSelect
+export type ModelUsageDailyRow = typeof modelUsageDaily.$inferSelect
+
 export const workspaceRoots = sqliteTable('workspace_roots', {
   id: id(),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
