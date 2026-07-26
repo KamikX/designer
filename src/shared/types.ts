@@ -327,6 +327,62 @@ export type MessagePart =
 export interface ChatUsage {
   inputTokens: number
   outputTokens: number
+  /**
+   * 详细用量(缓存/reasoning 细分)。历史消息没有这块,展示层遇到
+   * undefined 一律当"历史未知",不做推测回填。
+   */
+  details?: DetailedUsage | null
+}
+
+/**
+ * 每个可选指标是否被 provider 明确上报。区分"明确为 0"与"根本没报":
+ * 未报的字段在 DetailedUsage 里是 null 且这里为 false,绝不许用 0 填充,
+ * 否则缓存命中率等派生指标会被没上报缓存的 provider 拉成假 0。
+ */
+export interface UsageReportedFields {
+  inputTokens: boolean
+  noCacheTokens: boolean
+  cacheReadTokens: boolean
+  cacheWriteTokens: boolean
+  outputTokens: boolean
+  textTokens: boolean
+  reasoningTokens: boolean
+  totalTokens: boolean
+  providerTotalTokens: boolean
+}
+
+/**
+ * 一次模型请求(step)的归一化用量。null = provider 未上报。
+ * totalTokens 是 AI SDK 归一化合计;providerTotalTokens 是从 raw 里按
+ * 适配器白名单提取的原始总量,两者分开保存、互不冒充。
+ */
+export interface DetailedUsage {
+  inputTokens: number | null
+  noCacheTokens: number | null
+  cacheReadTokens: number | null
+  cacheWriteTokens: number | null
+  outputTokens: number | null
+  textTokens: number | null
+  reasoningTokens: number | null
+  totalTokens: number | null
+  providerTotalTokens: number | null
+  reported: UsageReportedFields
+}
+
+/**
+ * 语言模型调用场景。provider_test 是真实计费请求也要计量,
+ * 用量页可按场景过滤掉它。
+ */
+export type UsageScene =
+  'design' | 'chat' | 'group' | 'assistant' | 'document_summary' | 'provider_test'
+
+/**
+ * provider 没报 input token 时的本地保守估算,只用于熔断判断与诊断展示,
+ * 永不写入长期"provider 报告"字段。
+ */
+export interface UsageEstimate {
+  estimatedInputTokens: number
+  estimated: true
 }
 
 export interface Message {
