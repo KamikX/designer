@@ -393,7 +393,14 @@ export interface DetailedUsage {
  * 用量页可按场景过滤掉它。
  */
 export type UsageScene =
-  'design' | 'chat' | 'group' | 'assistant' | 'document_summary' | 'provider_test'
+  | 'design'
+  | 'chat'
+  | 'group'
+  /** 群组前情纪要的滚动生成(收棒后异步,优先用全局辅助模型) */
+  | 'group_digest'
+  | 'assistant'
+  | 'document_summary'
+  | 'provider_test'
 
 /**
  * provider 没报 input token 时的本地保守估算,只用于熔断判断与诊断展示,

@@ -28,10 +28,20 @@ export interface SummarizeOutcome {
 }
 
 export function hasAssistantModel(): boolean {
-  return resolveAssistant() !== null
+  return resolveAssistantModel() !== null
 }
 
-function resolveAssistant(): { providerId: string; modelId: string; label: string } | null {
+/**
+ * 解析全局辅助模型(设置页的 assistantModel)。
+ *
+ * 导出给同类"廉价信息抽取"场景复用(如群组前情纪要):辅助模型的语义
+ * 就是"挑个便宜的做压缩提炼",一条配置服务所有这类调用,不另开配置项。
+ */
+export function resolveAssistantModel(): {
+  providerId: string
+  modelId: string
+  label: string
+} | null {
   const configured = readConfig().assistantModel
   if (!configured) return null
 
@@ -52,7 +62,7 @@ export async function condenseIfLong(text: string, hint?: string): Promise<Summa
     return { text, note: '', summarized: false }
   }
 
-  const assistant = resolveAssistant()
+  const assistant = resolveAssistantModel()
   if (!assistant) {
     return {
       text,

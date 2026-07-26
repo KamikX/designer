@@ -11,6 +11,7 @@ import type { Message } from '../../shared/types'
 const mocks = vi.hoisted(() => ({
   messages: [] as Message[],
   digest: null as { text: string; coveredUntilId: string } | null,
+  assistant: null as { providerId: string; modelId: string; label: string } | null,
   saveGroupDigest: vi.fn(),
   generateText: vi.fn(),
   getLanguageModel: vi.fn(() => 'language-model')
@@ -25,8 +26,30 @@ vi.mock('../db/repo/group-digest', () => ({
   saveGroupDigest: mocks.saveGroupDigest
 }))
 
+vi.mock('../db/repo/provider', () => ({
+  getProviderRowById: (id: string) => ({ id, slug: `slug-${id}`, adapter: 'openai' })
+}))
+
 vi.mock('./registry', () => ({
   getLanguageModel: mocks.getLanguageModel
+}))
+
+vi.mock('./assistant', () => ({
+  resolveAssistantModel: () => mocks.assistant
+}))
+
+vi.mock('./provider-options', () => ({
+  openaiCompatOptions: () => ({ store: false })
+}))
+
+// 观测收口在 run-trace 自己的实现里,这里只要求"计费调用都有 trace 包裹"
+vi.mock('./run-trace', () => ({
+  RunTraceCollector: class {
+    start = vi.fn()
+    finish = vi.fn()
+    modelCallStart = vi.fn()
+    stepEnd = vi.fn()
+  }
 }))
 
 vi.mock('ai', async (importActual) => ({
@@ -74,8 +97,10 @@ const INPUT = {
 beforeEach(() => {
   mocks.messages = []
   mocks.digest = null
+  mocks.assistant = null
   mocks.saveGroupDigest.mockReset()
   mocks.generateText.mockReset()
+  mocks.getLanguageModel.mockClear()
   mocks.generateText.mockResolvedValue({ text: '纪要正文' })
 })
 
@@ -145,6 +170,36 @@ describe('maybeUpdateGroupDigest', () => {
     await maybeUpdateGroupDigest(INPUT)
 
     expect(mocks.generateText).not.toHaveBeenCalled()
+  })
+
+  it('配了全局辅助模型就用它(便宜模型做压缩),没配才用收棒成员的模型', async () => {
+    mocks.messages = [
+      message('user', '开始'),
+      message(PM.id, doc('需求v1', 10_000)),
+      message(ARCH.id, doc('架构一稿', 10_000)),
+      message(PM.id, doc('需求修订', 10_000)),
+      message(ARCH.id, doc('架构二稿', 10_000))
+    ]
+    mocks.assistant = { providerId: 'cheap-provider', modelId: 'cheap-model', label: '小模型' }
+
+    await maybeUpdateGroupDigest(INPUT)
+
+    expect(mocks.getLanguageModel).toHaveBeenCalledWith('cheap-provider', 'cheap-model')
+    expect(mocks.getLanguageModel).not.toHaveBeenCalledWith('provider-1', 'vendor-model')
+  })
+
+  it('没配辅助模型时退回收棒成员自己的模型', async () => {
+    mocks.messages = [
+      message('user', '开始'),
+      message(PM.id, doc('需求v1', 10_000)),
+      message(ARCH.id, doc('架构一稿', 10_000)),
+      message(PM.id, doc('需求修订', 10_000)),
+      message(ARCH.id, doc('架构二稿', 10_000))
+    ]
+
+    await maybeUpdateGroupDigest(INPUT)
+
+    expect(mocks.getLanguageModel).toHaveBeenCalledWith('provider-1', 'vendor-model')
   })
 
   it('生成失败静默,不保存也不抛', async () => {

@@ -29,6 +29,7 @@ const SCENES: { label: string; value: UsageScene | '' }[] = [
   { label: '设计', value: 'design' },
   { label: '聊天', value: 'chat' },
   { label: '群组', value: 'group' },
+  { label: '群组纪要', value: 'group_digest' },
   { label: '辅助模型', value: 'assistant' },
   { label: '文档提炼', value: 'document_summary' },
   { label: '连通性测试', value: 'provider_test' }

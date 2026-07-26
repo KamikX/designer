@@ -1,8 +1,13 @@
 import { generateText } from 'ai'
+import type { AdapterType } from '../../shared/types'
 import type { GroupMentionMember } from '../../shared/group-mentions'
 import { listMessages } from '../db/repo/message'
 import { getGroupDigest, saveGroupDigest } from '../db/repo/group-digest'
+import { getProviderRowById } from '../db/repo/provider'
 import { getLanguageModel } from './registry'
+import { resolveAssistantModel } from './assistant'
+import { RunTraceCollector } from './run-trace'
+import { openaiCompatOptions } from './provider-options'
 import { transcriptEntries, transcriptFoldIds, type TranscriptEntry } from './group-transcript'
 
 /**
@@ -31,7 +36,10 @@ const inflight = new Set<string>()
 export interface DigestUpdateInput {
   conversationId: string
   members: readonly GroupMentionMember[]
-  /** 用刚收棒成员自己的模型生成:它已被验证可用,且供应商计费归属清晰 */
+  /**
+   * 兜底模型:刚收棒成员自己的模型(已被验证可用)。
+   * 实际优先用全局辅助模型——纪要正是"挑个便宜的做压缩提炼"的场景。
+   */
   providerId: string
   modelId: string
   contextWindow?: number | null
@@ -65,11 +73,44 @@ async function updateDigest(input: DigestUpdateInput): Promise<void> {
   if (targetIndex <= coveredIndex) return
 
   const fresh = entries.slice(coveredIndex + 1, targetIndex + 1)
-  const { text } = await generateText({
-    model: getLanguageModel(input.providerId, input.modelId),
-    prompt: digestPrompt(existing?.text ?? null, fresh),
-    abortSignal: AbortSignal.timeout(DIGEST_TIMEOUT_MS)
+
+  // 优先全局辅助模型(设置页配的便宜模型),没配才用收棒成员的模型
+  const assistant = resolveAssistantModel()
+  const providerId = assistant?.providerId ?? input.providerId
+  const modelId = assistant?.modelId ?? input.modelId
+
+  // 纪要是真实计费请求,和辅助模型同理要计量(用量页按 group_digest 过滤)
+  const provider = getProviderRowById(providerId)
+  const trace = new RunTraceCollector({
+    scene: 'group_digest',
+    conversationId: input.conversationId,
+    providerId,
+    providerSlug: provider?.slug ?? '',
+    modelId,
+    adapter: provider?.adapter as AdapterType | undefined
   })
+  trace.start()
+  let text: string
+  try {
+    const result = await generateText({
+      model: getLanguageModel(providerId, modelId),
+      // 便宜模型常配在中转站上,同一套 OpenAI 兼容参数
+      providerOptions: { openai: openaiCompatOptions() },
+      prompt: digestPrompt(existing?.text ?? null, fresh),
+      onLanguageModelCallStart: ({ callId }) => trace.modelCallStart(callId),
+      onLanguageModelCallEnd: (event) =>
+        trace.stepEnd(event.callId, event.usage, {
+          finishReason: event.finishReason,
+          responseTimeMs: event.performance?.responseTimeMs ?? null
+        }),
+      abortSignal: AbortSignal.timeout(DIGEST_TIMEOUT_MS)
+    })
+    trace.finish('complete')
+    text = result.text
+  } catch (err) {
+    trace.finish('error')
+    throw err
+  }
   if (!text.trim()) return
   saveGroupDigest(input.conversationId, { text: text.trim(), coveredUntilId: targetId })
 }
