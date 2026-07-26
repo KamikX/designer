@@ -248,7 +248,7 @@ describe('GroupMemberEditor', () => {
     expect(wrapper.get('input#member-skills').attributes('role')).toBe('combobox')
   })
 
-  it('通过 v-model 修改字段，并只提供 tools 模型和非 builtin 技能', async () => {
+  it('通过 v-model 修改字段，并提供全部技能来源(含 builtin,群组按勾选生效)', async () => {
     const current = shallowRef(editableMember())
     const Host = defineComponent(
       () => () =>
@@ -279,12 +279,14 @@ describe('GroupMemberEditor', () => {
       modelRowId: toolsModel.id,
       skillIds: ['app-skill', 'agents-skill']
     })
-    expect(selects[1].props('options')).not.toContainEqual(
+    // 设计内置技能在群组里也可选(不自动启用),分组标签点名"设计生成"
+    expect(selects[1].props('options')).toContainEqual(
       expect.objectContaining({
+        label: '设计生成(内置)',
         options: expect.arrayContaining([expect.objectContaining({ value: 'builtin-skill' })])
       })
     )
-    // 内置项目管理技能与设计内置不同:必须可选,且分组标签点名"项目管理"
+    // 内置项目管理技能必须可选,且分组标签点名"项目管理"
     expect(selects[1].props('options')).toContainEqual(
       expect.objectContaining({
         label: '项目管理(内置)',

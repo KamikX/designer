@@ -159,10 +159,9 @@ async function runChain(
         adapter: providerAdapter
       })
       trace.start()
+      // 群组里没有"自动内置"的技能:builtin 设计技能也只在被显式勾选时生效
       const wantedSkills = new Set(agent.skillIds)
-      const selectedSkills = installedSkills.filter(
-        (skill) => skill.source !== 'builtin' && wantedSkills.has(skill.name)
-      )
+      const selectedSkills = installedSkills.filter((skill) => wantedSkills.has(skill.name))
       const userRoots = listRoots({ conversationId })
       const roots = [...userRoots, ...skillRoots(selectedSkills)]
       const catalog = skillCatalog(selectedSkills, agent.model.contextWindow)

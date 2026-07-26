@@ -319,9 +319,10 @@ describe('configured 群组成员级编排', () => {
       'language:provider-a/shared-chat',
       'language:provider-b/shared-chat'
     ])
+    // builtin 设计技能在群组里不自动启用,但被显式勾选后必须生效
     expect(
       mocks.skillCatalog.mock.calls.map(([skills]) => skills.map((skill) => skill.name))
-    ).toEqual([['research'], ['writing']])
+    ).toEqual([['research', 'builtin-craft'], ['writing']])
     expect(mocks.streamOptions[0].system).toContain('CATALOG:research')
     expect(mocks.streamOptions[0].system).not.toContain('CATALOG:writing')
     expect(mocks.streamOptions[1].system).toContain('CATALOG:writing')
@@ -331,13 +332,13 @@ describe('configured 群组成员级编排', () => {
     expect(
       mocks.buildLocalTools.mock.calls.map(([roots]) => roots.map((root) => root.name))
     ).toEqual([
-      ['workspace', 'skill:research'],
+      ['workspace', 'skill:research', 'skill:builtin-craft'],
       ['workspace', 'skill:writing']
     ])
     expect(mocks.streamOptions[0].tools).toMatchObject({
       get_time: { kind: 'time' },
-      activate_skill: { selected: ['research'] },
-      read_local_file: { roots: ['workspace', 'skill:research'] }
+      activate_skill: { selected: ['research', 'builtin-craft'] },
+      read_local_file: { roots: ['workspace', 'skill:research', 'skill:builtin-craft'] }
     })
     expect(mocks.streamOptions[1].tools).toMatchObject({
       activate_skill: { selected: ['writing'] },

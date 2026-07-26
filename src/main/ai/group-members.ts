@@ -48,9 +48,8 @@ export function createGroupMembers(
   if (drafts.length === 0) throw new Error('群组至少需要一个成员')
 
   const modelsById = new Map(dependencies.models.map((model) => [model.id, model]))
-  const allowedSkills = new Set(
-    dependencies.skills.filter((skill) => skill.source !== 'builtin').map((skill) => skill.name)
-  )
+  // 所有已安装技能(含 builtin 设计技能)都可被显式勾选;群组场景没有自动启用
+  const allowedSkills = new Set(dependencies.skills.map((skill) => skill.name))
   const usedNames = new Set<string>()
   const usedIds = new Set<string>()
 

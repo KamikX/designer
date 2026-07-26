@@ -29,19 +29,21 @@ const modelOptions = computed(() =>
     .filter((group) => group.options.length > 0)
 )
 
-const SOURCE_LABELS: Record<Exclude<InstalledSkill['source'], 'builtin'>, string> = {
+const SOURCE_LABELS: Record<InstalledSkill['source'], string> = {
   // 内置领域技能包排最前:这是群组场景的主打能力,用户自己的技能其次
   'builtin-pm': '项目管理(内置)',
   'builtin-ui': 'UI 设计(内置)',
   'builtin-fullstack': '全栈工程(内置)',
   'builtin-agent': '工程方法(内置)',
+  // 设计会话里自动启用的 builtin 设计技能,群组里不自动、但可以手动勾
+  builtin: '设计生成(内置)',
   app: '我的技能',
   agents: 'Agents 共享技能',
   claude: 'Claude 技能'
 }
 
 const skillOptions = computed(() => {
-  const selectable = props.skills.filter((skill) => skill.source !== 'builtin')
+  const selectable = props.skills
   const groups = (Object.keys(SOURCE_LABELS) as (keyof typeof SOURCE_LABELS)[]).flatMap(
     (source) => {
       const options = selectable
@@ -180,7 +182,7 @@ function updateSkills(value: unknown): void {
       <a-form-item
         label="技能"
         html-for="member-skills"
-        extra="内置技能由系统按场景启用，这里只配置可选技能。"
+        extra="群组不会自动启用任何技能，内置技能也只在勾选后生效。"
       >
         <a-select
           id="member-skills"

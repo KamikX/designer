@@ -142,7 +142,7 @@ describe('createGroupMembers', () => {
     expect(() => create([draft({ modelRowId })], { models })).toThrow(/模型/)
   })
 
-  it('只保存当前存在且非 builtin 的技能名称，并去重', () => {
+  it('只保存当前存在的技能名称并去重;builtin 被勾选也保留(群组无自动启用)', () => {
     const members = create(
       [
         draft({
@@ -154,7 +154,7 @@ describe('createGroupMembers', () => {
       }
     )
 
-    expect(members[0].skillIds).toEqual(['research'])
+    expect(members[0].skillIds).toEqual(['research', 'builtin-craft'])
   })
 
   it('createId 碰撞时继续生成，保证群内 id 唯一', () => {
@@ -243,11 +243,11 @@ describe('群组发送契约', () => {
 })
 
 describe('内置角色 DTO', () => {
-  it('可编辑模板包含 persona 但不携带模型和技能', () => {
+  it('可编辑模板包含 persona 与预勾选技能,但不预选模型', () => {
     const template = roleTemplates()[0]
 
     expect(template.persona).toContain('产品经理')
     expect(template).not.toHaveProperty('modelRowId')
-    expect(template).not.toHaveProperty('skillIds')
+    expect(template.skillIds).toContain('create-prd')
   })
 })
