@@ -219,7 +219,7 @@ async function submit(): Promise<void> {
         </a-form-item>
 
         <a-form-item
-          label="视觉风格"
+          label="视觉风格（可选）"
           extra="可描述色彩、明暗、信息密度、字体、圆角、动效等；留空时，AI 会在首次生成前询问。"
         >
           <a-textarea
