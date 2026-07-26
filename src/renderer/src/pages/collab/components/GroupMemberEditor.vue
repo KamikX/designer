@@ -89,8 +89,10 @@ function updateSkills(value: unknown): void {
     <div class="member-editor-title">编辑成员</div>
     <a-form layout="vertical" size="small">
       <div class="member-editor-grid">
-        <a-form-item label="名称" required>
+        <a-form-item label="名称" html-for="member-name" required>
           <a-input
+            id="member-name"
+            aria-label="成员名称"
             data-testid="member-name"
             :value="member.name"
             :maxlength="24"
@@ -98,8 +100,10 @@ function updateSkills(value: unknown): void {
             @update:value="updateText('name', $event)"
           />
         </a-form-item>
-        <a-form-item label="头像颜色">
+        <a-form-item label="头像颜色" html-for="member-color">
           <a-input
+            id="member-color"
+            aria-label="成员头像颜色"
             data-testid="member-color"
             :value="member.color"
             type="color"
@@ -108,24 +112,30 @@ function updateSkills(value: unknown): void {
         </a-form-item>
       </div>
 
-      <a-form-item label="职责">
+      <a-form-item label="职责" html-for="member-duty">
         <a-input
+          id="member-duty"
+          aria-label="成员职责"
           data-testid="member-duty"
           :value="member.duty"
           placeholder="一句话说明负责什么"
           @update:value="updateText('duty', $event)"
         />
       </a-form-item>
-      <a-form-item label="产出物">
+      <a-form-item label="产出物" html-for="member-deliverable">
         <a-input
+          id="member-deliverable"
+          aria-label="成员产出物"
           data-testid="member-deliverable"
           :value="member.deliverable"
           placeholder="如 需求文档"
           @update:value="updateText('deliverable', $event)"
         />
       </a-form-item>
-      <a-form-item label="人设" required>
+      <a-form-item label="人设" html-for="member-persona" required>
         <a-textarea
+          id="member-persona"
+          aria-label="成员人设"
           data-testid="member-persona"
           :value="member.persona"
           :auto-size="{ minRows: 4, maxRows: 8 }"
@@ -133,8 +143,10 @@ function updateSkills(value: unknown): void {
           @update:value="updateText('persona', $event)"
         />
       </a-form-item>
-      <a-form-item label="模型" required>
+      <a-form-item label="模型" html-for="member-model" required>
         <a-select
+          id="member-model"
+          aria-label="成员模型"
           data-testid="member-model"
           :value="member.modelRowId || undefined"
           :options="modelOptions"
@@ -144,8 +156,14 @@ function updateSkills(value: unknown): void {
           @update:value="updateModel"
         />
       </a-form-item>
-      <a-form-item label="技能" extra="内置技能由系统按场景启用，这里只配置可选技能。">
+      <a-form-item
+        label="技能"
+        html-for="member-skills"
+        extra="内置技能由系统按场景启用，这里只配置可选技能。"
+      >
         <a-select
+          id="member-skills"
+          aria-label="成员技能"
           data-testid="member-skills"
           :value="member.skillIds"
           :options="skillOptions"

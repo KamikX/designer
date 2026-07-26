@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h, shallowRef } from 'vue'
-import { Select } from 'antdv-next'
+import { Modal, Select } from 'antdv-next'
 import { useCollabStore } from '@renderer/stores/collab'
 import { useProviderStore } from '@renderer/stores/provider'
 import type {
@@ -162,7 +162,8 @@ async function clickModalOk(): Promise<void> {
 
 beforeEach(() => {
   installApi()
-  createGroup.mockClear()
+  createGroup.mockReset()
+  createGroup.mockResolvedValue(createdGroup)
   appMessage.warning.mockClear()
   appMessage.error.mockClear()
 })
@@ -172,6 +173,25 @@ afterEach(() => {
 })
 
 describe('GroupMemberEditor', () => {
+  it('用 label 或 aria-label 标记核心编辑控件', () => {
+    const wrapper = mount(GroupMemberEditor, {
+      props: {
+        modelValue: editableMember(),
+        modelGroups: [{ provider, models: [toolsModel] }],
+        skills: installedSkills
+      }
+    })
+
+    expect(wrapper.get('label[for="member-name"]').text()).toContain('名称')
+    expect(wrapper.get('#member-name').attributes('aria-label')).toBe('成员名称')
+    expect(wrapper.get('label[for="member-persona"]').text()).toContain('人设')
+    expect(wrapper.get('#member-persona').attributes('aria-label')).toBe('成员人设')
+    expect(wrapper.get('label[for="member-model"]').text()).toContain('模型')
+    expect(wrapper.get('input#member-model').attributes('role')).toBe('combobox')
+    expect(wrapper.get('label[for="member-skills"]').text()).toContain('技能')
+    expect(wrapper.get('input#member-skills').attributes('role')).toBe('combobox')
+  })
+
   it('通过 v-model 修改字段，并只提供 tools 模型和非 builtin 技能', async () => {
     const current = shallowRef(editableMember())
     const Host = defineComponent(
@@ -212,6 +232,14 @@ describe('GroupMemberEditor', () => {
 })
 
 describe('GroupMemberList', () => {
+  it('卡片容器不是冗余的点击入口', async () => {
+    const wrapper = mount(GroupMemberList, { props: { members: [editableMember()] } })
+
+    await wrapper.get('.member-card').trigger('click')
+
+    expect(wrapper.emitted('edit')).toBeUndefined()
+  })
+
   it('只通过事件上报编辑、删除和移动操作', async () => {
     const members = [editableMember(), editableMember({ tempKey: 'member-2', name: 'UI 设计师' })]
     const wrapper = mount(GroupMemberList, { props: { members } })
@@ -228,6 +256,19 @@ describe('GroupMemberList', () => {
 })
 
 describe('CreateGroupModal', () => {
+  it('群名输入可由标签定位', async () => {
+    const pinia = prepareStores()
+    mount(CreateGroupModal, {
+      attachTo: document.body,
+      props: { open: true },
+      global: { plugins: [pinia] }
+    })
+    await flushPromises()
+
+    expect(page().get('label[for="group-name"]').text()).toContain('群组名称')
+    expect(page().get('#group-name').attributes('aria-label')).toBe('群组名称')
+  })
+
   it('从模板或空白新增成员，并在新增后打开对应编辑区', async () => {
     const pinia = prepareStores()
     const wrapper = mount(CreateGroupModal, {
@@ -310,5 +351,42 @@ describe('CreateGroupModal', () => {
       ]
     })
     expect(createGroup.mock.calls[0]?.[0].members[0]).not.toHaveProperty('tempKey')
+  })
+
+  it('快速触发两次提交时只创建并通知一次', async () => {
+    const pinia = prepareStores()
+    let resolveCreate: ((group: Conversation) => void) | undefined
+    createGroup.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve
+      })
+    )
+    const onCreated = vi.fn()
+    const wrapper = mount(CreateGroupModal, {
+      attachTo: document.body,
+      props: { open: true, onCreated },
+      global: { plugins: [pinia] }
+    })
+    await flushPromises()
+
+    await page().get('[data-testid="group-name"]').setValue('设计协作')
+    await page().get('[data-testid="add-template-pm"]').trigger('click')
+    wrapper.findComponent(GroupMemberEditor).vm.$emit('update:modelValue', {
+      ...wrapper.findComponent(GroupMemberEditor).props('modelValue'),
+      modelRowId: toolsModel.id
+    })
+
+    const modal = wrapper.findComponent(Modal)
+    modal.vm.$emit('ok')
+    modal.vm.$emit('ok')
+    await flushPromises()
+
+    expect(createGroup).toHaveBeenCalledTimes(1)
+    expect(onCreated).not.toHaveBeenCalled()
+
+    resolveCreate?.(createdGroup)
+    await flushPromises()
+
+    expect(onCreated).toHaveBeenCalledTimes(1)
   })
 })

@@ -92,6 +92,8 @@ function move(tempKey: string, direction: MoveDirection): void {
 }
 
 async function submit(): Promise<void> {
+  if (creating.value) return
+
   const groupName = name.value.trim()
   if (!groupName) {
     message.warning('给群组起个名字')
@@ -136,9 +138,11 @@ async function submit(): Promise<void> {
   >
     <div class="create-body">
       <a-form layout="vertical">
-        <a-form-item label="群组名称" required>
+        <a-form-item label="群组名称" html-for="group-name" required>
           <a-input
+            id="group-name"
             v-model:value="name"
+            aria-label="群组名称"
             data-testid="group-name"
             size="large"
             placeholder="如 官网改版专项 / 管理后台需求评审"

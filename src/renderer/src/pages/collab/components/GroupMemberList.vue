@@ -25,7 +25,6 @@ const { token } = theme.useToken()
         background:
           activeKey === member.tempKey ? token.colorFillQuaternary : token.colorBgContainer
       }"
-      @click="emit('edit', member.tempKey)"
     >
       <RoleAvatar :role="{ ...member, id: member.tempKey }" :size="28" />
       <div class="member-card-copy">
@@ -95,7 +94,6 @@ const { token } = theme.useToken()
   padding: 9px 8px 9px 10px;
   border: 1px solid;
   border-radius: 10px;
-  cursor: pointer;
 }
 
 .member-card-copy {
