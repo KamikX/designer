@@ -168,7 +168,17 @@ export type GroupStreamEvent = { conversationId: string } & (
   | { type: 'delta'; messageId: string; text: string }
   | { type: 'tool-start'; messageId: string; callId: string; label: string }
   | { type: 'tool-update'; messageId: string; callId: string; label: string }
-  | { type: 'tool-end'; messageId: string; callId: string; ok: boolean; summary?: string }
+  /** 本地执行开始,语义同 ChatStreamEvent 的 tool-exec */
+  | { type: 'tool-exec'; messageId: string; callId: string; label: string }
+  | {
+      type: 'tool-end'
+      messageId: string
+      callId: string
+      ok: boolean
+      summary?: string
+      status?: ToolRunStatus
+      execMs?: number
+    }
   | { type: 'agent-done'; messageId: string }
   /** 整条接力链正常结束(没人再被 @、@用户或用户中止) */
   | { type: 'chain-done' }
@@ -385,6 +395,119 @@ export interface UsageEstimate {
   estimated: true
 }
 
+/** 工具调用终态,与诊断表 tool_runs.status 对齐 */
+export type ToolRunStatus = 'success' | 'recoverable_error' | 'fatal_error' | 'aborted'
+
+/** 一条 assistant 消息背后那次 run 的七天诊断明细 */
+export interface RunDiagnostics {
+  run: {
+    id: string
+    scene: UsageScene
+    status: 'running' | 'complete' | 'error' | 'aborted' | 'interrupted'
+    providerSlug: string
+    modelId: string
+    startedAt: string
+    endedAt: string | null
+    firstOutputAt: string | null
+    firstFileChangeAt: string | null
+    modelCallCount: number
+    toolCallCount: number
+    toolFailureCount: number
+    inputTokens: number | null
+    outputTokens: number | null
+    sdkTotalTokens: number | null
+    toolBreaker: boolean
+    tokenBreaker: boolean
+    errorBreaker: boolean
+  }
+  steps: {
+    callId: string
+    stepNumber: number
+    modelId: string
+    status: string
+    startedAt: string
+    endedAt: string | null
+    stepTimeMs: number | null
+    responseTimeMs: number | null
+    timeToFirstOutputMs: number | null
+    inputTokens: number | null
+    inputNoCacheTokens: number | null
+    cacheReadTokens: number | null
+    cacheWriteTokens: number | null
+    outputTokens: number | null
+    outputTextTokens: number | null
+    reasoningTokens: number | null
+    sdkTotalTokens: number | null
+    providerTotalTokens: number | null
+    finishReason: string | null
+    errorCode: string | null
+  }[]
+  tools: {
+    callId: string
+    toolName: string
+    status: string
+    targetSummary: string | null
+    inputStartedAt: string | null
+    inputCompletedAt: string | null
+    execStartedAt: string | null
+    execCompletedAt: string | null
+    inputChars: number | null
+    outputChars: number | null
+    affectedFileCount: number | null
+    errorCode: string | null
+    errorSummary: string | null
+    recovered: boolean
+  }[]
+}
+
+export interface UsageQuery {
+  /** YYYY-MM-DD,含端点 */
+  from?: string
+  to?: string
+  providerKey?: string
+  modelId?: string
+  scene?: UsageScene
+  projectKey?: string
+}
+
+/**
+ * 日聚合行。和数与 reported_calls 成对出现:reported 为 0 时对应和数
+ * 没有意义,展示层必须显示"未报告"而不是 0。
+ */
+export interface UsageDailyRow {
+  date: string
+  providerKey: string
+  providerSlug: string
+  modelId: string
+  scene: UsageScene
+  projectKey: string
+  projectId: string | null
+  stepCount: number
+  runCount: number
+  inputTokens: number
+  inputNoCacheTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  outputTokens: number
+  outputTextTokens: number
+  reasoningTokens: number
+  sdkTotalTokens: number
+  providerTotalTokens: number
+  reportedInputCalls: number
+  reportedNoCacheCalls: number
+  reportedCacheReadCalls: number
+  reportedCacheWriteCalls: number
+  reportedOutputCalls: number
+  reportedTextCalls: number
+  reportedReasoningCalls: number
+  reportedSdkTotalCalls: number
+  reportedProviderTotalCalls: number
+}
+
+export interface UsageReport {
+  rows: UsageDailyRow[]
+}
+
 export interface Message {
   id: string
   conversationId: string
@@ -491,7 +614,21 @@ export type ChatStreamEvent = { streamId: string } & (
    */
   | { type: 'tool-start'; callId: string; toolName: string; label: string }
   | { type: 'tool-update'; callId: string; label: string }
-  | { type: 'tool-end'; callId: string; ok: boolean; summary?: string }
+  /**
+   * 本地执行真正开始。tool-start 到这之间是模型在生成参数,不是本地慢——
+   * 之前把这段时间也显示成"应用补丁",让用户以为本地补丁引擎卡了几十秒。
+   */
+  | { type: 'tool-exec'; callId: string; label: string }
+  | {
+      type: 'tool-end'
+      callId: string
+      ok: boolean
+      summary?: string
+      /** 细分终态;没有时渲染层按 ok 退化成 success/recoverable_error */
+      status?: ToolRunStatus
+      /** 本地执行耗时,超过 500ms 才显示性能警告 */
+      execMs?: number
+    }
   /** 有思考能力的模型的思考流。本来就在计费,显示出来不额外花钱 */
   | { type: 'reasoning'; text: string }
   | { type: 'usage'; usage: ChatUsage }
@@ -843,6 +980,17 @@ export interface DesignerApi {
     status: () => Promise<{ url: string; problem?: string }>
     /** 文件系统里已装好的技能(含来源) */
     installedSkills: () => Promise<InstalledSkill[]>
+  }
+  /**
+   * AI 可观测性(只读 + 一个受控清除)。不暴露 SQL,不允许改追踪行;
+   * 七天明细在用户打开诊断抽屉时才拉,列表滚动不预取。
+   */
+  observability: {
+    /** 该 assistant 消息背后那次 run 的诊断;超出七天窗口返回 null */
+    runForMessage: (messageId: string) => Promise<RunDiagnostics | null>
+    usage: (query: UsageQuery) => Promise<UsageReport>
+    /** 清除长期模型用量(日聚合与去重桥表同事务) */
+    clearUsage: () => Promise<void>
   }
   /** 独立的纯聊天会话(没有项目) */
   chatSession: {

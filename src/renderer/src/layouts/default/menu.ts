@@ -2,6 +2,7 @@ import type { MenuItemType } from 'antdv-next'
 import {
   AppstoreOutlined,
   HomeOutlined,
+  LineChartOutlined,
   MessageOutlined,
   SettingOutlined,
   TeamOutlined
@@ -25,5 +26,7 @@ export const MENU_ITEMS: MenuItemType[] = [
 
 /** 下半部分：贴底的工具入口 */
 export const FOOTER_MENU_ITEMS: MenuItemType[] = [
+  // 用量是"回头看账"的工具属性入口,和设置一起贴底,不挤主导航
+  { key: '/usage', icon: LineChartOutlined, label: '用量' },
   { key: '/settings', icon: SettingOutlined, label: '设置' }
 ]

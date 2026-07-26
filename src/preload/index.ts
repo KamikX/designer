@@ -36,6 +36,11 @@ const api: DesignerApi = {
     installedSkills: () => ipcRenderer.invoke('market:installed-skills'),
     mcp: () => ipcRenderer.invoke('market:mcp')
   },
+  observability: {
+    runForMessage: (messageId) => ipcRenderer.invoke('observability:run-for-message', messageId),
+    usage: (query) => ipcRenderer.invoke('observability:usage', query),
+    clearUsage: () => ipcRenderer.invoke('observability:clear-usage')
+  },
   chatSession: {
     list: () => ipcRenderer.invoke('chat:list'),
     create: () => ipcRenderer.invoke('chat:create'),

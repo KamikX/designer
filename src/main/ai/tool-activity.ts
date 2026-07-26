@@ -66,6 +66,48 @@ export function verbOf(toolName: string): string {
   return VERB[toolName] ?? toolName
 }
 
+/**
+ * 编辑族工具的相位动词。
+ *
+ * tool-input-start 到 tool-call 之间是**模型在生成参数**,不是本地在执行。
+ * 之前这段时间就显示"应用补丁",用户把模型生成参数的几十秒都记在了本地
+ * 补丁引擎头上。preparing 阶段必须说"准备",onToolExecutionStart 之后
+ * 才允许说"执行"。
+ */
+const PREPARING_VERB: Record<string, string> = {
+  apply_patch: '准备补丁',
+  edit_file: '准备编辑',
+  multi_edit_file: '准备编辑',
+  apply_string_edits: '准备编辑',
+  write_file: '准备写入'
+}
+
+const EXECUTING_VERB: Record<string, string> = {
+  apply_patch: '执行补丁',
+  edit_file: '执行编辑',
+  multi_edit_file: '执行编辑',
+  apply_string_edits: '执行编辑',
+  write_file: '执行写入'
+}
+
+/** 把「动词 目标」换相位动词;已带任一相位动词的也能换。非编辑族原样返回 */
+function swapVerb(toolName: string, label: string, table: Record<string, string>): string {
+  const phased = table[toolName]
+  if (!phased) return label
+  for (const prefix of [verbOf(toolName), PREPARING_VERB[toolName], EXECUTING_VERB[toolName]]) {
+    if (prefix && label.startsWith(prefix)) return phased + label.slice(prefix.length)
+  }
+  return phased
+}
+
+export function preparingLabel(toolName: string, label: string): string {
+  return swapVerb(toolName, label, PREPARING_VERB)
+}
+
+export function executingLabel(toolName: string, label: string): string {
+  return swapVerb(toolName, label, EXECUTING_VERB)
+}
+
 /** 入参片段:半截 JSON 解析出来的结果,字段可能缺 */
 type PartialInput = Record<string, unknown> | undefined
 

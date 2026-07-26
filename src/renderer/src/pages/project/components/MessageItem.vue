@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { theme } from 'antdv-next'
-import { CheckCircleFilled, DeleteOutlined, FileOutlined } from '@antdv-next/icons'
+import {
+  CheckCircleFilled,
+  DeleteOutlined,
+  FileOutlined,
+  LineChartOutlined
+} from '@antdv-next/icons'
 import { useChatStore } from '@renderer/stores/chat'
 import MarkdownStream from '@renderer/markdown/MarkdownStream.vue'
 import QuestionCard from './QuestionCard.vue'
+import RunDiagnostics from './RunDiagnostics.vue'
 import ToolActivityList from './ToolActivityList.vue'
 import type { AskUserAnswer, Message } from '@shared/types'
 
@@ -60,6 +66,10 @@ function isStale(questionId: string): boolean {
 function answer(questionId: string, value: AskUserAnswer): void {
   void chatStore.answerQuestion(questionId, value)
 }
+
+/** 运行诊断抽屉。只给已完成的 assistant 消息;明细在打开时懒加载 */
+const diagnosticsOpen = ref(false)
+const canDiagnose = computed(() => !isUser.value && !streaming.value)
 </script>
 
 <template>
@@ -163,6 +173,24 @@ function answer(questionId: string, value: AskUserAnswer): void {
       >
         已停止
       </a-typography-text>
+
+      <!-- 运行诊断入口:阶段耗时、工具时间线、详细 token 都在抽屉里 -->
+      <button
+        v-if="canDiagnose"
+        type="button"
+        class="message-diag-btn"
+        :style="{ color: token.colorTextQuaternary }"
+        title="运行诊断"
+        @click="diagnosticsOpen = true"
+      >
+        <LineChartOutlined />
+      </button>
+      <RunDiagnostics
+        v-if="canDiagnose && diagnosticsOpen"
+        :message-id="message.id"
+        :open="diagnosticsOpen"
+        @close="diagnosticsOpen = false"
+      />
     </div>
   </div>
 </template>
@@ -276,6 +304,21 @@ function answer(questionId: string, value: AskUserAnswer): void {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.message-diag-btn {
+  border: none;
+  background: none;
+  padding: 2px 0 0;
+  cursor: pointer;
+  font-size: 12px;
+  /* 平时几乎隐形,悬停气泡才浮现——诊断是回头排查用的,不该抢正文的视线 */
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.message-bubble:hover .message-diag-btn {
+  opacity: 1;
 }
 
 .message-typing {

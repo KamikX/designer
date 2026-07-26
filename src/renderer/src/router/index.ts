@@ -41,6 +41,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@renderer/pages/skill-editor/index.vue')
       },
       {
+        // 独立的模型用量页:长期日聚合的查询入口,不塞进设置
+        path: 'usage',
+        name: 'Usage',
+        component: () => import('@renderer/pages/usage/index.vue')
+      },
+      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@renderer/pages/settings/index.vue')

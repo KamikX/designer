@@ -55,7 +55,7 @@ import { addRoot, listRoots } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
 import { pendingPreviewError, previewErrorPrompt } from '../preview/errors'
 import { detectPaths } from '../workspace/detect'
-import { labelFor, summarize, verbOf } from './tool-activity'
+import { executingLabel, labelFor, preparingLabel, summarize, verbOf } from './tool-activity'
 import { errorMessage, getLanguageModel } from './registry'
 import { RunTraceCollector } from './run-trace'
 import { mapToolErrorCode } from './tool-trace-sanitizer'
@@ -262,6 +262,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const questionParts: Extract<MessagePart, { type: 'question' }>[] = []
   /** 工具入参是逐字到达的,按 callId 攒着,边攒边算展示标签 */
   const toolInputs = new Map<string, { toolName: string; json: string; label: string }>()
+  /** SDK 报告的本地执行耗时,tool-end 事件带给渲染层做 500ms 性能警告 */
+  const toolExecMs = new Map<string, number>()
 
   const relay = (events: ReturnType<FileStreamParser['push']>): void => {
     for (const e of events) {
@@ -494,7 +496,24 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             responseTimeMs: event.performance?.responseTimeMs ?? null,
             timeToFirstOutputMs: event.performance?.timeToFirstOutputMs ?? null
           }),
-        onToolExecutionStart: (event) => trace.toolExecutionStart(event.toolCall.toolCallId),
+        onToolExecutionStart: (event) => {
+          const id = event.toolCall.toolCallId
+          trace.toolExecutionStart(id)
+          // 相位从"准备"翻到"执行":这一刻起才是本地在干活
+          const entry = toolInputs.get(id)
+          emit({
+            streamId,
+            type: 'tool-exec',
+            callId: id,
+            label: executingLabel(
+              event.toolCall.toolName,
+              entry ? entry.label : verbOf(event.toolCall.toolName)
+            )
+          })
+        },
+        onToolExecutionEnd: (event) => {
+          toolExecMs.set(event.toolCall.toolCallId, Math.round(event.toolExecutionMs))
+        },
         ...(tools
           ? { tools, stopWhen: ({ steps }) => countToolCalls(steps) >= MAX_TOOL_CALLS }
           : {})
@@ -541,7 +560,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           }
           case 'tool-input-start': {
             trace.toolInputStart(part.id, part.toolName, { mcp: mcpToolNames.has(part.toolName) })
-            const label = verbOf(part.toolName)
+            // 这一刻只是模型开始生成参数,编辑族必须显示"准备X"而不是"应用X"
+            const label = preparingLabel(part.toolName, verbOf(part.toolName))
             toolInputs.set(part.id, { toolName: part.toolName, json: '', label })
             emit({ streamId, type: 'tool-start', callId: part.id, toolName: part.toolName, label })
             break
@@ -560,9 +580,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
              * 消费循环拖住,所有事件堵到生成结束才放出来,界面上表现成
              * "文件全写完了才一次性出现"。
              */
-            if (entry.label !== verbOf(entry.toolName)) break
+            if (entry.label !== preparingLabel(entry.toolName, verbOf(entry.toolName))) break
             const parsed = await parsePartialJson(entry.json)
-            const next = labelFor(entry.toolName, parsed.value as Record<string, unknown>)
+            const next = preparingLabel(
+              entry.toolName,
+              labelFor(entry.toolName, parsed.value as Record<string, unknown>)
+            )
             if (next !== entry.label) {
               entry.label = next
               emit({ streamId, type: 'tool-update', callId: part.id, label: next })
@@ -579,7 +602,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               part.input,
               toolInputs.get(part.toolCallId)?.json.length ?? null
             )
-            const label = labelFor(part.toolName, part.input as Record<string, unknown>)
+            const label = preparingLabel(
+              part.toolName,
+              labelFor(part.toolName, part.input as Record<string, unknown>)
+            )
             // 有些供应商不流式吐入参,压根没有 tool-input-start。这里补一个
             // 开始事件,否则渲染层会收到一条没有开头的更新
             if (!toolInputs.has(part.toolCallId)) {
@@ -604,7 +630,17 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               outputChars: typeof part.output === 'string' ? part.output.length : null,
               ...(ok ? {} : { errorSummary: summary ?? null })
             })
-            emit({ streamId, type: 'tool-end', callId: part.toolCallId, ok, summary })
+            emit({
+              streamId,
+              type: 'tool-end',
+              callId: part.toolCallId,
+              ok,
+              summary,
+              status: ok ? 'success' : 'recoverable_error',
+              ...(toolExecMs.has(part.toolCallId)
+                ? { execMs: toolExecMs.get(part.toolCallId) }
+                : {})
+            })
             break
           }
           case 'tool-error': {
@@ -619,7 +655,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               type: 'tool-end',
               callId: part.toolCallId,
               ok: false,
-              summary: errorMessage(part.error)
+              summary: errorMessage(part.error),
+              status: 'fatal_error',
+              ...(toolExecMs.has(part.toolCallId)
+                ? { execMs: toolExecMs.get(part.toolCallId) }
+                : {})
             })
             break
           }

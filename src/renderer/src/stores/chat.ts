@@ -74,12 +74,26 @@ interface StreamState {
  * 已经存在 parts 里了;调用流水是过程性的,存下来只会让 parts 膨胀,
  * buildHistory 还得额外过滤。代价是重开项目看不到当时的过程。
  */
+/**
+ * 相位:preparing 是模型在生成参数,executing 才是本地在干活。
+ * 终态四分——可恢复失败(黄)和最终失败(红)在界面上必须长得不一样。
+ */
+export type ToolActivityState =
+  'preparing' | 'executing' | 'success' | 'recoverable_error' | 'fatal_error' | 'aborted'
+
+/** 还在进行中(转圈)的相位 */
+export function isActiveToolState(state: ToolActivityState): boolean {
+  return state === 'preparing' || state === 'executing'
+}
+
 export interface ToolActivity {
   callId: string
   toolName: string
   label: string
-  state: 'running' | 'ok' | 'error'
+  state: ToolActivityState
   summary?: string
+  /** 本地执行耗时;超过 500ms 界面才显示性能提示 */
+  execMs?: number
 }
 
 export const useChatStore = defineStore('chat', {
@@ -345,7 +359,7 @@ export const useChatStore = defineStore('chat', {
             callId: event.callId,
             toolName: event.toolName,
             label: event.label,
-            state: 'running'
+            state: 'preparing'
           })
           break
         }
@@ -354,11 +368,21 @@ export const useChatStore = defineStore('chat', {
           if (hit) hit.label = event.label
           break
         }
+        case 'tool-exec': {
+          // 本地执行真正开始:相位翻转,标签换成"执行X"
+          const hit = entry.activities.find((a) => a.callId === event.callId)
+          if (hit) {
+            hit.state = 'executing'
+            hit.label = event.label
+          }
+          break
+        }
         case 'tool-end': {
           const hit = entry.activities.find((a) => a.callId === event.callId)
           if (hit) {
-            hit.state = event.ok ? 'ok' : 'error'
+            hit.state = event.status ?? (event.ok ? 'success' : 'recoverable_error')
             hit.summary = event.summary
+            if (event.execMs !== undefined) hit.execMs = event.execMs
           }
           break
         }
@@ -375,6 +399,10 @@ export const useChatStore = defineStore('chat', {
           break
         }
         case 'done': {
+          // 流结束了还停在进行相位的活动,只可能是被打断的
+          for (const a of entry.activities) {
+            if (isActiveToolState(a.state)) a.state = 'aborted'
+          }
           const message = this.messages.find((m) => m.id === entry.assistantMessageId)
           if (message) {
             message.status = 'complete'
@@ -385,6 +413,9 @@ export const useChatStore = defineStore('chat', {
           break
         }
         case 'error': {
+          for (const a of entry.activities) {
+            if (isActiveToolState(a.state)) a.state = 'aborted'
+          }
           const message = this.messages.find((m) => m.id === entry.assistantMessageId)
           if (message) {
             message.status = 'error'

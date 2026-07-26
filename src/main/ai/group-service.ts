@@ -191,7 +191,16 @@ async function runChain(
             responseTimeMs: event.performance?.responseTimeMs ?? null,
             timeToFirstOutputMs: event.performance?.timeToFirstOutputMs ?? null
           }),
-        onToolExecutionStart: (event) => trace?.toolExecutionStart(event.toolCall.toolCallId),
+        onToolExecutionStart: (event) => {
+          trace?.toolExecutionStart(event.toolCall.toolCallId)
+          emit({
+            conversationId,
+            type: 'tool-exec',
+            messageId: message.id,
+            callId: event.toolCall.toolCallId,
+            label: verbOf(event.toolCall.toolName)
+          })
+        },
         tools: {
           ...buildTimeTools(),
           ...buildLocalTools(roots, {
@@ -247,7 +256,8 @@ async function runChain(
               type: 'tool-end',
               messageId: message.id,
               callId: part.toolCallId,
-              ok: true
+              ok: true,
+              status: 'success'
             })
             break
         }

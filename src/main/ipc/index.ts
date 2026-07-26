@@ -46,6 +46,8 @@ import {
   saveConversationSettings
 } from '../db/repo/conversation'
 import { abortGroup, sendGroupMessage } from '../ai/group-service'
+import { clearUsage, getRunDiagnostics, queryDailyUsage } from '../db/repo/ai-observability'
+import type { RunDiagnostics, UsageQuery, UsageReport } from '../../shared/types'
 import { createGroupMembers } from '../ai/group-members'
 import { roleTemplates } from '../ai/prompts/group-roles'
 import {
@@ -185,6 +187,34 @@ export function registerIpc(): void {
 
   ipcMain.handle('chat:list-messages', (_e, conversationId: string) => listMessages(conversationId))
   // sender 从事件对象上取:流式增量必须发回发起请求的那个窗口
+  /*
+   * 可观测性:只读查询 + 一个受控清除。渲染层拿不到 SQL,也改不了追踪行。
+   * 查询参数来自渲染进程,一律当不可信输入——仓储侧全部走参数绑定。
+   */
+  ipcMain.handle(
+    'observability:run-for-message',
+    (_e, messageId: string): RunDiagnostics | null => {
+      if (typeof messageId !== 'string' || !messageId) return null
+      const record = getRunDiagnostics(messageId)
+      // 仓储行是诊断表的超集(多 id/createdAt 等快照列),结构上满足共享契约
+      return record ? (record as unknown as RunDiagnostics) : null
+    }
+  )
+  ipcMain.handle('observability:usage', (_e, query: UsageQuery): UsageReport => {
+    const q = query && typeof query === 'object' ? query : {}
+    return {
+      rows: queryDailyUsage({
+        ...(typeof q.from === 'string' ? { from: q.from } : {}),
+        ...(typeof q.to === 'string' ? { to: q.to } : {}),
+        ...(typeof q.providerKey === 'string' ? { providerKey: q.providerKey } : {}),
+        ...(typeof q.modelId === 'string' ? { modelId: q.modelId } : {}),
+        ...(typeof q.scene === 'string' ? { scene: q.scene } : {}),
+        ...(typeof q.projectKey === 'string' ? { projectKey: q.projectKey } : {})
+      }) as unknown as UsageReport['rows']
+    }
+  })
+  ipcMain.handle('observability:clear-usage', () => clearUsage())
+
   ipcMain.handle('chat:send', (e, input: SendChatInput) => sendChat(e.sender, input))
   ipcMain.handle('chat:abort', (_e, streamId: string) => abortChat(streamId))
   // 提问的答案:主进程侧 resolve 掉那个挂着的工具调用,循环继续往下跑

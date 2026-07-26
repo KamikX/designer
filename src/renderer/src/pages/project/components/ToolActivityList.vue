@@ -8,6 +8,7 @@ import {
   RightOutlined
 } from '@antdv-next/icons'
 import type { ToolActivity } from '@renderer/stores/chat'
+import { isActiveToolState } from '@renderer/stores/chat'
 
 /**
  * 工具调用活动条。
@@ -33,7 +34,12 @@ const expanded = computed(() =>
   manuallyToggled.value === null ? props.streaming === true : manuallyToggled.value
 )
 
-const failed = computed(() => props.activities.filter((a) => a.state === 'error').length)
+/** 红黄都算失败;黄色(可恢复)成功恢复后仍保留在列表里提醒"曾失败过" */
+const failed = computed(
+  () =>
+    props.activities.filter((a) => a.state === 'recoverable_error' || a.state === 'fatal_error')
+      .length
+)
 
 /**
  * 折叠头的文案。
@@ -48,11 +54,16 @@ const summary = computed(() => {
 
   if (expanded.value) return props.streaming ? `执行中 · ${total} 步` : tail
   if (props.streaming) {
-    const running = props.activities.find((a) => a.state === 'running')
+    const running = props.activities.find((a) => isActiveToolState(a.state))
     return running ? running.label : `执行中 · ${total} 步`
   }
   return tail
 })
+
+/** 本地执行超过 500ms 才提示——快的没必要说,慢的用户该知道 */
+function perfNote(item: ToolActivity): string {
+  return item.execMs !== undefined && item.execMs > 500 ? `本地执行 ${item.execMs}ms` : ''
+}
 </script>
 
 <template>
@@ -72,15 +83,38 @@ const summary = computed(() => {
     <div v-if="expanded" class="activity-body">
       <div v-for="item in activities" :key="item.callId" class="activity-row">
         <span class="activity-icon">
-          <LoadingOutlined v-if="item.state === 'running'" spin />
-          <CheckOutlined v-else-if="item.state === 'ok'" :style="{ color: token.colorSuccess }" />
-          <CloseOutlined v-else :style="{ color: token.colorError }" />
+          <LoadingOutlined v-if="isActiveToolState(item.state)" spin />
+          <CheckOutlined
+            v-else-if="item.state === 'success'"
+            :style="{ color: token.colorSuccess }"
+          />
+          <!-- 可恢复失败是黄的:模型接下来会自己纠正,和最终失败不是一回事 -->
+          <CloseOutlined
+            v-else-if="item.state === 'recoverable_error'"
+            :style="{ color: token.colorWarning }"
+          />
+          <CloseOutlined
+            v-else
+            :style="{
+              color: item.state === 'aborted' ? token.colorTextQuaternary : token.colorError
+            }"
+          />
         </span>
         <span class="activity-label">{{ item.label }}</span>
+        <span v-if="perfNote(item)" class="activity-detail" :style="{ color: token.colorWarning }">
+          {{ perfNote(item) }}
+        </span>
         <span
           v-if="item.summary"
           class="activity-detail"
-          :style="{ color: item.state === 'error' ? token.colorError : token.colorTextTertiary }"
+          :style="{
+            color:
+              item.state === 'fatal_error'
+                ? token.colorError
+                : item.state === 'recoverable_error'
+                  ? token.colorWarning
+                  : token.colorTextTertiary
+          }"
         >
           {{ item.summary }}
         </span>

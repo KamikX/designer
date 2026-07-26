@@ -23,7 +23,8 @@ import { useProviderStore } from './provider'
 export interface GroupActivity {
   callId: string
   label: string
-  state: 'running' | 'ok' | 'error'
+  /** 与 chat store 的 ToolActivityState 同构:相位 + 四种终态 */
+  state: 'preparing' | 'executing' | 'success' | 'recoverable_error' | 'fatal_error' | 'aborted'
   summary?: string
 }
 
@@ -247,7 +248,7 @@ export const useCollabStore = defineStore('collab', {
         }
         case 'tool-start': {
           const list = this.activities[event.messageId] ?? (this.activities[event.messageId] = [])
-          list.push({ callId: event.callId, label: event.label, state: 'running' })
+          list.push({ callId: event.callId, label: event.label, state: 'preparing' })
           break
         }
         case 'tool-update': {
@@ -255,10 +256,18 @@ export const useCollabStore = defineStore('collab', {
           if (hit) hit.label = event.label
           break
         }
+        case 'tool-exec': {
+          const hit = this.activities[event.messageId]?.find((a) => a.callId === event.callId)
+          if (hit) {
+            hit.state = 'executing'
+            hit.label = event.label
+          }
+          break
+        }
         case 'tool-end': {
           const hit = this.activities[event.messageId]?.find((a) => a.callId === event.callId)
           if (hit) {
-            hit.state = event.ok ? 'ok' : 'error'
+            hit.state = event.status ?? (event.ok ? 'success' : 'recoverable_error')
             hit.summary = event.summary
           }
           break

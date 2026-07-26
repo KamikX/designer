@@ -48,9 +48,11 @@ const drawerSpeaking = computed(
   () => drawerRole.value != null && collab.speakingAuthor === drawerRole.value.id
 )
 
+const activeStates = new Set(['preparing', 'executing'])
+
 const statusText = computed(() => {
   if (!drawerSpeaking.value) return '空闲'
-  return drawerActivities.value.some((a) => a.state === 'running') ? '正在调用工具' : '正在输出'
+  return drawerActivities.value.some((a) => activeStates.has(a.state)) ? '正在调用工具' : '正在输出'
 })
 </script>
 
@@ -93,19 +95,24 @@ const statusText = computed(() => {
         <div v-if="drawerActivities.length" class="role-activities">
           <div v-for="item in drawerActivities" :key="item.callId" class="role-activity-row">
             <span class="role-activity-icon">
-              <LoadingOutlined v-if="item.state === 'running'" spin />
+              <LoadingOutlined v-if="activeStates.has(item.state)" spin />
               <CheckOutlined
-                v-else-if="item.state === 'ok'"
+                v-else-if="item.state === 'success'"
                 :style="{ color: token.colorSuccess }"
               />
-              <CloseOutlined v-else :style="{ color: token.colorError }" />
+              <CloseOutlined
+                v-else
+                :style="{
+                  color: item.state === 'recoverable_error' ? token.colorWarning : token.colorError
+                }"
+              />
             </span>
             <span class="role-activity-label">{{ item.label }}</span>
             <span
               v-if="item.summary"
               class="role-activity-summary"
               :style="{
-                color: item.state === 'error' ? token.colorError : token.colorTextTertiary
+                color: item.state === 'fatal_error' ? token.colorError : token.colorTextTertiary
               }"
             >
               {{ item.summary }}
