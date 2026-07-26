@@ -24,6 +24,8 @@ const VERB: Record<string, string> = {
   outline_file: '查看结构',
   read_file: '读取',
   get_range: '取原文',
+  capture_range: '取锚点',
+  apply_string_edits: '锚点编辑',
   search_files: '搜索',
   edit_file: '编辑',
   multi_edit_file: '批量编辑',

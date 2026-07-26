@@ -20,6 +20,23 @@ interface Harness {
   call: (name: string, input: unknown) => Promise<string>
 }
 
+function harnessWith(seed: { path: string; content: string }[]): Harness {
+  const vfs = new SessionVfs(seed)
+  const patches: VfsPatch[] = []
+  const deleted: string[] = []
+  const tools = buildFileTools(vfs, {
+    onPatch: (p) => patches.push(p),
+    onDelete: (p) => deleted.push(p)
+  })
+  const call = async (name: string, input: unknown): Promise<string> => {
+    const entry = tools[name]
+    if (!entry?.execute) throw new Error(`没有工具 ${name}`)
+    const out = await entry.execute(input as never, { toolCallId: 't', messages: [] } as never)
+    return String(out)
+  }
+  return { vfs, patches, deleted, call }
+}
+
 function harness(): Harness {
   const vfs = new SessionVfs(SEED)
   const patches: VfsPatch[] = []
@@ -55,7 +72,9 @@ describe('工具集', () => {
       'outline_file',
       'read_file',
       'get_range',
+      'capture_range',
       'search_files',
+      'apply_string_edits',
       'edit_file',
       'multi_edit_file',
       'apply_patch',
@@ -356,5 +375,112 @@ describe('diff_changes', () => {
     const out = await h.call('diff_changes', {})
     expect(out).toContain('(新建文件)')
     expect(out).toContain('(整份删除)')
+  })
+})
+
+describe('锚点工具与恢复规则', () => {
+  it('search_files 每个命中带 matchId,截断预览标记不可作锚点', async () => {
+    const long = `.long { padding: ${'1px '.repeat(400)}}`
+    const h = harnessWith([{ path: 'a.css', content: `${long}\n.hero { color: red; }\n` }])
+    const out = await h.call('search_files', { query: 'padding' })
+    expect(out).toContain('[matchId: ')
+    expect(out).toContain('不可')
+  })
+
+  it('capture_range 返回精确不截断原文与 anchorId', async () => {
+    const long = `x${'y'.repeat(1200)}z`
+    const h = harnessWith([{ path: 'a.css', content: `${long}\nshort\n` }])
+    const out = await h.call('capture_range', { path: 'a.css', start_line: 1 })
+    expect(out).toContain('anchorId: ')
+    expect(out).toContain(long)
+  })
+
+  it('apply_string_edits 按锚点原子提交并发 patch 事件', async () => {
+    const h = harness()
+    const captured = await h.call('capture_range', { path: 'index.html', start_line: 2 })
+    const anchorId = /anchorId: (\S+)/.exec(captured)![1]
+    const out = await h.call('apply_string_edits', {
+      operations: [{ type: 'replace', anchor_id: anchorId, content: '<p>世界</p>' }]
+    })
+    expect(out).toContain('已按锚点完成编辑')
+    expect(h.vfs.raw('index.html').content).toContain('<p>世界</p>')
+    expect(h.patches.some((p) => p.path === 'index.html')).toBe(true)
+  })
+
+  it('过期锚点报 ANCHOR_STALE 且不产生副作用', async () => {
+    const h = harness()
+    const captured = await h.call('capture_range', { path: 'index.html', start_line: 2 })
+    const anchorId = /anchorId: (\S+)/.exec(captured)![1]
+    await h.call('edit_file', {
+      path: 'index.html',
+      old_string: '<h1>你好</h1>',
+      new_string: '<h1>标题</h1>'
+    })
+    const out = await h.call('apply_string_edits', {
+      operations: [{ type: 'remove', anchor_id: anchorId }]
+    })
+    expect(out).toContain('[code: ANCHOR_STALE]')
+    expect(h.vfs.raw('index.html').content).toContain('world')
+  })
+
+  it('首次补丁失配的错误带切换锚点编辑的恢复建议', async () => {
+    const h = harness()
+    const out = await h.call('edit_file', {
+      path: 'index.html',
+      old_string: '不存在的原文',
+      new_string: 'x'
+    })
+    expect(out).toContain('[code: MATCH_NOT_FOUND]')
+    expect(out).toContain('capture_range')
+  })
+
+  it('同文件同错误第二次后禁用文本补丁', async () => {
+    const h = harness()
+    await h.call('edit_file', { path: 'index.html', old_string: '错1', new_string: 'x' })
+    await h.call('edit_file', { path: 'index.html', old_string: '错2', new_string: 'x' })
+    // 第三次哪怕锚点是对的,也直接拒绝并要求锚点编辑
+    const out = await h.call('edit_file', {
+      path: 'index.html',
+      old_string: '<h1>你好</h1>',
+      new_string: '<h1>标题</h1>'
+    })
+    expect(out).toContain('不再接受文本补丁')
+    expect(out).toContain('apply_string_edits')
+  })
+
+  it('连续三次写失败后暂停写入,读取后解除', async () => {
+    const h = harness()
+    await h.call('edit_file', { path: 'index.html', old_string: '错1', new_string: 'x' })
+    await h.call('edit_file', { path: 'css/style.css', old_string: '错2', new_string: 'x' })
+    await h.call('write_file', { path: '../bad', content: 'x' })
+    const blocked = await h.call('write_file', { path: 'ok.css', content: 'p{}' })
+    expect(blocked).toContain('已暂停写入')
+    await h.call('read_file', { path: 'index.html' })
+    const after = await h.call('write_file', { path: 'ok.css', content: 'p{}' })
+    expect(after).toContain('已写入')
+  })
+
+  it('相同工具/目标/参数指纹不得执行两次', async () => {
+    const h = harness()
+    const first = await h.call('read_file', { path: 'index.html' })
+    expect(first).toContain('你好')
+    const second = await h.call('read_file', { path: 'index.html' })
+    expect(second).toContain('重复调用')
+    // 文件变了以后可以重读
+    await h.call('edit_file', {
+      path: 'index.html',
+      old_string: '<h1>你好</h1>',
+      new_string: '<h1>标题</h1>'
+    })
+    const third = await h.call('read_file', { path: 'index.html' })
+    expect(third).toContain('标题')
+  })
+
+  it('check_syntax 对超长行给可编辑性警告但不阻止', async () => {
+    const h = harnessWith([{ path: 'a.css', content: `.x{${'a:1;'.repeat(300)}}\n` }])
+    await h.call('write_file', { path: 'a.css', content: `.x{${'a:1;'.repeat(300)}}\n.y{}\n` })
+    const out = await h.call('check_syntax', {})
+    expect(out).toContain('可编辑性警告')
+    expect(out).toContain('capture_range')
   })
 })

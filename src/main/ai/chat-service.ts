@@ -47,6 +47,7 @@ import { buildWebTools } from '../web/tools'
 import { closeBrowserSession } from '../web/session'
 import { FileStreamParser } from './file-stream-parser'
 import { SessionVfs } from './session-vfs'
+import { RunContextLedger } from './run-context-ledger'
 import { buildFileTools } from './tools'
 import { askUser, buildAskUserTool, releaseQuestions } from './ask-user'
 import { buildImageTools } from './image-tools'
@@ -237,6 +238,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const useTools = model.abilities.includes('tools')
   const canSeeImages = model.abilities.includes('vision')
   const vfs = new SessionVfs(currentFiles)
+  /** 回合账本:锚点、指纹、失败熔断都以它为准,跟这一轮同生共死 */
+  const runLedger = new RunContextLedger()
   const initialStyleGate = project
     ? createInitialStyleWriteGate({
         styleBrief: project.styleBrief ?? '',
@@ -337,21 +340,25 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             // 设计稿的文件工具只给设计会话。纯聊天没有产物,给了它反而会
             // 去"写文件",写到一个谁也看不见的 VFS 里
             ...(project
-              ? buildFileTools(vfs, {
-                  onPatch: (patch) => {
-                    // 用户第一次看到产物变化的时刻,进运行诊断
-                    trace.markFirstFilePatch()
-                    emit({
-                      streamId,
-                      type: 'file-patch',
-                      path: patch.path,
-                      oldText: patch.oldText,
-                      newText: patch.newText,
-                      ...(patch.replaceAll ? { replaceAll: true } : {})
-                    })
+              ? buildFileTools(
+                  vfs,
+                  {
+                    onPatch: (patch) => {
+                      // 用户第一次看到产物变化的时刻,进运行诊断
+                      trace.markFirstFilePatch()
+                      emit({
+                        streamId,
+                        type: 'file-patch',
+                        path: patch.path,
+                        oldText: patch.oldText,
+                        newText: patch.newText,
+                        ...(patch.replaceAll ? { replaceAll: true } : {})
+                      })
+                    },
+                    onDelete: (path) => emit({ streamId, type: 'file-delete', path })
                   },
-                  onDelete: (path) => emit({ streamId, type: 'file-delete', path })
-                })
+                  { ledger: runLedger }
+                )
               : {}),
             // 整体视觉方向是项目数据；纯聊天没有项目，因而不暴露此工具。
             ...buildStyleBriefTools(

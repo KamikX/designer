@@ -63,6 +63,8 @@ export interface SearchHit {
   line: number
   /** 1 起 */
   column: number
+  /** 完整内部匹配的长度(UTF-16 code unit)。工具层据此登记 matchId 锚点 */
+  matchLength: number
   text: string
   before: string[]
   after: string[]
@@ -416,6 +418,7 @@ export class SessionVfs {
           path,
           line: i + 1,
           column: match.index + 1,
+          matchLength: match[0].length,
           text: clip(lines[i], MAX_LINE_CHARS),
           before: lines.slice(Math.max(0, i - context), i).map((l) => clip(l, MAX_LINE_CHARS)),
           after: lines.slice(i + 1, i + 1 + context).map((l) => clip(l, MAX_LINE_CHARS))

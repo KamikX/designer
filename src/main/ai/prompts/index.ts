@@ -114,15 +114,26 @@ const TOOL_PROTOCOL = `
 
 - edit_file:改一处。old_string 要与原文逐字符一致(含缩进与空行)且在文件中唯一。
 - multi_edit_file:同一个文件改多处,一次调完,全成或全不成。
-- apply_patch:跨多个文件的改动,一个补丁全部搞定。
+- apply_patch:跨多个文件的**短行、格式规整**改动,一个补丁全部搞定。
+- apply_string_edits:按锚点编辑,不需要复述原文。锚点来自 capture_range 或
+  search_files 的 matchId;支持 replace / remove / insert_before / insert_after,跨文件原子提交。
 - write_file:新建文件,或改动幅度大到重写更划算时。内容必须完整,不允许"其余保持不变"这类占位。
 - move_file / copy_file:改名、挪位置、做副本。这几件事不要用 write_file + delete_file 代替,
   那会把整份内容白吐一遍。
 - delete_file:删除文件。
 
+**什么时候必须切换到锚点编辑(capture_range / matchId + apply_string_edits)**
+
+- 目标行超过 800 字符,或读取/搜索结果里显示被截断——截断的预览抄进 old_string 必然失配;
+- 第一次出现 MATCH_NOT_FOUND / MATCH_AMBIGUOUS:不要原样重试,也不要凭记忆修补 old_string;
+- 大段 Vue 模板、长数组、columns、options 这类内容。
+同文件文本补丁失败两次后会被程序禁用,只能走锚点编辑;连续三次写入失败会暂停写入,
+必须先用 search_files / read_file / capture_range 重新定位。
+
 **收尾**
 
-- check_syntax:确认括号与标签都配对了,别把结构坏掉的版本交出去。
+- check_syntax:确认括号与标签都配对了,别把结构坏掉的版本交出去。它还会对超过 800 字符的
+  单行给出可编辑性警告——大型数组 / columns / options 请多行格式化(警告不阻止保存)。
 - diff_changes:自查这一轮动了什么,不要靠重读文件来确认。
 - revert_file:某个文件改坏了就退回本回合开始的样子,别试图重写着改回来。
 
@@ -130,6 +141,7 @@ const TOOL_PROTOCOL = `
 1. 路径一律用相对路径,不允许出现 .. 或以 / 开头。
 2. 先看原文再改,不要凭记忆构造 old_string;锚点对不上时先 search_files 而不是猜。
 3. 每多一轮工具调用,整个对话都要重发一遍,所以能合并的改动就合并成一次调用。
+4. 工具错误都带 [code: X] 和"下一步"建议,按建议行动;同一个失败绝不用同样的参数重试第二次。
 `.trim()
 
 /**
