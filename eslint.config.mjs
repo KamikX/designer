@@ -23,6 +23,8 @@ export default defineConfig(
       '**/out',
       // 预览运行时的第三方 vendor 大文件（babel/vue/react/tailwind），不 lint
       'resources/**',
+      // 合成基准 fixture:刻意保留超长行与压缩写法,lint 会把压力场景"修好"
+      'src/main/ai/fixtures/**',
       'src/renderer/types/auto-imports.d.ts',
       'src/renderer/types/components.d.ts'
     ]
