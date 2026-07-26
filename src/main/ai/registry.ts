@@ -5,10 +5,11 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { APICallError, RetryError, generateText } from 'ai'
 import type { LanguageModel } from 'ai'
-import type { ProviderTestResult } from '../../shared/types'
+import type { AdapterType, ProviderTestResult } from '../../shared/types'
 import { decryptSecret } from '../crypto'
 import { getProviderRowById } from '../db/repo/provider'
 import { listModels } from '../db/repo/model'
+import { RunTraceCollector } from './run-trace'
 import type { KeyStorage } from '../crypto'
 
 /**
@@ -89,13 +90,36 @@ export async function testProvider(
       modelId ?? listModels(providerId).find((m) => m.enabled && m.type === 'chat')?.modelId
     if (!target) return { ok: false, error: '该供应商下没有可用的对话模型' }
 
-    const start = Date.now()
-    await generateText({
-      model: getLanguageModel(providerId, target),
-      prompt: 'ping',
-      maxOutputTokens: 8,
-      abortSignal: AbortSignal.timeout(10_000)
+    // 连通性测试是真实计费请求,计入长期用量;用量页可按场景排除
+    const row = getProviderRowById(providerId)
+    const trace = new RunTraceCollector({
+      scene: 'provider_test',
+      providerId,
+      providerSlug: row?.slug ?? '',
+      modelId: target,
+      adapter: row?.adapter as AdapterType | undefined
     })
+    trace.start()
+
+    const start = Date.now()
+    try {
+      await generateText({
+        model: getLanguageModel(providerId, target),
+        prompt: 'ping',
+        maxOutputTokens: 8,
+        onLanguageModelCallStart: ({ callId }) => trace.modelCallStart(callId),
+        onLanguageModelCallEnd: (event) =>
+          trace.stepEnd(event.callId, event.usage, {
+            finishReason: event.finishReason,
+            responseTimeMs: event.performance?.responseTimeMs ?? null
+          }),
+        abortSignal: AbortSignal.timeout(10_000)
+      })
+      trace.finish('complete')
+    } catch (err) {
+      trace.finish('error')
+      throw err
+    }
     return { ok: true, latencyMs: Date.now() - start }
   } catch (err) {
     return { ok: false, error: errorMessage(err) }

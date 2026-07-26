@@ -23,6 +23,8 @@ import { resolveGroupAgent, type ResolvedGroupAgent } from './group-members'
 import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
 import { buildSkillTools } from '../skills/tools'
+import { RunTraceCollector } from './run-trace'
+import type { AdapterType } from '../../shared/types'
 
 /**
  * 多 agent 协作群组的编排。
@@ -118,6 +120,7 @@ async function runChain(
     let agent: ResolvedGroupAgent | null = null
     let providerSlug: string | null = null
     let resolutionError: unknown = null
+    let providerAdapter: AdapterType | undefined
     try {
       agent = resolveGroupAgent(source, getModel)
       const provider = getProviderRowById(agent.model.providerId)
@@ -125,6 +128,7 @@ async function runChain(
         throw new Error(`成员“${source.name}”使用的供应商不存在`)
       }
       providerSlug = provider.slug
+      providerAdapter = provider.adapter as AdapterType
     } catch (err) {
       resolutionError = err
     }
@@ -139,9 +143,21 @@ async function runChain(
     })
 
     let text = ''
+    /** 每一棒是一次独立 run:各有自己的模型与消息 */
+    let trace: RunTraceCollector | null = null
     try {
       if (resolutionError) throw resolutionError
       if (!agent) throw resolutionError ?? new Error(`成员“${source.name}”解析失败`)
+      trace = new RunTraceCollector({
+        scene: 'group',
+        messageId: message.id,
+        conversationId,
+        providerId: agent.model.providerId,
+        providerSlug: providerSlug ?? '',
+        modelId: agent.model.modelId,
+        adapter: providerAdapter
+      })
+      trace.start()
       const wantedSkills = new Set(agent.skillIds)
       const selectedSkills = installedSkills.filter(
         (skill) => skill.source !== 'builtin' && wantedSkills.has(skill.name)
@@ -168,6 +184,14 @@ async function runChain(
           }
         ],
         abortSignal: abort.signal,
+        onLanguageModelCallStart: ({ callId }) => trace?.modelCallStart(callId),
+        onLanguageModelCallEnd: (event) =>
+          trace?.stepEnd(event.callId, event.usage, {
+            finishReason: event.finishReason,
+            responseTimeMs: event.performance?.responseTimeMs ?? null,
+            timeToFirstOutputMs: event.performance?.timeToFirstOutputMs ?? null
+          }),
+        onToolExecutionStart: (event) => trace?.toolExecutionStart(event.toolCall.toolCallId),
         tools: {
           ...buildTimeTools(),
           ...buildLocalTools(roots, {
@@ -188,10 +212,12 @@ async function runChain(
         if (part.type === 'abort') break
         switch (part.type) {
           case 'text-delta':
+            trace?.markFirstOutput()
             text += part.text
             emit({ conversationId, type: 'delta', messageId: message.id, text: part.text })
             break
           case 'tool-input-start':
+            trace?.toolInputStart(part.id, part.toolName)
             emit({
               conversationId,
               type: 'tool-start',
@@ -201,6 +227,8 @@ async function runChain(
             })
             break
           case 'tool-call':
+            trace?.toolInputStart(part.toolCallId, part.toolName)
+            trace?.toolInputEnd(part.toolCallId, part.input)
             emit({
               conversationId,
               type: 'tool-update',
@@ -210,6 +238,10 @@ async function runChain(
             })
             break
           case 'tool-result':
+            trace?.toolExecutionEnd(part.toolCallId, {
+              status: 'success',
+              outputChars: typeof part.output === 'string' ? part.output.length : null
+            })
             emit({
               conversationId,
               type: 'tool-end',
@@ -222,6 +254,7 @@ async function runChain(
       }
       if (streamError) throw streamError
 
+      trace?.finish(abort.signal.aborted ? 'aborted' : 'complete')
       updateMessage(message.id, {
         parts: [{ type: 'text', text }],
         status: abort.signal.aborted ? 'aborted' : 'complete'
@@ -234,6 +267,7 @@ async function runChain(
       // 从**末尾**找下一棒:开头的 @ 往往是在回应上一位,结尾的才是移交
       current = abort.signal.aborted ? null : nextMention(text, mentionMembers, agent.id)
     } catch (err) {
+      trace?.finish(abort.signal.aborted ? 'aborted' : 'error')
       updateMessage(message.id, {
         parts: [{ type: 'text', text }],
         status: abort.signal.aborted ? 'aborted' : 'error'

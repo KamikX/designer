@@ -1,7 +1,10 @@
 import { generateText } from 'ai'
+import type { AdapterType } from '../../shared/types'
 import { readConfig } from '../config'
 import { getModel } from '../db/repo/model'
+import { getProviderRowById } from '../db/repo/provider'
 import { getLanguageModel } from './registry'
+import { RunTraceCollector } from './run-trace'
 import { summarizeForDesign, SUMMARIZE_THRESHOLD } from './summarize'
 import type { CompleteFn, SummarizeResult } from './summarize'
 
@@ -57,16 +60,38 @@ export async function condenseIfLong(text: string, hint?: string): Promise<Summa
     }
   }
 
+  // 辅助模型是真实计费请求,没有消息/项目也要计量
+  const provider = getProviderRowById(assistant.providerId)
   const complete: CompleteFn = async (system, user) => {
-    const result = await generateText({
-      model: getLanguageModel(assistant.providerId, assistant.modelId),
-      system,
-      messages: [{ role: 'user', content: user }],
-      // 辅助模型挂了不该拖死主流程:上面的 catch 会退回原文继续走。
-      // 没有这个超时,一次网络黑洞就是"web_fetch 永远没反应"
-      abortSignal: AbortSignal.timeout(90_000)
+    const trace = new RunTraceCollector({
+      scene: 'assistant',
+      providerId: assistant.providerId,
+      providerSlug: provider?.slug ?? '',
+      modelId: assistant.modelId,
+      adapter: provider?.adapter as AdapterType | undefined
     })
-    return result.text
+    trace.start()
+    try {
+      const result = await generateText({
+        model: getLanguageModel(assistant.providerId, assistant.modelId),
+        system,
+        messages: [{ role: 'user', content: user }],
+        onLanguageModelCallStart: ({ callId }) => trace.modelCallStart(callId),
+        onLanguageModelCallEnd: (event) =>
+          trace.stepEnd(event.callId, event.usage, {
+            finishReason: event.finishReason,
+            responseTimeMs: event.performance?.responseTimeMs ?? null
+          }),
+        // 辅助模型挂了不该拖死主流程:上面的 catch 会退回原文继续走。
+        // 没有这个超时,一次网络黑洞就是"web_fetch 永远没反应"
+        abortSignal: AbortSignal.timeout(90_000)
+      })
+      trace.finish('complete')
+      return result.text
+    } catch (err) {
+      trace.finish('error')
+      throw err
+    }
   }
 
   try {

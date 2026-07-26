@@ -50,7 +50,7 @@ This is one integrated plan because tracing, usage, tool lifecycle, editing reco
 - Create: `src/main/ai/usage.test.ts`
 - Modify: `src/shared/types.ts`
 
-- [ ] **Step 1: Write failing tests for reported, zero, partial, and absent token fields**
+- [x] **Step 1: Write failing tests for reported, zero, partial, and absent token fields**
 
 Cover `inputTokens`, `inputTokenDetails.noCacheTokens/cacheReadTokens/cacheWriteTokens`,
 `outputTokens`, `outputTokenDetails.textTokens/reasoningTokens`, `totalTokens`, and field-specific
@@ -72,13 +72,13 @@ expect(normalizeStepUsage({
 })
 ```
 
-- [ ] **Step 2: Run the focused test and verify the new module is missing**
+- [x] **Step 2: Run the focused test and verify the new module is missing**
 
 Run: `pnpm vitest run src/main/ai/usage.test.ts`
 
 Expected: FAIL because `./usage` cannot be resolved.
 
-- [ ] **Step 3: Add shared types and the pure normaliser**
+- [x] **Step 3: Add shared types and the pure normaliser**
 
 Extend `ChatUsage` with optional detailed fields while retaining required
 `inputTokens`/`outputTokens`. Define `DetailedUsage`, `UsageReportedFields`, `UsageScene`, and
@@ -86,13 +86,13 @@ Extend `ChatUsage` with optional detailed fields while retaining required
 an explicit provider-extractor registry keyed by provider adapter/slug, returning only numeric
 allowlisted totals and never retaining `usage.raw`.
 
-- [ ] **Step 4: Run usage and shared-type tests**
+- [x] **Step 4: Run usage and shared-type tests**
 
 Run: `pnpm vitest run src/main/ai/usage.test.ts src/main/db/repo/message.test.ts`
 
 Expected: PASS, including the distinction between unreported and reported zero.
 
-- [ ] **Step 5: Commit the usage contract**
+- [x] **Step 5: Commit the usage contract**
 
 ```bash
 git add src/shared/types.ts src/main/ai/usage.ts src/main/ai/usage.test.ts
@@ -110,7 +110,7 @@ git commit -m "feat: define detailed model usage"
 - Create: `src/main/db/migrations/meta/0013_snapshot.json` via `pnpm db:generate`
 - Modify: `src/main/db/migrate-safety.test.ts`
 
-- [ ] **Step 1: Write repository tests against a temporary SQLite database**
+- [x] **Step 1: Write repository tests against a temporary SQLite database**
 
 Test the five tables from the spec: `ai_runs`, `ai_run_steps`, `tool_runs`,
 `model_usage_daily`, and `model_usage_run_days`. Required cases:
@@ -127,13 +127,13 @@ Test the five tables from the spec: `ai_runs`, `ai_run_steps`, `tool_runs`,
 - deleting a project cascade-deletes linked `ai_runs`, `ai_run_steps`, and `tool_runs`;
 - deleted provider/project snapshots remain queryable without foreign keys.
 
-- [ ] **Step 2: Run repository tests and verify schema/repository failures**
+- [x] **Step 2: Run repository tests and verify schema/repository failures**
 
 Run: `pnpm vitest run src/main/db/repo/ai-observability.test.ts`
 
 Expected: FAIL because observability tables and repository functions do not exist.
 
-- [ ] **Step 3: Add schema and repository transactions**
+- [x] **Step 3: Add schema and repository transactions**
 
 Use non-null `providerKey` and `projectKey` in unique keys:
 
@@ -158,7 +158,7 @@ Diagnostic tables use project-linked cascade semantics; long-lived aggregates an
 bridge use snapshots/normalised keys without business foreign keys. Do not add any of the five
 tables to `SYNCED_TABLES` or change-log triggers.
 
-- [ ] **Step 4: Generate and inspect the migration**
+- [x] **Step 4: Generate and inspect the migration**
 
 Run: `pnpm db:generate`
 
@@ -166,13 +166,13 @@ Expected: one new `0013_*.sql`, one snapshot, and one journal entry. Inspect the
 there are no prompt/body columns, no business-table foreign keys on long-lived aggregates, and
 the compound uniqueness rules match the spec.
 
-- [ ] **Step 5: Run repository and migration-safety tests**
+- [x] **Step 5: Run repository and migration-safety tests**
 
 Run: `pnpm vitest run src/main/db/repo/ai-observability.test.ts src/main/db/migrate-safety.test.ts`
 
 Expected: PASS and all historical migrations remain immutable.
 
-- [ ] **Step 6: Commit the persistence layer**
+- [x] **Step 6: Commit the persistence layer**
 
 ```bash
 git add src/main/db/schema.ts src/main/db/repo/ai-observability.ts \
@@ -190,7 +190,7 @@ git commit -m "feat: persist AI diagnostics and usage"
 - Create: `src/main/ai/run-trace.test.ts`
 - Modify: `src/main/db/index.ts`
 
-- [ ] **Step 1: Write failing sanitizer tests for every tool family**
+- [x] **Step 1: Write failing sanitizer tests for every tool family**
 
 Use secret-bearing inputs to assert that:
 
@@ -204,19 +204,19 @@ Use secret-bearing inputs to assert that:
 - provider/unknown errors become mapped codes or the fixed fallback;
 - final strings redact path, URL, email, and credential patterns and cap summaries at 240 chars.
 
-- [ ] **Step 2: Run the sanitizer test and verify failure**
+- [x] **Step 2: Run the sanitizer test and verify failure**
 
 Run: `pnpm vitest run src/main/ai/tool-trace-sanitizer.test.ts`
 
 Expected: FAIL because the sanitizer registry does not exist.
 
-- [ ] **Step 3: Implement the allowlist registry and secondary redactor**
+- [x] **Step 3: Implement the allowlist registry and secondary redactor**
 
 Require explicit registrations; the default sanitizer must return only tool name, input/output
 character counts, duration, and fixed error code. Reuse VFS path validation rather than accepting
 an arbitrary string that merely looks relative.
 
-- [ ] **Step 4: Write failing lifecycle tests**
+- [x] **Step 4: Write failing lifecycle tests**
 
 Use a fake repository and fake clock to verify:
 
@@ -230,7 +230,7 @@ Also test recovered errors, fatal errors, aborts, startup interruption, and a mi
 aborts without `onStepEnd`, the same row must be finalised as error/aborted with null unreported
 usage rather than disappearing.
 
-- [ ] **Step 5: Implement `RunTraceCollector` and startup maintenance**
+- [x] **Step 5: Implement `RunTraceCollector` and startup maintenance**
 
 `RunTraceCollector` owns monotonic timestamps in memory and persists ISO timestamps/durations.
 Model-call start inserts the pending step; model-call end/error/abort and `onStepEnd` converge on
@@ -239,13 +239,13 @@ transaction; failed calls retain the step with null unreported usage. At databas
 stale `running` rows `interrupted`, then execute idempotent retention cleanup without blocking
 renderer startup on cleanup completion.
 
-- [ ] **Step 6: Run tracing tests**
+- [x] **Step 6: Run tracing tests**
 
 Run: `pnpm vitest run src/main/ai/tool-trace-sanitizer.test.ts src/main/ai/run-trace.test.ts`
 
 Expected: PASS; fixture database searches find none of the supplied secrets or bodies.
 
-- [ ] **Step 7: Commit tracing**
+- [x] **Step 7: Commit tracing**
 
 ```bash
 git add src/main/ai/tool-trace-sanitizer.ts src/main/ai/tool-trace-sanitizer.test.ts \

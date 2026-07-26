@@ -183,16 +183,26 @@ export class RunTraceCollector {
     )
   }
 
-  /** onStepEnd:带 usage 的最终收尾,聚合恰好发生一次(仓储状态机保证) */
+  /**
+   * onLanguageModelCallEnd / onStepEnd:带 usage 的最终收尾。
+   * 聚合恰好发生一次(仓储状态机保证)。SDK 上报的 performance 优先,
+   * 采集器自己的单调钟只做缺省兜底。
+   */
   stepEnd(
     callId: string,
     usage: LanguageModelUsage | undefined,
-    opts?: { finishReason?: string | null }
+    opts?: {
+      finishReason?: string | null
+      responseTimeMs?: number | null
+      timeToFirstOutputMs?: number | null
+    }
   ): void {
     const step = this.steps.get(callId)
     if (!this.runId || !step) return
     const mono = this.clock.monoMs()
     step.closed = true
+    const localFirstOutputMs =
+      step.firstOutputMono == null ? null : Math.round(step.firstOutputMono - step.monoStart)
     this.safe(() =>
       this.repo.finishModelStep({
         runId: this.runId!,
@@ -200,8 +210,8 @@ export class RunTraceCollector {
         status: 'complete',
         endedAt: this.clock.nowIso(),
         stepTimeMs: Math.round(mono - step.monoStart),
-        timeToFirstOutputMs:
-          step.firstOutputMono == null ? null : Math.round(step.firstOutputMono - step.monoStart),
+        responseTimeMs: opts?.responseTimeMs ?? null,
+        timeToFirstOutputMs: opts?.timeToFirstOutputMs ?? localFirstOutputMs,
         finishReason: opts?.finishReason ?? null,
         usage: normalizeStepUsage(usage, { adapter: this.opts.adapter })
       })

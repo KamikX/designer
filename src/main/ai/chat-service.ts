@@ -57,6 +57,9 @@ import { pendingPreviewError, previewErrorPrompt } from '../preview/errors'
 import { detectPaths } from '../workspace/detect'
 import { labelFor, summarize, verbOf } from './tool-activity'
 import { errorMessage, getLanguageModel } from './registry'
+import { RunTraceCollector } from './run-trace'
+import { mapToolErrorCode } from './tool-trace-sanitizer'
+import type { AdapterType } from '../../shared/types'
 import { getAssetRecord } from '../db/repo/asset'
 import { resolveAsset } from '../storage/service'
 
@@ -212,6 +215,21 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const abort = new AbortController()
   running.set(streamId, abort)
 
+  /**
+   * 运行追踪:设计会话记 design,纯聊天记 chat。采集器只观察不干预,
+   * 任何落库失败都被它自己吞掉,不影响本轮生成。
+   */
+  const trace = new RunTraceCollector({
+    scene: project ? 'design' : 'chat',
+    messageId: assistantMessage.id,
+    conversationId: conversation.id,
+    projectId: project?.id ?? null,
+    providerId: provider.id,
+    providerSlug: provider.slug,
+    modelId: model.modelId,
+    adapter: provider.adapter as AdapterType
+  })
+
   const emit = (event: ChatStreamEvent): void => {
     if (!sender.isDestroyed()) sender.send('chat:stream', event)
   }
@@ -252,6 +270,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           emit({ streamId, type: 'delta', text: e.text })
           break
         case 'file-start':
+          // markers 路的"首个文件变化"在这里
+          trace.markFirstFilePatch()
           emit({ streamId, type: 'file-start', path: e.path })
           break
         case 'file-delta':
@@ -294,6 +314,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   void run()
 
   async function run(): Promise<void> {
+    trace.start()
     try {
       /*
        * MCP:勾选的才连,默认一个都不连。连接失败的服务不拖垮整轮,
@@ -315,7 +336,9 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             // 去"写文件",写到一个谁也看不见的 VFS 里
             ...(project
               ? buildFileTools(vfs, {
-                  onPatch: (patch) =>
+                  onPatch: (patch) => {
+                    // 用户第一次看到产物变化的时刻,进运行诊断
+                    trace.markFirstFilePatch()
                     emit({
                       streamId,
                       type: 'file-patch',
@@ -323,7 +346,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                       oldText: patch.oldText,
                       newText: patch.newText,
                       ...(patch.replaceAll ? { replaceAll: true } : {})
-                    }),
+                    })
+                  },
                   onDelete: (path) => emit({ streamId, type: 'file-delete', path })
                 })
               : {}),
@@ -462,10 +486,22 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           }
         ],
         abortSignal: abort.signal,
+        // 运行追踪:模型请求与本地工具执行的精确相位。回调只观察不干预
+        onLanguageModelCallStart: ({ callId }) => trace.modelCallStart(callId),
+        onLanguageModelCallEnd: (event) =>
+          trace.stepEnd(event.callId, event.usage, {
+            finishReason: event.finishReason,
+            responseTimeMs: event.performance?.responseTimeMs ?? null,
+            timeToFirstOutputMs: event.performance?.timeToFirstOutputMs ?? null
+          }),
+        onToolExecutionStart: (event) => trace.toolExecutionStart(event.toolCall.toolCallId),
         ...(tools
           ? { tools, stopWhen: ({ steps }) => countToolCalls(steps) >= MAX_TOOL_CALLS }
           : {})
       })
+
+      // MCP 工具按键名识别:sanitizer 对它们只保留 server_tool 名
+      const mcpToolNames = new Set(Object.keys(mcp?.tools ?? {}))
 
       // 用 fullStream 而不是 textStream:后者只吐模型的文字,而工具协议下
       // 模型调工具的那几十秒根本不产文字——聊天框就是死的。工具的生命
@@ -489,6 +525,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         }
         switch (part.type) {
           case 'text-delta': {
+            trace.markFirstOutput()
             if (useTools) {
               toolNarration += part.text
               emit({ streamId, type: 'delta', text: part.text })
@@ -498,10 +535,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             break
           }
           case 'reasoning-delta': {
+            trace.markFirstOutput()
             emit({ streamId, type: 'reasoning', text: part.text })
             break
           }
           case 'tool-input-start': {
+            trace.toolInputStart(part.id, part.toolName, { mcp: mcpToolNames.has(part.toolName) })
             const label = verbOf(part.toolName)
             toolInputs.set(part.id, { toolName: part.toolName, json: '', label })
             emit({ streamId, type: 'tool-start', callId: part.id, toolName: part.toolName, label })
@@ -531,6 +570,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             break
           }
           case 'tool-call': {
+            // 补一个开始(供应商不流式吐入参时没有 tool-input-start),再记入参完成
+            trace.toolInputStart(part.toolCallId, part.toolName, {
+              mcp: mcpToolNames.has(part.toolName)
+            })
+            trace.toolInputEnd(
+              part.toolCallId,
+              part.input,
+              toolInputs.get(part.toolCallId)?.json.length ?? null
+            )
             const label = labelFor(part.toolName, part.input as Record<string, unknown>)
             // 有些供应商不流式吐入参,压根没有 tool-input-start。这里补一个
             // 开始事件,否则渲染层会收到一条没有开头的更新
@@ -550,10 +598,22 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           }
           case 'tool-result': {
             const { ok, summary } = summarize(part.toolName, part.output)
+            // 本仓库的工具以"错误文本作为结果"表达可恢复失败,ok=false 即是
+            trace.toolExecutionEnd(part.toolCallId, {
+              status: ok ? 'success' : 'recoverable_error',
+              outputChars: typeof part.output === 'string' ? part.output.length : null,
+              ...(ok ? {} : { errorSummary: summary ?? null })
+            })
             emit({ streamId, type: 'tool-end', callId: part.toolCallId, ok, summary })
             break
           }
           case 'tool-error': {
+            // 工具抛异常(而不是返回错误文本)是意料外失败
+            trace.toolExecutionEnd(part.toolCallId, {
+              status: 'fatal_error',
+              errorCode: mapToolErrorCode(part.error),
+              errorSummary: errorMessage(part.error)
+            })
             emit({
               streamId,
               type: 'tool-end',
@@ -603,11 +663,14 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         toolNarration += note
         emit({ streamId, type: 'delta', text: note })
       }
+      if (cappedOut) trace.setBreaker('tool')
+      trace.finish(cappedOut || modelAborted ? 'aborted' : 'complete')
       await finalize(cappedOut || modelAborted ? 'aborted' : 'complete', {
         inputTokens: usage.inputTokens ?? 0,
         outputTokens: usage.outputTokens ?? 0
       })
     } catch (err) {
+      trace.finish(abort.signal.aborted ? 'aborted' : 'error')
       if (!useTools && !markerCommitAttempted && !markerCommitRejected) {
         await commitMarkers(abort.signal.aborted ? 'aborted' : 'error')
       }
