@@ -121,9 +121,9 @@ export const useChatStore = defineStore('chat', {
     mcpIds: null as string[] | null,
     skillIds: null as string[] | null,
     /**
-     * 本轮是否联网。**按轮次生效,不持久化** ——用户点亮它是"这句话要联网"
-     * 的即时决定;做成持久设置会出现"上周开过、今天忘了它还开着",然后每句
-     * 闲聊都在偷偷发请求。
+     * 是否联网。**按会话记忆**:和模型/技能一样进 settings,重开这条会话
+     * 还保持原样——但只按会话不按全局,避免"上周在别的会话开过、今天每句
+     * 闲聊都在偷偷发请求"。
      */
     webSearch: false,
     /** 正在等用户作答的提问 id;主进程的工具循环停在那一步 */
@@ -178,6 +178,7 @@ export const useChatStore = defineStore('chat', {
       this.selected = restoreModelChoice(saved)
       this.skillIds = saved?.skillIds ?? null
       this.mcpIds = saved?.mcpIds ?? null
+      this.webSearch = saved?.webSearch ?? false
     },
 
     /**
@@ -268,6 +269,19 @@ export const useChatStore = defineStore('chat', {
       if (this.projectId || this.conversationId) return
       const created = await window.api.chatSession.create()
       await this.openConversation(created.id)
+
+      /*
+       * 补写起始页里做的选择。起始页故意不建会话,那时 persistSettings 找不到
+       * 归属只能丢弃——模型/技能/MCP/联网都选了个寂寞,重开这条会话全没了。
+       * 会话落库的这一刻把内存里的现状整体写进去,起始页的选择才真正生效。
+       */
+      const patch: SessionSettings = {
+        ...(this.selected ?? {}),
+        ...(this.skillIds ? { skillIds: [...this.skillIds] } : {}),
+        ...(this.mcpIds ? { mcpIds: [...this.mcpIds] } : {}),
+        ...(this.webSearch ? { webSearch: true } : {})
+      }
+      if (Object.keys(patch).length > 0) this.persistSettings(patch)
     },
 
     /** 进入工作台时调用。重复调用只在会话变化时重新拉取 */

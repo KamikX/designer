@@ -124,3 +124,73 @@ describe('工具活动相位', () => {
     expect(activities[0].state).toBe('aborted')
   })
 })
+
+/**
+ * 纯聊天设置的持久化。起始页故意不建会话,曾经导致那里做的所有选择
+ * (模型/技能/MCP/联网)在 persistSettings 里因为没有归属而被静默丢弃
+ * ——重开会话模型就没了。ensureChat 必须在会话落库后补写。
+ */
+describe('纯聊天设置持久化', () => {
+  function stubApi(saved: [string, unknown][]): void {
+    Object.assign(window, {
+      api: {
+        chat: {
+          listMessages: async () => [],
+          onStream: () => () => {}
+        },
+        chatSession: {
+          create: async () => ({ id: 'c-new' }),
+          saveSettings: async (id: string, patch: unknown) => {
+            saved.push([id, patch])
+          }
+        }
+      }
+    })
+  }
+
+  it('ensureChat 建会话后补写起始页里做的选择', async () => {
+    const saved: [string, unknown][] = []
+    stubApi(saved)
+    const store = useChatStore()
+    store.selected = { providerId: 'p1', modelId: 'm1' }
+    store.skillIds = ['antdv-next']
+    store.mcpIds = ['fetch']
+    store.webSearch = true
+
+    await store.ensureChat()
+
+    expect(store.conversationId).toBe('c-new')
+    expect(saved).toEqual([
+      [
+        'c-new',
+        {
+          providerId: 'p1',
+          modelId: 'm1',
+          skillIds: ['antdv-next'],
+          mcpIds: ['fetch'],
+          webSearch: true
+        }
+      ]
+    ])
+  })
+
+  it('起始页什么都没选:不发空补丁', async () => {
+    const saved: [string, unknown][] = []
+    stubApi(saved)
+    const store = useChatStore()
+
+    await store.ensureChat()
+
+    expect(saved).toEqual([])
+  })
+
+  it('openProject 无条件覆盖 webSearch:恢复存档,或清掉上一会话漏过来的', () => {
+    const store = useChatStore()
+    store.webSearch = true
+    store.openProject({ id: 'p-a', settings: {} } as never)
+    expect(store.webSearch).toBe(false)
+
+    store.openProject({ id: 'p-b', settings: { webSearch: true } } as never)
+    expect(store.webSearch).toBe(true)
+  })
+})

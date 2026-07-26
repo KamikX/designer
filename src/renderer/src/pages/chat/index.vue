@@ -78,8 +78,10 @@ async function reload(): Promise<void> {
 
 async function open(id: string): Promise<void> {
   activeId.value = id
-  // 传整条会话而不是 id:store 要从 settings 里恢复模型 / 技能 / 联网开关,
-  // 只给 id 的话它还得自己再查一次
+  // 列表是快照,settings 可能已被会话内的改动写过库(改模型不触发 reload)。
+  // 恢复前先拉最新的,否则切走再切回来,刚选的模型/技能就"丢了"。
+  // 传整条会话而不是 id:store 要从 settings 里恢复模型 / 技能 / 联网开关
+  await reload()
   chatStore.openChat(chats.value.find((c) => c.id === id) ?? null)
   await chatStore.openConversation(id)
   scrollToBottom(false)

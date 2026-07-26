@@ -17,8 +17,11 @@ export const useProjectStore = defineStore('project', {
     },
 
     async open(id: string): Promise<Project | null> {
-      // 列表里有就直接用,深链/刷新时兜底走一次 IPC
-      this.current = this.projects.find((p) => p.id === id) ?? (await window.api.project.get(id))
+      // 每次都从库里现读:settings(模型/技能勾选)在工作台里随手就会改,
+      // 首页加载的列表快照极易过期——用它恢复会把刚改的选择又盖回去。
+      // 列表只作为 IPC 拿不到时的兜底(比如刚创建还没入库完成的竞态)
+      this.current =
+        (await window.api.project.get(id)) ?? this.projects.find((p) => p.id === id) ?? null
       return this.current
     },
 
