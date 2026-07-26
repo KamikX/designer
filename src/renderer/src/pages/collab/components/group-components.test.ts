@@ -492,6 +492,42 @@ describe('GroupComposer', () => {
     expect(send).not.toHaveBeenCalled()
     expect(wrapper.findComponent(Select).exists()).toBe(true)
   })
+
+  it.each([
+    ['Shift+Enter', { shiftKey: true, isComposing: false }],
+    ['输入法 Enter', { shiftKey: false, isComposing: true }]
+  ])('%s 不选择候选且保留 textarea 默认行为', async (_, keyboard) => {
+    const pinia = prepareStores()
+    const collab = useCollabStore()
+    const send = vi.fn(async () => undefined)
+    window.api.group.send = send
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+
+    const wrapper = mount(GroupComposer, {
+      attachTo: document.body,
+      global: { plugins: [pinia] }
+    })
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('@')
+    await textarea.trigger('keyup', { key: '@', keyCode: 50, which: 50 })
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      shiftKey: keyboard.shiftKey,
+      isComposing: keyboard.isComposing,
+      bubbles: true,
+      cancelable: true
+    })
+    Object.defineProperty(event, 'which', { value: 13 })
+    textarea.element.dispatchEvent(event)
+    await flushPromises()
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(wrapper.getComponent(Mentions).props('value')).toBe('@')
+    expect(send).not.toHaveBeenCalled()
+  })
 })
 
 describe('GroupMentionText', () => {
@@ -524,7 +560,53 @@ describe('GroupMarkdownStream', () => {
     await flushPromises()
 
     expect(wrapper.findAllComponents(Tag)).toHaveLength(1)
-    expect(wrapper.get('a[href="https://example.com"]').text()).toBe('官网')
+    expect(wrapper.get('a[href="https://example.com/"]').text()).toBe('官网')
+  })
+
+  it('成员名含 Markdown 标点时仍渲染为单一 tag', async () => {
+    const member = { ...configuredMember, name: '研究**员**_&copy;' }
+    const wrapper = mount(GroupMarkdownStream, {
+      props: {
+        content: `@${member.name}`,
+        members: [member]
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.findAllComponents(Tag)).toHaveLength(1)
+    expect(wrapper.getComponent(Tag).text()).toBe(`@${member.name}`)
+  })
+
+  it('拒绝协议相对链接，并规范化外部协议后统一隔离打开', async () => {
+    const wrapper = mount(GroupMarkdownStream, {
+      props: {
+        content: [
+          '[协议相对](//evil.example)',
+          '[根路径](/local)',
+          '[当前目录](./local)',
+          '[上级目录](../local)',
+          '[页内](#section)',
+          '[大小写](HTTP://evil.example)',
+          '[无斜线](http:evil.example)'
+        ].join(' '),
+        members: [configuredMember]
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.find('a[href="//evil.example"]').exists()).toBe(false)
+    for (const label of ['协议相对', '根路径', '当前目录', '上级目录']) {
+      expect(wrapper.findAll('a').some((item) => item.text() === label)).toBe(false)
+    }
+    expect(wrapper.get('a[href="#section"]').attributes('target')).toBeUndefined()
+    for (const label of ['大小写', '无斜线']) {
+      const link = wrapper.findAll('a').find((item) => item.text() === label)
+      expect(link?.attributes()).toMatchObject({
+        href: 'http://evil.example/',
+        target: '_blank',
+        rel: 'noopener noreferrer'
+      })
+    }
   })
 
   it('有效成员 ID 搭配错误或嵌套 label 时不伪装成 tag', async () => {

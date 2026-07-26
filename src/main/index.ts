@@ -12,6 +12,7 @@ import {
   registerPreviewHandler
 } from './preview/protocol'
 import { startSyncEngine } from './sync/engine'
+import { resolveAppNavigation } from './navigation'
 
 // 特权 scheme 必须在 app ready 前注册,放模块顶层最不容易被挪错位置
 registerAppSchemes()
@@ -74,8 +75,20 @@ function createWindow(): void {
     patchConfig({ window: { width, height } })
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const navigation = resolveAppNavigation(url, mainWindow.webContents.getURL())
+    if (navigation.kind === 'internal') return
+    event.preventDefault()
+    if (navigation.kind === 'external' && navigation.url) {
+      void shell.openExternal(navigation.url)
+    }
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const navigation = resolveAppNavigation(url, mainWindow.webContents.getURL())
+    if (navigation.kind === 'external' && navigation.url) {
+      void shell.openExternal(navigation.url)
+    }
     return { action: 'deny' }
   })
 

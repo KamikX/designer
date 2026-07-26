@@ -113,6 +113,12 @@ function onEnter(e: KeyboardEvent): void {
     void send()
   })
 }
+
+function onKeydownCapture(e: KeyboardEvent): void {
+  if (e.key !== 'Enter' || (!e.shiftKey && !e.isComposing)) return
+  // 阻止 Mentions 把 Shift/IME Enter 当成候选确认，但保留 textarea 的默认行为。
+  e.stopPropagation()
+}
 </script>
 
 <template>
@@ -135,6 +141,7 @@ function onEnter(e: KeyboardEvent): void {
     <div
       class="gcomposer-box"
       :style="{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }"
+      @keydown.capture="onKeydownCapture"
     >
       <a-mentions
         v-model:value="draft"

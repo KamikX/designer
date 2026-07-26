@@ -40,6 +40,7 @@ interface BacktickRun {
 const LEGACY_MEMBER_IDS = new Set(['pm', 'ui', 'be', 'fe', 'qa'])
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
 const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}_]/u
+const ASCII_PUNCTUATION_PATTERN = /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g
 
 function isMemberId(id: string): boolean {
   return ULID_PATTERN.test(id) || LEGACY_MEMBER_IDS.has(id)
@@ -471,7 +472,12 @@ export function mentionsToMarkdown(text: string, members: readonly GroupMentionM
   return tokenizeGroupMentions(text, members)
     .map((token) => {
       if (token.type === 'text') return token.text
-      const safeName = token.name.replace(/([\\[\]<>`])/g, '\\$1')
+      // 数字实体会由 Markdown 解析器解回单一文本节点，同时不会触发强调、
+      // 实体、链接等 inline 语法。编码全部 ASCII 标点，避免逐项遗漏。
+      const safeName = token.name.replace(
+        ASCII_PUNCTUATION_PATTERN,
+        (character) => `&#${character.charCodeAt(0)};`
+      )
       return `[@${safeName}](group-member:${token.memberId})`
     })
     .join('')

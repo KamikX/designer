@@ -52,7 +52,7 @@ describe('createGroupMention', () => {
     expect(mentionsToModelText(mention, [member])).toBe('@前`端`')
 
     const markdown = mentionsToMarkdown(mention, [member])
-    expect(markdown).toBe('[@前\\`端\\`](group-member:' + PM_ID + ')')
+    expect(markdown).toBe('[@前&#96;端&#96;](group-member:' + PM_ID + ')')
     await expect(parse(markdown)).resolves.toMatchObject({
       nodes: [['p', {}, ['a', { href: `group-member:${PM_ID}` }, '@前`端`']]]
     })
@@ -246,12 +246,24 @@ describe('提及转换', () => {
     const markdown = mentionsToMarkdown(`@${member.name}`, [member])
     const tree = await parse(markdown)
 
-    expect(markdown).toBe(`[@\\<img src=x onerror=evil\\>](group-member:${PM_ID})`)
+    expect(markdown).toBe(`[@&#60;img src&#61;x onerror&#61;evil&#62;](group-member:${PM_ID})`)
     expect(collectComarkNodeTypes(tree.nodes)).toContain('a')
     expect(collectComarkNodeTypes(tree.nodes)).not.toContain('img')
     expect(tree.nodes).toEqual([
       ['p', {}, ['a', { href: `group-member:${PM_ID}` }, '@<img src=x onerror=evil>']]
     ])
+  })
+
+  it.each([
+    ['研究**员**', '研究&#42;&#42;员&#42;&#42;'],
+    ['研究_员 &copy;', '研究&#95;员 &#38;copy&#59;']
+  ])('成员名 %s 的 Markdown 标点只生成单一纯文本 label', async (name, encodedName) => {
+    const member = { id: PM_ID, name }
+    const markdown = mentionsToMarkdown(`@${name}`, [member])
+    const tree = await parse(markdown)
+
+    expect(markdown).toBe(`[@${encodedName}](group-member:${PM_ID})`)
+    expect(tree.nodes).toEqual([['p', {}, ['a', { href: `group-member:${PM_ID}` }, `@${name}`]]])
   })
 })
 
