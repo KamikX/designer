@@ -198,6 +198,11 @@ export const useCollabStore = defineStore('collab', {
       }
       this.messages.push(optimistic)
 
+      // 主进程可能在 invoke resolve 前同步回传 error / chain-done。先标记再调用，
+      // 才能让终止事件成为最后一次写入，避免 await 后把已经结束的链重新点亮。
+      const startsChain = firstMention(trimmed, this.mentionMembers) !== null
+      if (startsChain) this.chaining[cid] = true
+
       try {
         const input: {
           conversationId: string
@@ -213,13 +218,8 @@ export const useCollabStore = defineStore('collab', {
         await window.api.group.send(input)
       } catch (err) {
         this.messages = this.messages.filter((m) => m.id !== optimistic.id)
+        if (startsChain) delete this.chaining[cid]
         throw err
-      }
-
-      // @ 了成员才会起链;没 @ 只是留言,不会有 chain-done 来清这个标记,
-      // 所以不能无条件置 true——那会让暂停按钮永远停在那里
-      if (firstMention(trimmed, this.mentionMembers)) {
-        this.chaining[cid] = true
       }
     },
 
@@ -292,7 +292,7 @@ export const useCollabStore = defineStore('collab', {
         }
         case 'agent-done': {
           const msg = this.messages.find((m) => m.id === event.messageId)
-          if (msg) msg.status = 'complete'
+          if (msg?.status === 'streaming') msg.status = 'complete'
           this.speakingAuthor = ''
           break
         }

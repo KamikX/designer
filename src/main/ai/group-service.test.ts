@@ -98,7 +98,7 @@ vi.mock('ai', () => ({
   streamText: mocks.streamText
 }))
 
-import { sendGroupMessage } from './group-service'
+import { abortGroup, sendGroupMessage } from './group-service'
 
 const MEMBER_IDS = [
   '01ARZ3NDEKTSV4RRFFQ69G5FAV',
@@ -462,6 +462,31 @@ describe('legacy 群组兼容', () => {
 })
 
 describe('链路停止与清理', () => {
+  it('中止后持久化 aborted，且只发 chain-done 不发 agent-done', async () => {
+    const configured = member(0)
+    mocks.conversation = configuredConversation([configured])
+    mocks.models.set(configured.modelRowId, model(configured.modelRowId))
+    mocks.streamText.mockImplementationOnce((options: Record<string, unknown>) => {
+      mocks.streamOptions.push(options)
+      return {
+        fullStream: (async function* () {
+          yield { type: 'text-delta', text: '部分内容' }
+          abortGroup('group-1')
+          yield { type: 'abort' }
+        })()
+      }
+    })
+
+    sendGroupMessage(sender() as never, input(mention(configured)))
+    expect((await waitForTerminal()).type).toBe('chain-done')
+
+    expect(mocks.updateMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ status: 'aborted' })
+    )
+    expect(mocks.events.some((event) => event.type === 'agent-done')).toBe(false)
+  })
+
   it('技能扫描失败时报告链级错误、正常收链并清理 running', async () => {
     const configured = member(0)
     mocks.conversation = configuredConversation([configured])

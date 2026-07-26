@@ -56,6 +56,12 @@ const modelOptions = computed(() =>
   }))
 )
 
+// Select 默认把 fallthrough attrs 挂到无语义外层；定制实际 input，确保
+// aria-label 落在拥有 combobox role 的可聚焦控件上。
+const modelSelectComponents = {
+  input: h('input', { 'aria-label': '群组模型' })
+}
+
 const modelValue = computed<string | undefined>({
   get: () =>
     collab.model.providerId && collab.model.modelId
@@ -145,6 +151,7 @@ function onKeydownCapture(e: KeyboardEvent): void {
     >
       <a-mentions
         v-model:value="draft"
+        aria-label="群组消息"
         :options="mentionOptions"
         class="gcomposer-input"
         placeholder="@产品经理 说说你要做什么;不 @ 任何人就只是留言"
@@ -164,6 +171,7 @@ function onKeydownCapture(e: KeyboardEvent): void {
         <a-select
           v-if="needsFallbackModel"
           v-model:value="modelValue"
+          :components="modelSelectComponents"
           :options="modelOptions"
           size="small"
           class="gcomposer-model"
@@ -176,6 +184,7 @@ function onKeydownCapture(e: KeyboardEvent): void {
           <a-button
             v-if="collab.chainingHere"
             class="gcomposer-send"
+            aria-label="暂停群组接力"
             type="primary"
             shape="circle"
             @click="collab.abort()"
@@ -185,6 +194,7 @@ function onKeydownCapture(e: KeyboardEvent): void {
           <a-button
             v-else
             class="gcomposer-send"
+            aria-label="发送群组消息"
             type="primary"
             shape="circle"
             :disabled="!draft.trim()"

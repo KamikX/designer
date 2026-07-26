@@ -229,7 +229,9 @@ async function runChain(
         parts: [{ type: 'text', text }],
         status: abort.signal.aborted ? 'aborted' : 'complete'
       })
-      emit({ conversationId, type: 'agent-done', messageId: message.id })
+      if (!abort.signal.aborted) {
+        emit({ conversationId, type: 'agent-done', messageId: message.id })
+      }
       touchConversation(conversationId)
 
       // 从**末尾**找下一棒:开头的 @ 往往是在回应上一位,结尾的才是移交

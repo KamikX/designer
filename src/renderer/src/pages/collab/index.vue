@@ -85,17 +85,28 @@ function scrollToBottom(smooth: boolean): void {
             ? { background: token.colorPrimaryBg, color: token.colorPrimary }
             : { color: token.colorTextSecondary }
         "
-        @click="open(group.id)"
       >
-        <!-- 有接力在跑就转圈:后台群也一样,让用户一眼看到哪个群在干活 -->
-        <LoadingOutlined
-          v-if="collab.chaining[group.id]"
-          spin
-          :style="{ color: token.colorPrimary }"
-        />
-        <TeamOutlined v-else />
-        <span class="collab-item-title">{{ group.title }}</span>
-        <button class="collab-item-remove" type="button" @click.stop="remove(group)">
+        <button
+          class="collab-item-open"
+          type="button"
+          @click="open(group.id)"
+          @keydown.enter.prevent="open(group.id)"
+        >
+          <!-- 有接力在跑就转圈:后台群也一样,让用户一眼看到哪个群在干活 -->
+          <LoadingOutlined
+            v-if="collab.chaining[group.id]"
+            spin
+            :style="{ color: token.colorPrimary }"
+          />
+          <TeamOutlined v-else />
+          <span class="collab-item-title">{{ group.title }}</span>
+        </button>
+        <button
+          class="collab-item-remove"
+          type="button"
+          :aria-label="`删除群组 ${group.title}`"
+          @click="remove(group)"
+        >
           <DeleteOutlined />
         </button>
       </div>
@@ -166,15 +177,34 @@ function scrollToBottom(smooth: boolean): void {
 .collab-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  padding: 0 6px 0 0;
   border-radius: 8px;
-  cursor: pointer;
   font-size: 12px;
 }
 
 .collab-item:hover .collab-item-remove {
   opacity: 0.6;
+}
+
+.collab-item-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.collab-item-open:focus-visible,
+.collab-item-remove:focus-visible {
+  outline: 2px solid var(--ant-color-primary);
+  outline-offset: 1px;
 }
 
 .collab-item-title {
@@ -197,6 +227,10 @@ function scrollToBottom(smooth: boolean): void {
 }
 
 .collab-item-remove:hover {
+  opacity: 1;
+}
+
+.collab-item-remove:focus-visible {
   opacity: 1;
 }
 

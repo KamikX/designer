@@ -26,19 +26,21 @@ import GroupComposer from './GroupComposer.vue'
 import GroupMarkdownStream from './GroupMarkdownStream.vue'
 import GroupMentionText from './GroupMentionText.vue'
 import GroupMessage from './GroupMessage.vue'
+import CollabPage from '../index.vue'
 
 const appMessage = vi.hoisted(() => ({
   warning: vi.fn(),
   error: vi.fn(),
   success: vi.fn()
 }))
+const modalConfirm = vi.hoisted(() => vi.fn())
 
 vi.mock('antdv-next', async (importOriginal) => {
   const actual = await importOriginal<typeof import('antdv-next')>()
   return {
     ...actual,
     App: Object.assign({}, actual.App, {
-      useApp: () => ({ message: appMessage })
+      useApp: () => ({ message: appMessage, modal: { confirm: modalConfirm } })
     })
   }
 })
@@ -159,7 +161,12 @@ function installApi(): void {
         installedSkills: vi.fn(async () => installedSkills)
       },
       group: {
-        create: createGroup
+        create: createGroup,
+        roles: vi.fn(async () => [template]),
+        list: vi.fn(async () => [createdGroup]),
+        messages: vi.fn(async () => []),
+        onStream: vi.fn(() => () => undefined),
+        send: vi.fn(async () => undefined)
       }
     } as unknown as DesignerApi
   })
@@ -208,6 +215,7 @@ beforeEach(() => {
   createGroup.mockResolvedValue(createdGroup)
   appMessage.warning.mockClear()
   appMessage.error.mockClear()
+  modalConfirm.mockClear()
 })
 
 afterEach(() => {
@@ -434,6 +442,29 @@ describe('CreateGroupModal', () => {
 })
 
 describe('GroupComposer', () => {
+  it('输入、旧群模型和纯图标操作都有可访问名称', async () => {
+    const pinia = prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([template.id])]
+    collab.conversationId = createdGroup.id
+
+    const wrapper = mount(GroupComposer, {
+      attachTo: document.body,
+      global: { plugins: [pinia] }
+    })
+
+    expect(wrapper.get('textarea').attributes('aria-label')).toBe('群组消息')
+    expect(wrapper.get('.gcomposer-model input[role="combobox"]').attributes('aria-label')).toBe(
+      '群组模型'
+    )
+    expect(wrapper.get('.gcomposer-send').attributes('aria-label')).toBe('发送群组消息')
+
+    collab.chaining[createdGroup.id] = true
+    await nextTick()
+
+    expect(wrapper.get('.gcomposer-send').attributes('aria-label')).toBe('暂停群组接力')
+  })
+
   it('新群候选选择写入规范提及，且不显示公共模型选择器', async () => {
     const pinia = prepareStores()
     const collab = useCollabStore()
@@ -527,6 +558,37 @@ describe('GroupComposer', () => {
     expect(event.defaultPrevented).toBe(false)
     expect(wrapper.getComponent(Mentions).props('value')).toBe('@')
     expect(send).not.toHaveBeenCalled()
+  })
+})
+
+describe('CollabPage group navigation', () => {
+  it('用同级按钮呈现打开和删除操作，并支持 Enter 打开群组', async () => {
+    const pinia = prepareStores()
+    const wrapper = mount(CollabPage, {
+      attachTo: document.body,
+      global: {
+        plugins: [pinia],
+        stubs: {
+          MemberBar: true,
+          GroupMessage: true,
+          GroupComposer: true,
+          CreateGroupModal: true
+        }
+      }
+    })
+    await flushPromises()
+
+    const row = wrapper.get('.collab-item')
+    const buttons = row.findAll('button')
+    expect(buttons).toHaveLength(2)
+    expect(buttons[0].text()).toContain(createdGroup.title)
+    expect(buttons[1].attributes('aria-label')).toBe(`删除群组 ${createdGroup.title}`)
+
+    await buttons[0].trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+
+    expect(useCollabStore().conversationId).toBe(createdGroup.id)
+    expect(window.api.group.messages).toHaveBeenCalledWith(createdGroup.id)
   })
 })
 
