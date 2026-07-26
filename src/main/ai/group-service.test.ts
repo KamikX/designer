@@ -153,11 +153,10 @@ function configuredConversation(members: GroupMember[]): Conversation {
   }
 }
 
-function input(text: string, fallbackModelRowId?: string): GroupSendInput {
+function input(text: string): GroupSendInput {
   return {
     conversationId: 'group-1',
-    text,
-    ...(fallbackModelRowId ? { fallbackModelRowId } : {})
+    text
   }
 }
 
@@ -309,10 +308,7 @@ describe('configured 群组成员级编排', () => {
     )
     mocks.outputs.push(`${mention(second)} 请接棒`, '@用户 完成')
 
-    sendGroupMessage(
-      sender() as never,
-      input(`${mention(first)} 请开始`, 'missing-fallback-that-must-be-ignored')
-    )
+    sendGroupMessage(sender() as never, input(`${mention(first)} 请开始`))
     expect((await waitForTerminal()).type).toBe('chain-done')
 
     expect(mocks.getLanguageModel.mock.calls).toEqual([
@@ -380,64 +376,46 @@ describe('configured 群组成员级编排', () => {
     ])
   })
 
-  it('新群忽略无效 fallbackModelRowId，只解析成员自己的模型', async () => {
+  it('只解析成员自己的模型', async () => {
     const configured = member(0, { modelRowId: 'member-model' })
     mocks.conversation = configuredConversation([configured])
     mocks.models.set('member-model', model('member-model'))
     mocks.outputs.push('@用户 完成')
 
-    sendGroupMessage(sender() as never, input(`${mention(configured)} 开始`, 'disabled-fallback'))
+    sendGroupMessage(sender() as never, input(`${mention(configured)} 开始`))
     expect((await waitForTerminal()).type).toBe('chain-done')
 
     expect(mocks.getModel).toHaveBeenCalledWith('member-model')
-    expect(mocks.getModel).not.toHaveBeenCalledWith('disabled-fallback')
   })
 })
 
-describe('legacy 群组兼容', () => {
-  it('用 fallback 模型运行完整内置角色，并保持空技能', async () => {
+describe('不可信成员设置', () => {
+  it.each([
+    ['members 缺失', {}],
+    ['旧 string[]', { members: ['pm'] }],
+    ['字段不完整的对象数组', { members: [{ id: MEMBER_IDS[0], name: '产品经理' }] }]
+  ])('%s时仍保存用户留言，但不生成成员或启动 agent', async (_label, settings) => {
     mocks.conversation = {
       ...configuredConversation([]),
-      settings: { members: ['pm'] }
-    }
-    mocks.models.set('fallback-row', model('fallback-row', 'provider-old', 'old-chat'))
-    mocks.outputs.push('@用户 完成')
-
-    sendGroupMessage(sender() as never, input('@产品经理 请开始', 'fallback-row'))
-    expect((await waitForTerminal()).type).toBe('chain-done')
-
-    expect(mocks.getLanguageModel).toHaveBeenCalledWith('provider-old', 'old-chat')
-    expect(mocks.skillCatalog).toHaveBeenCalledWith([], 64_000)
-    expect(mocks.streamOptions[0].system).toContain('你是资深产品经理')
-    expect(mocks.createMessage.mock.calls[1][0]).toMatchObject({
-      author: 'pm',
-      providerSlug: 'slug-provider-old',
-      modelId: 'old-chat'
-    })
-  })
-
-  it('缺少 fallback 时把当前成员消息标错，并报告成员名称', async () => {
-    mocks.conversation = {
-      ...configuredConversation([]),
-      settings: { members: ['pm'] }
-    }
+      settings
+    } as unknown as Conversation
 
     sendGroupMessage(sender() as never, input('@产品经理 请开始'))
-    await vi.waitFor(() => {
-      expect(mocks.events.some((event) => event.type === 'error')).toBe(true)
-    })
+    expect(await waitForTerminal()).toMatchObject({ type: 'chain-done' })
 
-    expect(mocks.events.find((event) => event.type === 'error')).toMatchObject({
-      type: 'error',
-      message: expect.stringMatching(/产品经理.*回退模型/)
-    })
-    expect(mocks.messages.find((message) => message.author === 'pm')).toMatchObject({
-      status: 'error',
-      modelId: null
-    })
-    expect((await waitForTerminal()).type).toBe('chain-done')
+    expect(mocks.messages).toEqual([
+      expect.objectContaining({
+        role: 'user',
+        author: 'user',
+        parts: [{ type: 'text', text: '@产品经理 请开始' }]
+      })
+    ])
+    expect(mocks.scanSkills).not.toHaveBeenCalled()
+    expect(mocks.streamText).not.toHaveBeenCalled()
   })
+})
 
+describe('成员解析错误', () => {
   it('成员模型的供应商不存在时标错当前成员并报告成员名称', async () => {
     const configured = member(0, { name: '研究员', modelRowId: 'orphan-model' })
     mocks.conversation = configuredConversation([configured])

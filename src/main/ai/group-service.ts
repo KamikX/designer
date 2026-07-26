@@ -1,7 +1,13 @@
 import { streamText } from 'ai'
 import type { WebContents } from 'electron'
-import type { GroupSendInput, GroupStreamEvent, Message, SessionSettings } from '../../shared/types'
-import { isConfiguredGroupMembers, isLegacyGroupMembers } from '../../shared/group-members'
+import type {
+  GroupMember,
+  GroupSendInput,
+  GroupStreamEvent,
+  Message,
+  SessionSettings
+} from '../../shared/types'
+import { isConfiguredGroupMembers } from '../../shared/group-members'
 import { firstMention, mentionsToModelText, nextMention } from '../../shared/group-mentions'
 import { getConversation, touchConversation } from '../db/repo/conversation'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
@@ -11,14 +17,9 @@ import { getLanguageModel, errorMessage } from './registry'
 import { buildTimeTools } from './time-tools'
 import { buildLocalTools } from './local-tools'
 import { listRoots } from '../workspace/roots'
-import { roleById } from './prompts/group-roles'
 import { labelFor, verbOf } from './tool-activity'
 import { GroupChainGuard } from './group-chain'
-import {
-  resolveGroupAgent,
-  type ResolvableGroupAgent,
-  type ResolvedGroupAgent
-} from './group-members'
+import { resolveGroupAgent, type ResolvedGroupAgent } from './group-members'
 import { scanSkills, skillRoots } from '../skills/scan'
 import { skillCatalog } from '../skills/catalog'
 import { buildSkillTools } from '../skills/tools'
@@ -82,12 +83,12 @@ export function sendGroupMessage(sender: WebContents, input: GroupSendInput): vo
 async function runChain(
   input: GroupSendInput,
   firstMemberId: string,
-  members: ResolvableGroupAgent[],
+  members: GroupMember[],
   emit: (e: GroupStreamEvent) => void,
   abort: AbortController
 ): Promise<void> {
   const conversationId = input.conversationId
-  const membersById = new Map(members.map((member) => [memberId(member), member]))
+  const membersById = new Map(members.map((member) => [member.id, member]))
   const mentionMembers = members.map(memberMention)
   let installedSkills: ReturnType<typeof scanSkills>
   try {
@@ -114,18 +115,14 @@ async function runChain(
 
     const source = membersById.get(current)
     if (!source) break
-    const sourceMember = source.kind === 'configured' ? source.member : source.role
     let agent: ResolvedGroupAgent | null = null
     let providerSlug: string | null = null
     let resolutionError: unknown = null
     try {
-      agent = resolveGroupAgent(source, {
-        fallbackModelRowId: input.fallbackModelRowId,
-        getModel
-      })
+      agent = resolveGroupAgent(source, getModel)
       const provider = getProviderRowById(agent.model.providerId)
       if (!provider) {
-        throw new Error(`成员“${sourceMember.name}”使用的供应商不存在`)
+        throw new Error(`成员“${source.name}”使用的供应商不存在`)
       }
       providerSlug = provider.slug
     } catch (err) {
@@ -138,13 +135,13 @@ async function runChain(
       status: 'streaming',
       ...(agent ? { modelId: agent.model.modelId } : {}),
       ...(providerSlug ? { providerSlug } : {}),
-      author: sourceMember.id
+      author: source.id
     })
 
     let text = ''
     try {
       if (resolutionError) throw resolutionError
-      if (!agent) throw resolutionError ?? new Error(`成员“${sourceMember.name}”解析失败`)
+      if (!agent) throw resolutionError ?? new Error(`成员“${source.name}”解析失败`)
       const wantedSkills = new Set(agent.skillIds)
       const selectedSkills = installedSkills.filter(
         (skill) => skill.source !== 'builtin' && wantedSkills.has(skill.name)
@@ -284,14 +281,11 @@ function transcript(
 
 function buildAgentSystem(
   agent: ResolvedGroupAgent,
-  members: readonly ResolvableGroupAgent[],
+  members: readonly GroupMember[],
   hasRoots: boolean,
   catalog: string
 ): string {
-  const roster = members
-    .map((member) => (member.kind === 'configured' ? member.member : member.role))
-    .map((member) => `@${member.name}(${member.duty})`)
-    .join('、')
+  const roster = members.map((member) => `@${member.name}(${member.duty})`).join('、')
 
   return [
     agent.persona,
@@ -310,24 +304,10 @@ function buildAgentSystem(
   ].join('\n\n')
 }
 
-function resolveStoredMembers(members: SessionSettings['members']): ResolvableGroupAgent[] {
-  if (isConfiguredGroupMembers(members)) {
-    return members.map((member) => ({ kind: 'configured', member }))
-  }
-  if (isLegacyGroupMembers(members)) {
-    return members.flatMap((id) => {
-      const role = roleById(id)
-      return role ? [{ kind: 'legacy' as const, role }] : []
-    })
-  }
-  return []
+function resolveStoredMembers(members: SessionSettings['members']): GroupMember[] {
+  return isConfiguredGroupMembers(members) ? members : []
 }
 
-function memberId(member: ResolvableGroupAgent): string {
-  return member.kind === 'configured' ? member.member.id : member.role.id
-}
-
-function memberMention(member: ResolvableGroupAgent): { id: string; name: string } {
-  const value = member.kind === 'configured' ? member.member : member.role
-  return { id: value.id, name: value.name }
+function memberMention(member: GroupMember): { id: string; name: string } {
+  return { id: member.id, name: member.name }
 }

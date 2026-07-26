@@ -5,21 +5,12 @@ import { createPinia, setActivePinia } from 'pinia'
 import type {
   Conversation,
   DesignerApi,
+  GroupMember,
   GroupMemberTemplate,
   GroupStreamEvent,
   Message
 } from '@shared/types'
 import { useCollabStore } from './collab'
-
-const group: Conversation = {
-  id: 'group-1',
-  projectId: null,
-  title: '设计协作',
-  kind: 'group',
-  settings: { members: ['pm'] },
-  createdAt: '2026-07-26T00:00:00.000Z',
-  updatedAt: '2026-07-26T00:00:00.000Z'
-}
 
 const role: GroupMemberTemplate = {
   id: 'pm',
@@ -28,6 +19,23 @@ const role: GroupMemberTemplate = {
   duty: '梳理需求',
   deliverable: '需求文档',
   persona: '你是产品经理'
+}
+
+const member: GroupMember = {
+  ...role,
+  id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+  modelRowId: 'model-row-1',
+  skillIds: []
+}
+
+const group: Conversation = {
+  id: 'group-1',
+  projectId: null,
+  title: '设计协作',
+  kind: 'group',
+  settings: { members: [member] },
+  createdAt: '2026-07-26T00:00:00.000Z',
+  updatedAt: '2026-07-26T00:00:00.000Z'
 }
 
 function assistantMessage(status: Message['status']): Message {
@@ -41,7 +49,7 @@ function assistantMessage(status: Message['status']): Message {
     providerSlug: null,
     modelId: null,
     artifactId: null,
-    author: role.id,
+    author: member.id,
     createdAt: '2026-07-26T00:00:01.000Z'
   }
 }

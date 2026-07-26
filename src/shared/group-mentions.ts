@@ -37,13 +37,12 @@ interface BacktickRun {
   closingStart: number | null
 }
 
-const LEGACY_MEMBER_IDS = new Set(['pm', 'ui', 'be', 'fe', 'qa'])
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/
 const WORD_CHARACTER_PATTERN = /[\p{L}\p{N}_]/u
 const ASCII_PUNCTUATION_PATTERN = /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/g
 
 function isMemberId(id: string): boolean {
-  return ULID_PATTERN.test(id) || LEGACY_MEMBER_IDS.has(id)
+  return ULID_PATTERN.test(id)
 }
 
 function isConfiguredMemberId(id: string): boolean {
@@ -436,8 +435,7 @@ export function createGroupMention(member: GroupMentionMember): string {
   if (isConfiguredMemberId(member.id)) {
     return `@[${escapeCanonicalLabel(member.name)}](member:${member.id})`
   }
-  if (LEGACY_MEMBER_IDS.has(member.id)) return `@${member.name}`
-  throw new Error('群组成员 ID 必须是 ULID 或内置角色 ID')
+  throw new Error('群组成员 ID 必须是 ULID')
 }
 
 export function tokenizeGroupMentions(

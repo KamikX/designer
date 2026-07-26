@@ -1,7 +1,4 @@
-import type { GroupMember, GroupRoleMeta, SessionSettings } from './types'
-
-export type NormalizedGroupMember =
-  { kind: 'configured'; member: GroupMember } | { kind: 'legacy'; role: GroupRoleMeta }
+import type { GroupMember } from './types'
 
 function isString(value: unknown): value is string {
   return typeof value === 'string'
@@ -23,37 +20,14 @@ function isGroupMember(value: unknown): value is GroupMember {
   )
 }
 
-export function isLegacyGroupMembers(members: SessionSettings['members']): members is string[] {
-  return Array.isArray(members) && members.every(isString)
-}
-
-export function isConfiguredGroupMembers(
-  members: SessionSettings['members']
-): members is GroupMember[] {
+export function isConfiguredGroupMembers(members: unknown): members is GroupMember[] {
   return Array.isArray(members) && members.length > 0 && members.every(isGroupMember)
 }
 
 /**
- * 把 settings 中的新旧成员形态转成展示联合类型。
- *
- * 旧角色元数据由调用方传入，使该共享模块不依赖只存在于主进程的内置人设。
- * 损坏或混合形态的数据不猜测、不补造必填字段。
+ * settings 来自 JSON，运行时仍按不可信输入处理。
+ * 损坏或非对象数组不猜测、不补造成员，调用方自然得到空群。
  */
-export function normalizeGroupMembers(
-  members: SessionSettings['members'],
-  legacyRoles: readonly GroupRoleMeta[]
-): NormalizedGroupMember[] {
-  if (isLegacyGroupMembers(members)) {
-    const rolesById = new Map(legacyRoles.map((role) => [role.id, role]))
-    return members.flatMap((id) => {
-      const role = rolesById.get(id)
-      return role ? [{ kind: 'legacy' as const, role }] : []
-    })
-  }
-
-  if (isConfiguredGroupMembers(members)) {
-    return members.map((member) => ({ kind: 'configured', member }))
-  }
-
-  return []
+export function normalizeGroupMembers(members: unknown): GroupMember[] {
+  return isConfiguredGroupMembers(members) ? members : []
 }

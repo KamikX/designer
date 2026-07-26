@@ -4,7 +4,7 @@
 
 **Goal:** 让协作群组支持逐个创建成员、成员级模型与技能、结构化高亮提及，以及可解释的接力循环保护。
 
-**Architecture:** 群组仍存于 `conversations.settings`，新群保存完整 `GroupMember[]`，旧群 `string[]` 通过兼容解析器进入统一的运行时成员视图。提及和循环检测收敛为纯函数，主进程编排只消费解析结果；Vue 层拆分成员编辑、成员列表和 mention 渲染组件。
+**Architecture:** 群组仍存于 `conversations.settings`，成员只保存完整 `GroupMember[]`；运行时 guard 把缺失或损坏数据视为空群。提及和循环检测收敛为纯函数，主进程编排只消费已配置成员；Vue 层拆分成员编辑、成员列表和 mention 渲染组件。
 
 **Tech Stack:** Electron、TypeScript、Vue 3 `<script setup>`、Pinia、Antdv Next、AI SDK、Drizzle SQLite、Vitest
 
@@ -13,11 +13,11 @@
 ## 文件结构
 
 - `src/shared/types.ts`：新增成员、模板、建群输入和停止事件契约。
-- `src/shared/group-members.ts`：旧/新成员识别和展示归一化，主进程与渲染层共用。
+- `src/shared/group-members.ts`：完整成员对象数组的运行时 guard 和展示归一化，主进程与渲染层共用。
 - `src/main/ai/group-members.ts`：成员草稿校验、持久化成员生成和运行时 Agent 解析。
 - `src/main/ai/group-members.test.ts`：成员数据纯逻辑测试。
 - `src/shared/group-mentions.ts`：结构化提及的生成、tokenize、模型文本和 Markdown 转换。
-- `src/shared/group-mentions.test.ts`：提及边界、代码区和兼容格式测试。
+- `src/shared/group-mentions.test.ts`：提及边界、代码区和自然名称格式测试。
 - `src/main/ai/group-chain.ts`：访问次数、重复边和跳数保护纯逻辑。
 - `src/main/ai/group-chain.test.ts`：循环保护测试。
 - `src/main/ai/prompts/group-roles.ts`：保留内置完整角色，并提供可编辑模板 DTO。
@@ -26,7 +26,7 @@
 - `src/main/ai/group-service.ts`：按当前成员解析模型和技能，报告明确停止原因。
 - `src/main/ai/group-service.test.ts`：mock DB/AI SDK 后验证成员级模型、技能和停止事件接线。
 - `src/main/ipc/index.ts`、`src/preload/index.ts`：更新建群 IPC。
-- `src/renderer/src/stores/collab.ts`：使用归一化成员视图，旧群保留公共模型回退。
+- `src/renderer/src/stores/collab.ts`：使用归一化成员视图，发送只提交会话与文本。
 - `src/renderer/src/pages/collab/components/GroupMemberEditor.vue`：编辑单个成员。
 - `src/renderer/src/pages/collab/components/GroupMemberList.vue`：成员列表、排序与删除。
 - `src/renderer/src/pages/collab/components/CreateGroupModal.vue`：编排建群表单。
@@ -35,7 +35,7 @@
 - `src/renderer/src/pages/collab/components/GroupMarkdownStream.vue`：群组专用 Comark 配置，注册 mention 链接组件。
 - `src/renderer/src/pages/collab/components/GroupMarkdownLink.vue`：把内部 member 链接渲染为 `a-tag`，普通链接保持锚点。
 - `src/renderer/src/pages/collab/components/group-components.test.ts`：成员编辑、Mentions 和 tag 的挂载测试。
-- `src/renderer/src/pages/collab/components/GroupComposer.vue`：Mentions 候选和旧群模型回退。
+- `src/renderer/src/pages/collab/components/GroupComposer.vue`：基于已配置成员生成 Mentions 候选。
 - `src/renderer/src/pages/collab/components/GroupMessage.vue`：用户/Agent 提及高亮。
 
 ### Task 1: 共享成员契约与成员校验
@@ -47,9 +47,9 @@
 - Create: `src/main/ai/group-members.test.ts`
 - Modify: `src/main/ai/prompts/group-roles.ts`
 
-- [ ] **Step 1: 写成员草稿校验和旧数据识别的失败测试**
+- [ ] **Step 1: 写成员草稿校验和不可信数据识别的失败测试**
 
-覆盖名称 trim、空人设、保留名称、非法字符、重复名称、无 tools 模型、技能过滤，以及 `string[]`/对象数组识别。
+覆盖名称 trim、空人设、保留名称、非法字符、重复名称、无 tools 模型、技能过滤，以及完整对象数组通过、`string[]`/损坏对象数组拒绝。
 
 - [ ] **Step 2: 运行测试确认 RED**
 
@@ -166,7 +166,7 @@ git commit -m "feat: 增加群组提及与循环保护"
 
 - [ ] **Step 1: 写运行时成员解析失败测试**
 
-在 `group-members.test.ts` 增加新成员模型解析、旧成员 `fallbackModelRowId`、旧成员缺少回退、技能按成员隔离的测试。
+在 `group-members.test.ts` 增加成员模型解析、模型失效、技能按成员隔离，以及 `GroupSendInput` 不含公共模型字段的测试。
 
 - [ ] **Step 2: 运行测试确认 RED**
 
@@ -176,11 +176,11 @@ Expected: FAIL，新解析 API 尚不存在。
 
 - [ ] **Step 3: 实现持久化和 IPC**
 
-`group:create` 接收单个 `CreateGroupInput`；主进程扫描当前模型和技能、校验草稿、生成 ULID 并保存。`GroupSendInput` 改用可选 `fallbackModelRowId`。
+`group:create` 接收单个 `CreateGroupInput`；主进程扫描当前模型和技能、校验草稿、生成 ULID 并保存。`GroupSendInput` 只保留 `conversationId` 和 `text`。
 
 - [ ] **Step 4: 实现运行时 Agent 解析**
 
-在 `group-members.ts` 中把 configured 成员解析为自身模型/技能，把 legacy 角色通过完整 `GroupRole`、`fallbackModelRowId` 和空技能解析为统一的 `ResolvedGroupAgent`；缺少回退或模型失效返回带成员名称的明确错误。
+在 `group-members.ts` 中直接把 `GroupMember` 解析为自身模型和技能；模型不存在、停用、不是 chat 或不支持 tools 时返回带成员名称的明确错误。
 
 - [ ] **Step 5: 重构编排为成员级执行**
 
@@ -241,7 +241,7 @@ Expected: FAIL，模块尚不存在。
 
 - [ ] **Step 5: 改造创建弹窗与 store**
 
-弹窗负责模板/空白新增、提交前提示和 IPC plain object 转换。store 归一化旧/新成员，`createGroup` 接收 `CreateGroupInput`。
+弹窗负责模板/空白新增、提交前提示和 IPC plain object 转换。store 只归一化完整 `GroupMember[]`，`createGroup` 接收 `CreateGroupInput`。
 
 - [ ] **Step 6: 写组件挂载测试**
 
@@ -275,7 +275,7 @@ git commit -m "feat: 支持创建和配置群组成员"
 
 - [ ] **Step 1: 增加面向渲染的 mention token 失败测试**
 
-验证普通文本分片、旧式提及、结构化提及、代码区排除和成员被删除后的退化显示。
+验证普通文本分片、精确自然名称提及、结构化提及、代码区排除和成员被删除后的退化显示。
 
 - [ ] **Step 2: 运行测试确认 RED**
 
@@ -285,7 +285,7 @@ Expected: FAIL，新展示转换行为尚不存在。
 
 - [ ] **Step 3: 实现 Mentions 输入**
 
-候选 value 使用成员稳定 ID；`select` 后写入结构化语法。旧群写 `@名称`。输入框保持 Enter 发送、Shift+Enter 换行。
+候选 value 使用成员稳定 ID；`select` 后写入结构化语法。输入框保持 Enter 发送、Shift+Enter 换行；用户手输和 Agent 输出的精确 `@成员名` 仍由共享解析器识别。
 
 - [ ] **Step 4: 实现 tag 展示和群组专用 Markdown renderer**
 
@@ -312,7 +312,7 @@ git add src/renderer/src/pages/collab src/renderer/src/stores/collab.ts src/shar
 git commit -m "feat: 高亮群组成员提及"
 ```
 
-### Task 6: 全量验证与兼容回归
+### Task 6: 全量验证与协议回归
 
 **Files:**
 - Modify as needed: files above
@@ -333,11 +333,11 @@ Expected: 全部 PASS，无新增 warning。
 
 Run: `git diff --check && git status --short`
 
-确认旧 `settings.members: string[]`、旧消息 `@成员名` 和旧群公共模型回退仍可工作。
+确认 `settings.members: string[]` 不生成成员，发送 payload 不含公共模型字段，同时精确自然 `@成员名` 的路由和高亮仍可工作。
 
 - [ ] **Step 4: 提交修正**
 
 ```bash
 git add <仅本任务修正的文件>
-git commit -m "test: 完善群组成员兼容回归"
+git commit -m "test: 完善群组成员协议回归"
 ```

@@ -1,4 +1,4 @@
-import type { GroupMemberTemplate, GroupRoleMeta } from '../../../shared/types'
+import type { GroupMemberTemplate } from '../../../shared/types'
 
 /**
  * 协作群组的内置角色。
@@ -66,48 +66,6 @@ export const GROUP_ROLES: GroupRole[] = [
 - 发现前面文档里互相矛盾或缺失的点,单独列「缺陷与疑问」小节。`
   }
 ]
-
-export function roleById(id: string): GroupRole | undefined {
-  return GROUP_ROLES.find((r) => r.id === id)
-}
-
-export function roleByName(name: string): GroupRole | undefined {
-  return GROUP_ROLES.find((r) => r.name === name)
-}
-
-/** 用户消息里的第一个被 @ 的成员 */
-export function firstMention(text: string, members: string[]): string | null {
-  for (const m of text.matchAll(/@([一-龥A-Za-z]+)/g)) {
-    const hit = GROUP_ROLES.find((r) => m[1].startsWith(r.name) && members.includes(r.id))
-    if (hit) return hit.id
-  }
-  return null
-}
-
-/**
- * agent 产出里的下一棒:只看**最后 5 行**(协作协议要求移交写在末尾,
- * 开头的 @ 往往是在回应上一位),排除自己;@用户 显式收链。
- */
-export function nextMention(text: string, members: string[], selfId: string): string | null {
-  const tail = text.trim().split('\n').slice(-5).join('\n')
-  for (const m of tail.matchAll(/@([一-龥A-Za-z]+)/g)) {
-    if (m[1].startsWith('用户')) return null
-    const hit = GROUP_ROLES.find((r) => m[1].startsWith(r.name) && members.includes(r.id))
-    if (hit && hit.id !== selfId) return hit.id
-  }
-  return null
-}
-
-/** 渲染层要的元数据(不带人设,省得提示词全文进每次 IPC) */
-export function roleMetas(): GroupRoleMeta[] {
-  return GROUP_ROLES.map(({ id, name, color, duty, deliverable }) => ({
-    id,
-    name,
-    color,
-    duty,
-    deliverable
-  }))
-}
 
 /** 建群编辑器使用的模板副本；不预填模型和技能 */
 export function roleTemplates(): GroupMemberTemplate[] {

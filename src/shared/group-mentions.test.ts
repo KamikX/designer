@@ -37,8 +37,8 @@ describe('createGroupMention', () => {
     expect(createGroupMention(MEMBERS[1])).toBe(`@[UI 设计师](member:${UI_ID})`)
   })
 
-  it('旧内置成员只生成名称提及', () => {
-    expect(createGroupMention({ id: 'pm', name: '产品经理' })).toBe('@产品经理')
+  it('拒绝内置角色 ID，已创建成员只能使用 ULID', () => {
+    expect(() => createGroupMention({ id: 'pm', name: '产品经理' })).toThrow(/ULID/)
   })
 
   it('含反引号的名称可在规范提及中可逆往返', async () => {

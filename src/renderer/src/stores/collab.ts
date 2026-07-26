@@ -11,7 +11,6 @@ import type {
   Provider
 } from '@shared/types'
 import { normalizeGroupMembers } from '@shared/group-members'
-import { isLegacyGroupMembers } from '@shared/group-members'
 import { firstMention } from '@shared/group-mentions'
 import { useProviderStore } from './provider'
 
@@ -39,7 +38,7 @@ export interface GroupActivity {
 export const useCollabStore = defineStore('collab', {
   state: () => ({
     groups: [] as Conversation[],
-    /** 内置快捷模板。旧群展示和新群添加成员都从这里取。 */
+    /** 新群添加成员时使用的内置快捷模板。 */
     roles: [] as GroupMemberTemplate[],
     /** 当前打开的群;空串表示停在空状态引导页 */
     conversationId: '' as string,
@@ -60,25 +59,13 @@ export const useCollabStore = defineStore('collab', {
     speakingAuthor: '' as string,
     /** 流事件里报上来的错误(发送失败的错误走 message.error,不进这里) */
     error: '' as string,
-    /**
-     * 模型选择,群组共用一份并持久化。
-     *
-     * 不像项目/聊天那样按会话存:群组编排要求模型必须带 tools 能力,可选面
-     * 本来就窄,每个群各存一份只会让用户反复选同一个。
-     */
-    model: useStorage<{ providerId: string; modelId: string }>('designer:collab-model', {
-      providerId: '',
-      modelId: ''
-    }),
     unsubscribe: null as (() => void) | null
   }),
 
   getters: {
     rolesById(state): Record<string, GroupRoleMeta> {
       const group = state.groups.find((item) => item.id === state.conversationId)
-      const members = normalizeGroupMembers(group?.settings?.members, state.roles).map((item) =>
-        item.kind === 'configured' ? item.member : item.role
-      )
+      const members = normalizeGroupMembers(group?.settings?.members)
       // 当前群成员放在后面覆盖同 id 模板，新群始终展示成员自己的名称和颜色。
       return Object.fromEntries([...state.roles, ...members].map((role) => [role.id, role]))
     },
@@ -88,9 +75,7 @@ export const useCollabStore = defineStore('collab', {
     /** 当前群的成员角色(按建群时的勾选顺序) */
     memberRoles(state): GroupRoleMeta[] {
       const group = state.groups.find((item) => item.id === state.conversationId)
-      return normalizeGroupMembers(group?.settings?.members, state.roles).map((item) =>
-        item.kind === 'configured' ? item.member : item.role
-      )
+      return normalizeGroupMembers(group?.settings?.members)
     },
     /** 提及输入、普通文本与 Markdown 共用的当前成员表。 */
     mentionMembers(): GroupRoleMeta[] {
@@ -166,10 +151,6 @@ export const useCollabStore = defineStore('collab', {
       if (this.conversationId === id) this.closeGroup()
     },
 
-    selectModel(providerId: string, modelId: string): void {
-      this.model = { providerId, modelId }
-    },
-
     /**
      * 发消息。乐观上屏再发 IPC:group.send 不返回消息 id,主进程也不会回发
      * "已收到"事件,不先上屏的话这句话要等到下次重拉才出现。
@@ -204,18 +185,10 @@ export const useCollabStore = defineStore('collab', {
       if (startsChain) this.chaining[cid] = true
 
       try {
-        const input: {
-          conversationId: string
-          text: string
-          fallbackModelRowId?: string
-        } = {
+        await window.api.group.send({
           conversationId: cid,
           text: trimmed
-        }
-        if (isLegacyGroupMembers(this.currentGroup?.settings?.members)) {
-          input.fallbackModelRowId = this.model.modelId || undefined
-        }
-        await window.api.group.send(input)
+        })
       } catch (err) {
         this.messages = this.messages.filter((m) => m.id !== optimistic.id)
         if (startsChain) delete this.chaining[cid]

@@ -109,10 +109,8 @@ export interface SessionSettings {
   mcpIds?: string[]
   /** 是否开着联网。按会话记,不是全局——不然会出现"忘了它还开着" */
   webSearch?: boolean
-  /**
-   * 群组会话成员。string[] 是旧群组的内置角色 id；新群组保存完整成员对象。
-   */
-  members?: string[] | GroupMember[]
+  /** 群组会话成员 */
+  members?: GroupMember[]
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,8 +183,6 @@ export type GroupStreamEvent = { conversationId: string } & (
 export interface GroupSendInput {
   conversationId: string
   text: string
-  /** 仅旧 string[] 群组需要；新群组始终使用成员自己的 modelRowId */
-  fallbackModelRowId?: string
 }
 
 /** @deprecated 名字留作过渡,内容与 SessionSettings 一致 */

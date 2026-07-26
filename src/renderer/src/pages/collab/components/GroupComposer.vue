@@ -2,10 +2,7 @@
 import { App, theme } from 'antdv-next'
 import { ArrowUpOutlined, PauseOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
-import { useProviderStore } from '@renderer/stores/provider'
-import { isChoiceAlive } from '@renderer/stores/selection'
 import { createGroupMention } from '@shared/group-mentions'
-import { isConfiguredGroupMembers } from '@shared/group-members'
 import type { GroupRoleMeta } from '@shared/types'
 import RoleAvatar from './RoleAvatar.vue'
 
@@ -19,8 +16,6 @@ import RoleAvatar from './RoleAvatar.vue'
 const { token } = theme.useToken()
 const { message } = App.useApp()
 const collab = useCollabStore()
-const providerStore = useProviderStore()
-providerStore.load()
 
 const draft = shallowRef('')
 
@@ -43,61 +38,11 @@ function roleForMentionOption(value: unknown): GroupRoleMeta | null {
   return collab.mentionMembers.find((member) => member.name === option?.label) ?? null
 }
 
-/* ---------------- 模型选择 ---------------- */
-
-const needsFallbackModel = computed(
-  () => !isConfiguredGroupMembers(collab.currentGroup?.settings?.members)
-)
-
-const modelOptions = computed(() =>
-  collab.toolModels.map(({ provider, models }) => ({
-    label: provider.name,
-    options: models.map((m) => ({ label: m.displayName, value: `${provider.id}:${m.id}` }))
-  }))
-)
-
-// Select 默认把 fallthrough attrs 挂到无语义外层；定制实际 input，确保
-// aria-label 落在拥有 combobox role 的可聚焦控件上。
-const modelSelectComponents = {
-  input: h('input', { 'aria-label': '群组模型' })
-}
-
-const modelValue = computed<string | undefined>({
-  get: () =>
-    collab.model.providerId && collab.model.modelId
-      ? `${collab.model.providerId}:${collab.model.modelId}`
-      : undefined,
-  set: (v) => {
-    if (!v) return
-    const [providerId, modelId] = v.split(':')
-    collab.selectModel(providerId, modelId)
-  }
-})
-
-/**
- * 兜底选第一个可用模型。判据和工作台的 ModelSelect 一致:"当前选择还在不在
- * 列表里"——存档里的模型可能已被停用,也可能被去掉了 tools 能力。
- */
-watchEffect(() => {
-  if (!needsFallbackModel.value) return
-  const groups = collab.toolModels
-  if (groups.length === 0) return
-  const choice = collab.model.providerId
-    ? { providerId: collab.model.providerId, modelId: collab.model.modelId }
-    : null
-  if (isChoiceAlive(choice, groups)) return
-  collab.selectModel(groups[0].provider.id, groups[0].models[0].id)
-})
-
 /* ---------------- 发送 / 暂停 ---------------- */
 
 async function send(): Promise<void> {
   const text = draft.value.trim()
   if (!text || collab.chainingHere) return
-  if (needsFallbackModel.value && (!collab.model.providerId || !collab.model.modelId)) {
-    message.warning('先选择一个支持工具调用的模型')
-    return
-  }
   draft.value = ''
   try {
     await collab.send(text)
@@ -168,18 +113,6 @@ function onKeydownCapture(e: KeyboardEvent): void {
       </a-mentions>
 
       <div class="gcomposer-toolbar">
-        <a-select
-          v-if="needsFallbackModel"
-          v-model:value="modelValue"
-          :components="modelSelectComponents"
-          :options="modelOptions"
-          size="small"
-          class="gcomposer-model"
-          :placeholder="modelOptions.length ? '选择模型' : '没有支持工具调用的模型'"
-          variant="borderless"
-          :popup-match-select-width="false"
-        />
-
         <a-tooltip :title="collab.chainingHere ? '停止接力' : 'Enter 发送,Shift+Enter 换行'">
           <a-button
             v-if="collab.chainingHere"
@@ -267,15 +200,6 @@ function onKeydownCapture(e: KeyboardEvent): void {
   justify-content: space-between;
   gap: 8px;
   padding: 4px 2px 0 4px;
-}
-
-.gcomposer-model {
-  min-width: 128px;
-  max-width: 220px;
-}
-
-.gcomposer-model :deep(.ant-select-selector) {
-  font-size: 12px;
 }
 
 .gcomposer-send {

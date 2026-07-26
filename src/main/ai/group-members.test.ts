@@ -1,14 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import type {
   GroupMember,
   GroupMemberDraft,
+  GroupSendInput,
   InstalledSkill,
   Model,
   SessionSettings
 } from '../../shared/types'
-import { normalizeGroupMembers } from '../../shared/group-members'
+import { isConfiguredGroupMembers, normalizeGroupMembers } from '../../shared/group-members'
 import { createGroupMembers, resolveGroupAgent } from './group-members'
-import { GROUP_ROLES, roleMetas, roleTemplates } from './prompts/group-roles'
+import { roleTemplates } from './prompts/group-roles'
 
 function model(overrides: Partial<Model> = {}): Model {
   return {
@@ -165,28 +166,29 @@ describe('createGroupMembers', () => {
 })
 
 describe('normalizeGroupMembers', () => {
-  it('把 settings.members 的 string[] 识别为旧内置角色', () => {
-    const settings: SessionSettings = { members: ['pm', 'ui'] }
-    const normalized = normalizeGroupMembers(settings.members, roleMetas())
-
-    expect(normalized).toEqual([
-      { kind: 'legacy', role: expect.objectContaining({ id: 'pm', name: '产品经理' }) },
-      { kind: 'legacy', role: expect.objectContaining({ id: 'ui', name: 'UI设计师' }) }
-    ])
-  })
-
-  it('把 settings.members 的对象数组识别为已配置成员', () => {
+  it('只返回完整合法的 GroupMember[]', () => {
     const member: GroupMember = { ...draft(), id: 'member-1' }
     const settings: SessionSettings = { members: [member] }
 
-    expect(normalizeGroupMembers(settings.members, roleMetas())).toEqual([
-      { kind: 'configured', member }
-    ])
+    expect(isConfiguredGroupMembers(settings.members)).toBe(true)
+    expect(normalizeGroupMembers(settings.members)).toEqual([member])
+  })
+
+  it.each([
+    ['缺失', undefined],
+    ['旧 string[]', ['pm', 'ui']],
+    ['字段缺失的对象数组', [{ id: 'member-1', name: '产品经理' }]],
+    ['混合数组', [{ ...draft(), id: 'member-1' }, 'pm']]
+  ])('%s不被识别为 configured，也不生成展示成员', (_label, members) => {
+    const untrusted = members as unknown
+
+    expect(isConfiguredGroupMembers(untrusted)).toBe(false)
+    expect(normalizeGroupMembers(untrusted)).toEqual([])
   })
 })
 
 describe('resolveGroupAgent', () => {
-  it('configured 成员使用自己的模型行与技能', () => {
+  it('成员使用自己的模型行与技能', () => {
     const member: GroupMember = {
       ...draft({ modelRowId: 'member-model', skillIds: ['research', 'writing'] }),
       id: 'member-1'
@@ -198,13 +200,7 @@ describe('resolveGroupAgent', () => {
     })
 
     expect(
-      resolveGroupAgent(
-        { kind: 'configured', member },
-        {
-          fallbackModelRowId: 'ignored-fallback',
-          getModel: (id) => (id === selectedModel.id ? selectedModel : null)
-        }
-      )
+      resolveGroupAgent(member, (id) => (id === selectedModel.id ? selectedModel : null))
     ).toEqual({
       id: 'member-1',
       name: '产品经理',
@@ -215,56 +211,6 @@ describe('resolveGroupAgent', () => {
       model: selectedModel,
       skillIds: ['research', 'writing']
     })
-  })
-
-  it('legacy 成员使用完整角色、fallback 模型与空技能', () => {
-    const role = GROUP_ROLES[1]
-    const fallback = model({
-      id: 'fallback-model',
-      providerId: 'provider-legacy',
-      modelId: 'legacy-chat'
-    })
-
-    expect(
-      resolveGroupAgent(
-        { kind: 'legacy', role },
-        {
-          fallbackModelRowId: fallback.id,
-          getModel: (id) => (id === fallback.id ? fallback : null)
-        }
-      )
-    ).toEqual({
-      ...role,
-      model: fallback,
-      skillIds: []
-    })
-  })
-
-  it('legacy 成员缺少 fallback 时给出带成员名的中文错误', () => {
-    const role = GROUP_ROLES[0]
-
-    expect(() => resolveGroupAgent({ kind: 'legacy', role }, { getModel: () => null })).toThrow(
-      /产品经理.*回退模型/
-    )
-  })
-
-  it.each([
-    ['不存在', null],
-    ['已停用', model({ id: 'bad-model', enabled: false })],
-    ['不是对话模型', model({ id: 'bad-model', type: 'image' })],
-    ['不支持 tools', model({ id: 'bad-model', abilities: [] })]
-  ])('legacy fallback %s时给出带成员名的中文错误', (label, selectedModel) => {
-    const role = GROUP_ROLES[0]
-
-    expect(() =>
-      resolveGroupAgent(
-        { kind: 'legacy', role },
-        {
-          fallbackModelRowId: 'bad-model',
-          getModel: () => selectedModel
-        }
-      )
-    ).toThrow(new RegExp(`产品经理.*${label}`))
   })
 
   it.each([
@@ -278,21 +224,25 @@ describe('resolveGroupAgent', () => {
       id: 'member-1'
     }
 
-    expect(() =>
-      resolveGroupAgent(
-        { kind: 'configured', member },
-        { fallbackModelRowId: 'irrelevant', getModel: () => selectedModel }
-      )
-    ).toThrow(new RegExp(`研究员.*${label}`))
+    expect(() => resolveGroupAgent(member, () => selectedModel)).toThrow(
+      new RegExp(`研究员.*${label}`)
+    )
+  })
+})
+
+describe('群组发送契约', () => {
+  it('只包含会话和文本，不再暴露公共 fallback 模型', () => {
+    expectTypeOf<GroupSendInput>().toEqualTypeOf<{
+      conversationId: string
+      text: string
+    }>()
   })
 })
 
 describe('内置角色 DTO', () => {
-  it('展示元数据不泄露 persona，可编辑模板包含 persona 但不携带模型和技能', () => {
-    const meta = roleMetas()[0]
+  it('可编辑模板包含 persona 但不携带模型和技能', () => {
     const template = roleTemplates()[0]
 
-    expect(meta).not.toHaveProperty('persona')
     expect(template.persona).toContain('产品经理')
     expect(template).not.toHaveProperty('modelRowId')
     expect(template).not.toHaveProperty('skillIds')

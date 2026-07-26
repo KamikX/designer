@@ -125,7 +125,7 @@ const configuredMember: GroupMember = {
   skillIds: []
 }
 
-function groupWithMembers(members: GroupMember[] | string[]): Conversation {
+function groupWithMembers(members: GroupMember[]): Conversation {
   return {
     ...createdGroup,
     settings: { members }
@@ -442,10 +442,10 @@ describe('CreateGroupModal', () => {
 })
 
 describe('GroupComposer', () => {
-  it('输入、旧群模型和纯图标操作都有可访问名称', async () => {
+  it('输入和纯图标操作都有可访问名称，始终没有公共模型选择器', async () => {
     const pinia = prepareStores()
     const collab = useCollabStore()
-    collab.groups = [groupWithMembers([template.id])]
+    collab.groups = [groupWithMembers([configuredMember])]
     collab.conversationId = createdGroup.id
 
     const wrapper = mount(GroupComposer, {
@@ -454,9 +454,7 @@ describe('GroupComposer', () => {
     })
 
     expect(wrapper.get('textarea').attributes('aria-label')).toBe('群组消息')
-    expect(wrapper.get('.gcomposer-model input[role="combobox"]').attributes('aria-label')).toBe(
-      '群组模型'
-    )
+    expect(wrapper.findComponent(Select).exists()).toBe(false)
     expect(wrapper.get('.gcomposer-send').attributes('aria-label')).toBe('发送群组消息')
 
     collab.chaining[createdGroup.id] = true
@@ -495,12 +493,15 @@ describe('GroupComposer', () => {
     expect(wrapper.findComponent(Select).exists()).toBe(false)
   })
 
-  it('旧群候选选择写入名称提及，并保留公共模型选择器', async () => {
+  it('运行时损坏的 string[] 不生成候选，也不恢复公共模型选择器', () => {
     const pinia = prepareStores()
     const collab = useCollabStore()
-    const send = vi.fn(async () => undefined)
-    window.api.group.send = send
-    collab.groups = [groupWithMembers([template.id])]
+    collab.groups = [
+      {
+        ...createdGroup,
+        settings: { members: [template.id] }
+      } as unknown as Conversation
+    ]
     collab.conversationId = createdGroup.id
 
     const wrapper = mount(GroupComposer, {
@@ -509,19 +510,8 @@ describe('GroupComposer', () => {
     })
     const mentions = wrapper.getComponent(Mentions)
 
-    expect(mentions.props('options')?.[0]).toMatchObject({
-      label: template.name,
-      value: template.name
-    })
-    const textarea = wrapper.get('textarea')
-    await textarea.setValue('@')
-    await textarea.trigger('keyup', { key: '@', keyCode: 50, which: 50 })
-    await textarea.trigger('keydown', { key: 'Enter', keyCode: 13, which: 13 })
-    await flushPromises()
-
-    expect(mentions.props('value')).toBe(`@${template.name} `)
-    expect(send).not.toHaveBeenCalled()
-    expect(wrapper.findComponent(Select).exists()).toBe(true)
+    expect(mentions.props('options')).toEqual([])
+    expect(wrapper.findComponent(Select).exists()).toBe(false)
   })
 
   it.each([
@@ -738,12 +728,11 @@ describe('GroupMessage', () => {
 })
 
 describe('collab store mentions and stop state', () => {
-  it('为新旧群暴露统一成员，并仅给旧群发送 fallback 模型', async () => {
+  it('只暴露已配置成员，发送 payload 不含 fallback 模型', async () => {
     prepareStores()
     const collab = useCollabStore()
     const send = vi.fn(async () => undefined)
     window.api.group.send = send
-    collab.model = { providerId: provider.id, modelId: toolsModel.id }
 
     collab.groups = [groupWithMembers([configuredMember])]
     collab.conversationId = createdGroup.id
@@ -753,16 +742,23 @@ describe('collab store mentions and stop state', () => {
       conversationId: createdGroup.id,
       text: `@${configuredMember.name}`
     })
+    expect(collab).not.toHaveProperty('model')
+    expect(collab).not.toHaveProperty('selectModel')
+  })
 
-    collab.groups = [groupWithMembers([template.id])]
-    delete collab.chaining[createdGroup.id]
-    expect(collab.mentionMembers).toEqual([template])
-    await collab.send(`@${template.name}`)
-    expect(send).toHaveBeenLastCalledWith({
-      conversationId: createdGroup.id,
-      text: `@${template.name}`,
-      fallbackModelRowId: toolsModel.id
-    })
+  it('运行时 string[] 不生成成员', () => {
+    prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [
+      {
+        ...createdGroup,
+        settings: { members: [template.id] }
+      } as unknown as Conversation
+    ]
+    collab.conversationId = createdGroup.id
+
+    expect(collab.memberRoles).toEqual([])
+    expect(collab.mentionMembers).toEqual([])
   })
 
   it('chain-stopped 清理当前与后台群运行态，并展示当前群中文原因', () => {
