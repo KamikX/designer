@@ -619,6 +619,50 @@ describe('commitMarkerStyleBrief', () => {
     expect(vfs.hasChanges).toBe(false)
   })
 
+  it('已有方向但尚无文件时，清空方向即使带 fallback 也拒绝同轮首稿', async () => {
+    const parser = marker(
+      '<antdStyleBrief>\n  \n</antdStyleBrief>\n' +
+        '<antdUseStyleFallback />\n' +
+        '<antdFile path="index.html">\n<main />\n</antdFile>'
+    )
+    const vfs = new SessionVfs([])
+    let saves = 0
+
+    await expect(
+      commitMarkerStyleBrief({
+        parser,
+        vfs,
+        initialStyleBrief: '旧方向',
+        initialHasFiles: false,
+        outcome: 'complete',
+        save: () => {
+          saves += 1
+          return project('')
+        }
+      })
+    ).rejects.toThrow('清除视觉方向')
+    expect(saves).toBe(0)
+    expect(vfs.hasChanges).toBe(false)
+  })
+
+  it('初始方向为空且尚无文件时，用户跳过对应的 fallback 仍允许首稿', async () => {
+    const parser = marker(
+      '<antdUseStyleFallback />\n<antdFile path="index.html">\n<main />\n</antdFile>'
+    )
+    const vfs = new SessionVfs([])
+
+    await commitMarkerStyleBrief({
+      parser,
+      vfs,
+      initialStyleBrief: '',
+      initialHasFiles: false,
+      outcome: 'complete',
+      save: () => project('unexpected')
+    })
+
+    expect(vfs.writes.get('index.html')).toBe('<main />\n')
+  })
+
   it('旧 markers 在中止时仍保留已完整解析的文件', async () => {
     const parser = marker('<antdFile path="index.html">\n<main />\n</antdFile>')
     const vfs = new SessionVfs([])

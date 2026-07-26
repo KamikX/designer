@@ -32,12 +32,13 @@ import {
   awaitMarkerUsageBeforeCommit,
   buildStyleBriefTools,
   commitMarkerStyleBrief,
-  createStyleArtifactTransaction,
   createInitialStyleWriteGate,
   markerCompletionOutcome,
   renderStyleBriefPrompt
 } from './style-brief'
 import type { MarkerStyleCommitResult } from './style-brief'
+import { createChatFinalizeCoordinator } from './chat-finalizer'
+import type { ChatFinalizeResult } from './chat-finalizer'
 import { connectMcpTools } from '../mcp/tools'
 import type { McpSession } from '../mcp/tools'
 import { buildSkillTools } from '../skills/tools'
@@ -237,11 +238,6 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   let markerCommitAttempted = false
   let markerCommit: MarkerStyleCommitResult | null = null
   let toolStyleSaved = false
-  const styleArtifactTransaction = project
-    ? createStyleArtifactTransaction<ReturnType<typeof createArtifactVersion>>({
-        restore: (styleBrief) => setProjectStyleBrief(project.id, styleBrief)
-      })
-    : null
   /** tools 路的解说自己累计;markers 路用 parser.narration */
   let toolNarration = ''
   /** 本回合的问答,按发生顺序;finalize 时连答案一起存进消息 */
@@ -278,6 +274,22 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
    * 读 mcp 的那行,声明在调用之后的话就是暂时性死区,直接 ReferenceError。
    */
   let mcp: McpSession | null = null
+  const finalizer = createChatFinalizeCoordinator<ReturnType<typeof createArtifactVersion>>({
+    artifactId: (artifact) => artifact.id,
+    restoreStyle: (styleBrief) => (project ? setProjectStyleBrief(project.id, styleBrief) : null),
+    settle: settleFinalMessage,
+    emitDone: (result) => {
+      if (result.usage) emit({ streamId, type: 'usage', usage: result.usage })
+      emit({
+        streamId,
+        type: 'done',
+        messageId: assistantMessage.id,
+        artifactId: result.artifactId
+      })
+    },
+    emitError: (error, artifactId) =>
+      emit({ streamId, type: 'error', message: errorMessage(error), artifactId })
+  })
 
   void run()
 
@@ -601,21 +613,9 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       }
       if (abort.signal.aborted) {
         // 中止不算错误:已执行的工具调用 / 已解析完成的文件照常成版本
-        try {
-          await finalize('aborted', null)
-        } catch (finalizeError) {
-          console.error('[ai] 中止回合创建版本失败:', finalizeError)
-          await finalize('aborted', null)
-        }
+        await finalize('aborted', null)
       } else {
-        let artifactId: string | null = null
-        try {
-          artifactId = await finalize('error', null)
-        } catch (finalizeError) {
-          console.error('[ai] 错误回合创建版本失败:', finalizeError)
-          artifactId = await finalize('error', null)
-        }
-        emit({ streamId, type: 'error', message: errorMessage(err), artifactId })
+        await finalize('error', null, err)
       }
     } finally {
       // 还挂着的提问一律按跳过放掉,否则那个 Promise 永远不 resolve
@@ -647,11 +647,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     })
   }
 
-  /** @returns 本轮落库的版本 id,没有改动则为 null */
+  /** 唯一收尾入口：协调版本、StyleBrief 补偿、消息状态和结束事件。 */
   async function finalize(
     status: 'complete' | 'aborted' | 'error',
-    usage: { inputTokens: number; outputTokens: number } | null
-  ): Promise<string | null> {
+    usage: { inputTokens: number; outputTokens: number } | null,
+    error?: unknown
+  ): Promise<ChatFinalizeResult> {
     const narration = (useTools ? toolNarration : parser.narration).trim()
     const writes = vfs.writes
     const deletes = vfs.deletes
@@ -665,42 +666,53 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     //   存下来必然是坏的。宁可丢掉。
     const keepWork = status !== 'error' || useTools
 
-    let artifactId: string | null = null
-    // 纯聊天没有产物这个概念,连判断都不用做
-    if (!isChat && keepWork && vfs.hasChanges) {
-      const styleCommit: MarkerStyleCommitResult = useTools
-        ? {
-            styleSaved: toolStyleSaved,
-            previousStyleBrief: project!.styleBrief ?? '',
-            hasFileOutput: true
-          }
-        : (markerCommit ?? {
-            styleSaved: false,
-            previousStyleBrief: project!.styleBrief ?? '',
-            hasFileOutput: true
-          })
-      const artifact = await styleArtifactTransaction!.commit(styleCommit, () =>
-        createArtifactVersion({
-          projectId: project!.id,
-          messageId: assistantMessage.id,
-          baseArtifactId: base?.id ?? null,
-          writes,
-          deletes,
-          summary: narration.slice(0, 200)
+    const styleCommit: MarkerStyleCommitResult = useTools
+      ? {
+          styleSaved: toolStyleSaved,
+          previousStyleBrief: project?.styleBrief ?? '',
+          hasFileOutput: vfs.hasChanges
+        }
+      : (markerCommit ?? {
+          styleSaved: false,
+          previousStyleBrief: project?.styleBrief ?? '',
+          hasFileOutput: vfs.hasChanges
         })
-      )
-      artifactId = artifact?.id ?? null
 
+    return finalizer.finalize({
+      status,
+      usage,
+      error,
+      styleCommit,
+      ...(!isChat && keepWork && vfs.hasChanges
+        ? {
+            createArtifact: () =>
+              createArtifactVersion({
+                projectId: project!.id,
+                messageId: assistantMessage.id,
+                baseArtifactId: base?.id ?? null,
+                writes,
+                deletes,
+                summary: narration.slice(0, 200)
+              })
+          }
+        : {})
+    })
+  }
+
+  function settleFinalMessage(result: ChatFinalizeResult): void {
+    const narration = (useTools ? toolNarration : parser.narration).trim()
+    const writes = vfs.writes
+    const deletes = vfs.deletes
+
+    if (result.artifactId) {
       /*
        * 检查本轮产物,结果留到下一轮进提示词。
        *
        * 提示词里写"不要用靛蓝"只是倾向,模型仍然会用;而"你第 12 行有 #6366f1"
        * 是事实,绕不过去。这条回流是我们相对纯提示词方案唯一的结构性优势。
        */
-      if (artifact) {
-        const findings = [...writes].flatMap(([path, content]) => lintArtifact(path, content))
-        if (findings.length) recordLint(project!.id, artifact.id, findings)
-      }
+      const findings = [...writes].flatMap(([path, content]) => lintArtifact(path, content))
+      if (findings.length) recordLint(project!.id, result.artifactId, findings)
     }
 
     // 顺序:解说 → 问答 → 文件。回放时不完全等于流式当时的先后,但
@@ -713,16 +725,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
 
     updateMessage(assistantMessage.id, {
       parts,
-      status,
-      ...(usage ? { usage } : {}),
-      ...(artifactId ? { artifactId } : {})
+      status: result.status,
+      ...(result.usage ? { usage: result.usage } : {}),
+      ...(result.artifactId ? { artifactId: result.artifactId } : {})
     })
-
-    if (status !== 'error') {
-      if (usage) emit({ streamId, type: 'usage', usage })
-      emit({ streamId, type: 'done', messageId: assistantMessage.id, artifactId })
-    }
-    return artifactId
   }
 
   return {

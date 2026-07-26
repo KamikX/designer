@@ -87,37 +87,6 @@ export async function restoreMarkerStyleIfArtifactFailed(input: {
 }
 
 /**
- * 单回合只允许尝试一次版本创建；失败时补偿同回合伴随文件保存的 StyleBrief。
- * 第二次 commit 只负责让上层完成错误消息收尾，不会重试同一个失败版本。
- */
-export function createStyleArtifactTransaction<Artifact>(input: {
-  restore: (styleBrief: string) => Project | null | Promise<Project | null>
-}): {
-  commit: (
-    styleCommit: MarkerStyleCommitResult,
-    create: () => Artifact | Promise<Artifact>
-  ) => Promise<Artifact | null>
-} {
-  let attempted = false
-  return {
-    commit: async (styleCommit, create) => {
-      if (!styleCommit.hasFileOutput || attempted) return null
-      attempted = true
-      try {
-        return await create()
-      } catch (error) {
-        await restoreMarkerStyleIfArtifactFailed({
-          commit: styleCommit,
-          artifactCreated: false,
-          restore: input.restore
-        })
-        throw error
-      }
-    }
-  }
-}
-
-/**
  * markers 协议的视觉方向提交边界。
  *
  * StyleBrief 与文件同属一条模型输出，却不在同一个存储里：前者进入项目，
@@ -167,8 +136,13 @@ export async function commitMarkerStyleBrief(input: {
   if (isInitialProject && hasFileOutput && !hasNonemptyStyleBrief && !parser.useStyleFallback) {
     throw new Error('首次生成缺少整体视觉方向或兜底风格标记，已拒绝文件改动。')
   }
-  if (clearsStyleBrief && !input.initialHasFiles && hasFileOutput && !parser.useStyleFallback) {
-    throw new Error('清除视觉方向后首次生成缺少兜底风格标记，已拒绝文件改动。')
+  if (
+    clearsStyleBrief &&
+    Boolean(input.initialStyleBrief.trim()) &&
+    !input.initialHasFiles &&
+    hasFileOutput
+  ) {
+    throw new Error('清除视觉方向后必须在下一轮重新确认，已拒绝同轮文件改动。')
   }
 
   // 初始空项目里的空 marker 没有可清除的持久状态，fallback 也不应写回偏好。
