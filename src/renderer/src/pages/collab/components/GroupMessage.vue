@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { theme } from 'antdv-next'
-import MarkdownStream from '@renderer/markdown/MarkdownStream.vue'
 import ToolActivityList from '../../project/components/ToolActivityList.vue'
 import RoleAvatar from './RoleAvatar.vue'
+import GroupMarkdownStream from './GroupMarkdownStream.vue'
+import GroupMentionText from './GroupMentionText.vue'
 import { useCollabStore } from '@renderer/stores/collab'
 import type { ToolActivity } from '@renderer/stores/chat'
 import type { Message } from '@shared/types'
@@ -42,7 +43,9 @@ const activities = computed<ToolActivity[]>(() =>
   <!-- 用户发言:右对齐主色气泡,和聊天页同款 -->
   <div v-if="isUser" class="gmsg gmsg--user">
     <div class="gmsg-bubble" :style="{ background: token.colorPrimary, color: '#fff' }">
-      <div class="gmsg-text">{{ textContent }}</div>
+      <div class="gmsg-text">
+        <GroupMentionText :content="textContent" :members="collab.mentionMembers" />
+      </div>
     </div>
   </div>
 
@@ -54,7 +57,12 @@ const activities = computed<ToolActivity[]>(() =>
         {{ role?.name ?? message.author }}
       </div>
       <div class="gmsg-bubble" :style="{ background: token.colorFillQuaternary }">
-        <MarkdownStream v-if="textContent" :content="textContent" :streaming="streaming" />
+        <GroupMarkdownStream
+          v-if="textContent"
+          :content="textContent"
+          :members="collab.mentionMembers"
+          :streaming="streaming"
+        />
 
         <ToolActivityList :activities="activities" :streaming="streaming" />
 

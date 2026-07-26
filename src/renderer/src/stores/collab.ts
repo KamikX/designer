@@ -11,6 +11,8 @@ import type {
   Provider
 } from '@shared/types'
 import { normalizeGroupMembers } from '@shared/group-members'
+import { isLegacyGroupMembers } from '@shared/group-members'
+import { firstMention } from '@shared/group-mentions'
 import { useProviderStore } from './provider'
 
 /**
@@ -89,6 +91,10 @@ export const useCollabStore = defineStore('collab', {
       return normalizeGroupMembers(group?.settings?.members, state.roles).map((item) =>
         item.kind === 'configured' ? item.member : item.role
       )
+    },
+    /** 提及输入、普通文本与 Markdown 共用的当前成员表。 */
+    mentionMembers(): GroupRoleMeta[] {
+      return this.memberRoles
     },
     /** 当前打开的群有没有接力在跑。别的群在后台跑不关这里的事 */
     chainingHere(state): boolean {
@@ -193,11 +199,18 @@ export const useCollabStore = defineStore('collab', {
       this.messages.push(optimistic)
 
       try {
-        await window.api.group.send({
+        const input: {
+          conversationId: string
+          text: string
+          fallbackModelRowId?: string
+        } = {
           conversationId: cid,
-          text: trimmed,
-          fallbackModelRowId: this.model.modelId || undefined
-        })
+          text: trimmed
+        }
+        if (isLegacyGroupMembers(this.currentGroup?.settings?.members)) {
+          input.fallbackModelRowId = this.model.modelId || undefined
+        }
+        await window.api.group.send(input)
       } catch (err) {
         this.messages = this.messages.filter((m) => m.id !== optimistic.id)
         throw err
@@ -205,7 +218,7 @@ export const useCollabStore = defineStore('collab', {
 
       // @ 了成员才会起链;没 @ 只是留言,不会有 chain-done 来清这个标记,
       // 所以不能无条件置 true——那会让暂停按钮永远停在那里
-      if (this.memberRoles.some((r) => trimmed.includes(`@${r.name}`))) {
+      if (firstMention(trimmed, this.mentionMembers)) {
         this.chaining[cid] = true
       }
     },
@@ -232,8 +245,13 @@ export const useCollabStore = defineStore('collab', {
     handleEvent(event: GroupStreamEvent): void {
       const cid = event.conversationId
       if (cid !== this.conversationId) {
-        if (event.type === 'chain-done' || event.type === 'error') delete this.chaining[cid]
-        else this.chaining[cid] = true
+        if (
+          event.type === 'chain-done' ||
+          event.type === 'chain-stopped' ||
+          event.type === 'error'
+        ) {
+          delete this.chaining[cid]
+        } else this.chaining[cid] = true
         return
       }
 
@@ -281,6 +299,12 @@ export const useCollabStore = defineStore('collab', {
         case 'chain-done': {
           delete this.chaining[cid]
           this.speakingAuthor = ''
+          break
+        }
+        case 'chain-stopped': {
+          delete this.chaining[cid]
+          this.speakingAuthor = ''
+          this.error = event.message
           break
         }
         case 'error': {

@@ -4,6 +4,9 @@ import { ArrowUpOutlined, PauseOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
 import { useProviderStore } from '@renderer/stores/provider'
 import { isChoiceAlive } from '@renderer/stores/selection'
+import { createGroupMention } from '@shared/group-mentions'
+import { isConfiguredGroupMembers } from '@shared/group-members'
+import type { GroupRoleMeta } from '@shared/types'
 import RoleAvatar from './RoleAvatar.vue'
 
 /**
@@ -19,16 +22,32 @@ const collab = useCollabStore()
 const providerStore = useProviderStore()
 providerStore.load()
 
-const draft = ref('')
+const draft = shallowRef('')
 
 /** 点成员 chip 往草稿里插「@角色名 」。已经写了一半就接在后面,补个空格分隔 */
-function mention(name: string): void {
-  const tag = `@${name} `
+function mention(member: GroupRoleMeta): void {
+  const tag = `${createGroupMention(member)} `
   if (!draft.value) draft.value = tag
   else draft.value = `${draft.value.replace(/\s+$/, '')} ${tag}`
 }
 
+const mentionOptions = computed(() =>
+  collab.mentionMembers.map((member) => ({
+    label: member.name,
+    value: createGroupMention(member).slice(1)
+  }))
+)
+
+function roleForMentionOption(value: unknown): GroupRoleMeta | null {
+  const option = mentionOptions.value.find((item) => item.value === value)
+  return collab.mentionMembers.find((member) => member.name === option?.label) ?? null
+}
+
 /* ---------------- 模型选择 ---------------- */
+
+const needsFallbackModel = computed(
+  () => !isConfiguredGroupMembers(collab.currentGroup?.settings?.members)
+)
 
 const modelOptions = computed(() =>
   collab.toolModels.map(({ provider, models }) => ({
@@ -54,6 +73,7 @@ const modelValue = computed<string | undefined>({
  * 列表里"——存档里的模型可能已被停用,也可能被去掉了 tools 能力。
  */
 watchEffect(() => {
+  if (!needsFallbackModel.value) return
   const groups = collab.toolModels
   if (groups.length === 0) return
   const choice = collab.model.providerId
@@ -68,7 +88,7 @@ watchEffect(() => {
 async function send(): Promise<void> {
   const text = draft.value.trim()
   if (!text || collab.chainingHere) return
-  if (!collab.model.providerId || !collab.model.modelId) {
+  if (needsFallbackModel.value && (!collab.model.providerId || !collab.model.modelId)) {
     message.warning('先选择一个支持工具调用的模型')
     return
   }
@@ -86,7 +106,12 @@ function onEnter(e: KeyboardEvent): void {
   // Enter 发送,Shift+Enter 换行(输入法组合期间不触发)
   if (e.shiftKey || e.isComposing) return
   e.preventDefault()
-  void send()
+  const valueBeforeMentionsSelection = draft.value
+  void nextTick(() => {
+    // Mentions 也用 Enter 选择候选；它会在同一轮把草稿替换为提及文本。
+    if (draft.value !== valueBeforeMentionsSelection) return
+    void send()
+  })
 }
 </script>
 
@@ -100,7 +125,7 @@ function onEnter(e: KeyboardEvent): void {
         type="button"
         class="gcomposer-chip"
         :style="{ borderColor: token.colorBorderSecondary, color: token.colorTextSecondary }"
-        @click="mention(role.name)"
+        @click="mention(role)"
       >
         <RoleAvatar :role="role" :size="16" />
         <span>{{ role.name }}</span>
@@ -111,17 +136,26 @@ function onEnter(e: KeyboardEvent): void {
       class="gcomposer-box"
       :style="{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }"
     >
-      <a-textarea
+      <a-mentions
         v-model:value="draft"
+        :options="mentionOptions"
         class="gcomposer-input"
         placeholder="@产品经理 说说你要做什么;不 @ 任何人就只是留言"
         :auto-size="{ minRows: 2, maxRows: 8 }"
         variant="borderless"
         @keydown.enter="onEnter"
-      />
+      >
+        <template #labelRender="{ option }">
+          <span class="gcomposer-option">
+            <RoleAvatar :role="roleForMentionOption(option.value)" :size="18" />
+            <span>{{ option.label }}</span>
+          </span>
+        </template>
+      </a-mentions>
 
       <div class="gcomposer-toolbar">
         <a-select
+          v-if="needsFallbackModel"
           v-model:value="modelValue"
           :options="modelOptions"
           size="small"
@@ -202,6 +236,12 @@ function onEnter(e: KeyboardEvent): void {
   font-size: 13px;
   line-height: 1.7;
   background: transparent !important;
+}
+
+.gcomposer-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .gcomposer-toolbar {

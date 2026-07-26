@@ -4,15 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h, shallowRef } from 'vue'
-import { Modal, Select } from 'antdv-next'
+import { Mentions, Modal, Select, Tag } from 'antdv-next'
 import { useCollabStore } from '@renderer/stores/collab'
 import { useProviderStore } from '@renderer/stores/provider'
 import type {
   Conversation,
   CreateGroupInput,
   DesignerApi,
+  GroupMember,
   GroupMemberTemplate,
   InstalledSkill,
+  Message,
   Model,
   Provider
 } from '@shared/types'
@@ -20,6 +22,10 @@ import type { MemberDraft } from '../member-drafts'
 import GroupMemberEditor from './GroupMemberEditor.vue'
 import GroupMemberList from './GroupMemberList.vue'
 import CreateGroupModal from './CreateGroupModal.vue'
+import GroupComposer from './GroupComposer.vue'
+import GroupMarkdownStream from './GroupMarkdownStream.vue'
+import GroupMentionText from './GroupMentionText.vue'
+import GroupMessage from './GroupMessage.vue'
 
 const appMessage = vi.hoisted(() => ({
   warning: vi.fn(),
@@ -103,6 +109,42 @@ const createdGroup: Conversation = {
   settings: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z'
+}
+
+const MEMBER_ID = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
+const configuredMember: GroupMember = {
+  id: MEMBER_ID,
+  name: '产品经理',
+  color: '#e8662c',
+  duty: '梳理需求',
+  deliverable: '需求文档',
+  persona: '你是产品经理',
+  modelRowId: toolsModel.id,
+  skillIds: []
+}
+
+function groupWithMembers(members: GroupMember[] | string[]): Conversation {
+  return {
+    ...createdGroup,
+    settings: { members }
+  }
+}
+
+function textMessage(overrides: Partial<Message> = {}): Message {
+  return {
+    id: 'message-1',
+    conversationId: createdGroup.id,
+    role: 'user',
+    parts: [{ type: 'text', text: '请 @产品经理 开始' }],
+    status: 'complete',
+    usage: null,
+    providerSlug: null,
+    modelId: null,
+    artifactId: null,
+    author: 'user',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides
+  }
 }
 
 const createGroup = vi
@@ -388,5 +430,203 @@ describe('CreateGroupModal', () => {
     await flushPromises()
 
     expect(onCreated).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('GroupComposer', () => {
+  it('新群候选选择写入规范提及，且不显示公共模型选择器', async () => {
+    const pinia = prepareStores()
+    const collab = useCollabStore()
+    const send = vi.fn(async () => undefined)
+    window.api.group.send = send
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+
+    const wrapper = mount(GroupComposer, {
+      attachTo: document.body,
+      global: { plugins: [pinia] }
+    })
+    const mentions = wrapper.getComponent(Mentions)
+    const option = mentions.props('options')?.[0]
+
+    expect(option).toMatchObject({
+      label: configuredMember.name,
+      value: `[${configuredMember.name}](member:${MEMBER_ID})`
+    })
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('@')
+    await textarea.trigger('keyup', { key: '@', keyCode: 50, which: 50 })
+    await textarea.trigger('keydown', { key: 'Enter', keyCode: 13, which: 13 })
+    await flushPromises()
+
+    expect(mentions.props('value')).toBe(`@[${configuredMember.name}](member:${MEMBER_ID}) `)
+    expect(send).not.toHaveBeenCalled()
+    expect(wrapper.findComponent(Select).exists()).toBe(false)
+  })
+
+  it('旧群候选选择写入名称提及，并保留公共模型选择器', async () => {
+    const pinia = prepareStores()
+    const collab = useCollabStore()
+    const send = vi.fn(async () => undefined)
+    window.api.group.send = send
+    collab.groups = [groupWithMembers([template.id])]
+    collab.conversationId = createdGroup.id
+
+    const wrapper = mount(GroupComposer, {
+      attachTo: document.body,
+      global: { plugins: [pinia] }
+    })
+    const mentions = wrapper.getComponent(Mentions)
+
+    expect(mentions.props('options')?.[0]).toMatchObject({
+      label: template.name,
+      value: template.name
+    })
+    const textarea = wrapper.get('textarea')
+    await textarea.setValue('@')
+    await textarea.trigger('keyup', { key: '@', keyCode: 50, which: 50 })
+    await textarea.trigger('keydown', { key: 'Enter', keyCode: 13, which: 13 })
+    await flushPromises()
+
+    expect(mentions.props('value')).toBe(`@${template.name} `)
+    expect(send).not.toHaveBeenCalled()
+    expect(wrapper.findComponent(Select).exists()).toBe(true)
+  })
+})
+
+describe('GroupMentionText', () => {
+  it('高亮新旧有效提及，代码区与未知 ID 保持普通文本', () => {
+    const unknownId = '01BX5ZZKBKACTAV9WEVGEMMVRZ'
+    const content = [
+      `@[${configuredMember.name}](member:${MEMBER_ID}) 和 @${configuredMember.name}`,
+      `\`@${configuredMember.name}\``,
+      `@[陌生人](member:${unknownId})`
+    ].join('\n')
+    const wrapper = mount(GroupMentionText, {
+      props: { content, members: [configuredMember] }
+    })
+
+    expect(wrapper.findAllComponents(Tag)).toHaveLength(2)
+    expect(wrapper.text()).toContain(`@${configuredMember.name}`)
+    expect(wrapper.text()).toContain(`\`@${configuredMember.name}\``)
+    expect(wrapper.text()).toContain(`@[陌生人](member:${unknownId})`)
+  })
+})
+
+describe('GroupMarkdownStream', () => {
+  it('通过实际组件映射把有效提及渲染为 tag，并保留普通安全链接', async () => {
+    const wrapper = mount(GroupMarkdownStream, {
+      props: {
+        content: `@${configuredMember.name} [官网](https://example.com)`,
+        members: [configuredMember]
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.findAllComponents(Tag)).toHaveLength(1)
+    expect(wrapper.get('a[href="https://example.com"]').text()).toBe('官网')
+  })
+
+  it('代码区、未知内部链接和流式半截提及不渲染 tag', async () => {
+    const wrapper = mount(GroupMarkdownStream, {
+      props: {
+        content: [
+          `\`@${configuredMember.name}\``,
+          '[伪造](group-member:01BX5ZZKBKACTAV9WEVGEMMVRZ)',
+          `@[${configuredMember.name}](member:${MEMBER_ID}`
+        ].join('\n\n'),
+        members: [configuredMember],
+        streaming: true
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.findComponent(Tag).exists()).toBe(false)
+    expect(wrapper.text()).toContain(`@${configuredMember.name}`)
+    expect(wrapper.text()).toContain('伪造')
+  })
+})
+
+describe('GroupMessage', () => {
+  it('用户消息接入 GroupMentionText，Agent 消息接入 GroupMarkdownStream', () => {
+    const pinia = prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+
+    const user = mount(GroupMessage, {
+      props: { message: textMessage() },
+      global: { plugins: [pinia] }
+    })
+    const agent = mount(GroupMessage, {
+      props: {
+        message: textMessage({
+          role: 'assistant',
+          author: MEMBER_ID,
+          parts: [{ type: 'text', text: `请 @${configuredMember.name} 复核` }]
+        })
+      },
+      global: { plugins: [pinia] }
+    })
+
+    expect(user.findComponent(GroupMentionText).exists()).toBe(true)
+    expect(agent.findComponent(GroupMarkdownStream).exists()).toBe(true)
+  })
+})
+
+describe('collab store mentions and stop state', () => {
+  it('为新旧群暴露统一成员，并仅给旧群发送 fallback 模型', async () => {
+    prepareStores()
+    const collab = useCollabStore()
+    const send = vi.fn(async () => undefined)
+    window.api.group.send = send
+    collab.model = { providerId: provider.id, modelId: toolsModel.id }
+
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+    expect(collab.mentionMembers).toEqual([configuredMember])
+    await collab.send(`@${configuredMember.name}`)
+    expect(send).toHaveBeenLastCalledWith({
+      conversationId: createdGroup.id,
+      text: `@${configuredMember.name}`
+    })
+
+    collab.groups = [groupWithMembers([template.id])]
+    delete collab.chaining[createdGroup.id]
+    expect(collab.mentionMembers).toEqual([template])
+    await collab.send(`@${template.name}`)
+    expect(send).toHaveBeenLastCalledWith({
+      conversationId: createdGroup.id,
+      text: `@${template.name}`,
+      fallbackModelRowId: toolsModel.id
+    })
+  })
+
+  it('chain-stopped 清理当前与后台群运行态，并展示当前群中文原因', () => {
+    prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+    collab.chaining = { [createdGroup.id]: true, background: true }
+    collab.speakingAuthor = MEMBER_ID
+
+    collab.handleEvent({
+      type: 'chain-stopped',
+      conversationId: createdGroup.id,
+      reason: 'cycle-detected',
+      message: '检测到重复接力，已停止'
+    })
+
+    expect(collab.chaining[createdGroup.id]).toBeUndefined()
+    expect(collab.speakingAuthor).toBe('')
+    expect(collab.error).toBe('检测到重复接力，已停止')
+
+    collab.handleEvent({
+      type: 'chain-stopped',
+      conversationId: 'background',
+      reason: 'hop-limit',
+      message: '接力次数已达上限'
+    })
+    expect(collab.chaining.background).toBeUndefined()
   })
 })
