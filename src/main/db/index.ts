@@ -24,7 +24,26 @@ export function getDb(): BetterSQLite3Database<typeof schema> {
   ensureSyncBase(sqlite)
 
   db = drizzle(sqlite, { schema })
+  scheduleObservabilityMaintenance()
   return db
+}
+
+/**
+ * 观测数据的启动维护:上次退出没收尾的 run 标 interrupted,再做一次
+ * 幂等的七天留存清理。放 setImmediate + 动态 import:一不阻塞首窗启动,
+ * 二避免 db/index ↔ repo 的模块环在求值期互相引用。
+ */
+function scheduleObservabilityMaintenance(): void {
+  setImmediate(() => {
+    void import('./repo/ai-observability')
+      .then((repo) => {
+        repo.markInterruptedRuns()
+        repo.cleanupDiagnostics(new Date().toISOString())
+      })
+      .catch((err) => {
+        console.warn('[db] 观测维护失败:', err instanceof Error ? err.message : err)
+      })
+  })
 }
 
 /**

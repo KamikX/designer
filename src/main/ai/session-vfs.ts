@@ -94,8 +94,12 @@ function assertPath(path: string): string {
   return normalized
 }
 
-/** 同 assertPath,但非法时返回 null 而不是抛 */
-function safePath(path: string): string | null {
+/**
+ * 同 assertPath,但非法时返回 null 而不是抛。
+ * 导出给观测层的 sanitizer 复用——诊断里只允许出现真正合法的设计稿
+ * 相对路径,不能收一个"看起来像相对路径"的任意字符串。
+ */
+export function safePath(path: string): string | null {
   try {
     return assertPath(path)
   } catch {
