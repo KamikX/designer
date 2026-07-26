@@ -272,6 +272,24 @@ export const useCollabStore = defineStore('collab', {
           }
           break
         }
+        case 'agent-retry': {
+          // 瞬时故障后这一棒从头重流:上一次的半截正文与工具流水作废,
+          // 留一条流水让用户知道刚才断过、系统在自动重试
+          const msg = this.messages.find((m) => m.id === event.messageId)
+          if (msg) {
+            msg.parts = [{ type: 'text', text: '' }]
+            msg.status = 'streaming'
+          }
+          this.activities[event.messageId] = [
+            {
+              callId: `retry-${event.attempt}`,
+              label: `连接中断,已自动重试(第 ${event.attempt - 1} 次)`,
+              state: 'success',
+              summary: event.message
+            }
+          ]
+          break
+        }
         case 'agent-done': {
           const msg = this.messages.find((m) => m.id === event.messageId)
           if (msg?.status === 'streaming') msg.status = 'complete'

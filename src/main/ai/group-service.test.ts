@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   Conversation,
   GroupMember,
@@ -99,7 +99,10 @@ vi.mock('./time-tools', () => ({
   buildTimeTools: () => ({ get_time: { kind: 'time' } })
 }))
 
-vi.mock('ai', () => ({
+// 只替换 streamText;APICallError/RetryError 等错误类型保留真实现——
+// 棒内重试的瞬时错误判定(ai-errors.ts)要用它们
+vi.mock('ai', async (importActual) => ({
+  ...(await importActual<typeof import('ai')>()),
   streamText: mocks.streamText
 }))
 
@@ -196,6 +199,10 @@ async function waitForTerminal(): Promise<GroupStreamEvent> {
       event.type === 'chain-done' || event.type === 'chain-stopped' || event.type === 'error'
   )!
 }
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 beforeEach(() => {
   mocks.conversation = null
@@ -569,5 +576,103 @@ describe('链路停止与清理', () => {
     mocks.outputs.push('@用户 完成')
     expect(() => sendGroupMessage(sender() as never, input(mention(configured)))).not.toThrow()
     expect((await waitForTerminal()).type).toBe('chain-done')
+  })
+})
+
+describe('瞬时上游故障的棒内重试', () => {
+  /** 真实案例:中转站读上游失败,HTTP 已 200,错误以 SSE 事件形式回流 */
+  const STREAM_ERROR = {
+    type: 'error',
+    sequence_number: 0,
+    error: { type: 'upstream_error', code: 'stream_read_error', message: 'stream_read_error' }
+  }
+
+  function failingStream(options: Record<string, unknown>): { fullStream: AsyncGenerator } {
+    mocks.streamOptions.push(options)
+    return {
+      fullStream: (async function* () {
+        yield { type: 'text-delta', text: '写了一半的' }
+        yield { type: 'error', error: STREAM_ERROR }
+      })()
+    }
+  }
+
+  /** 退避用 setTimeout,假时钟下要边推进边等终态 */
+  async function advanceUntilTerminal(): Promise<void> {
+    for (let round = 0; round < 40; round++) {
+      await vi.advanceTimersByTimeAsync(500)
+      const done = mocks.events.some(
+        (event) =>
+          event.type === 'chain-done' || event.type === 'chain-stopped' || event.type === 'error'
+      )
+      if (done) {
+        // 终态事件后链路还有收尾(chain-done 等),再放一轮微任务
+        await vi.advanceTimersByTimeAsync(0)
+        return
+      }
+    }
+    throw new Error('链路没有在预期时间内结束')
+  }
+
+  it('流中途 upstream_error 自动重试当前棒,成功后不打断链路', async () => {
+    vi.useFakeTimers()
+    const configured = member(0)
+    mocks.conversation = configuredConversation([configured])
+    mocks.models.set(configured.modelRowId, model(configured.modelRowId))
+    mocks.streamText.mockImplementationOnce(failingStream)
+    mocks.outputs.push('@用户 完成')
+
+    sendGroupMessage(sender() as never, input(mention(configured)))
+    await advanceUntilTerminal()
+
+    expect(mocks.streamText).toHaveBeenCalledTimes(2)
+    // 重试沿用同一条消息:agent-start 只发一次,靠 agent-retry 通知清半截正文
+    expect(mocks.events.filter((event) => event.type === 'agent-start')).toHaveLength(1)
+    expect(mocks.events.find((event) => event.type === 'agent-retry')).toMatchObject({
+      attempt: 2,
+      messageId: expect.any(String)
+    })
+    expect(mocks.events.some((event) => event.type === 'error')).toBe(false)
+    expect(mocks.events.some((event) => event.type === 'chain-done')).toBe(true)
+    expect(mocks.messages.find((m) => m.role === 'assistant')).toMatchObject({
+      status: 'complete',
+      parts: [{ type: 'text', text: '@用户 完成' }]
+    })
+  })
+
+  it('连续三次瞬时失败后放弃:标错这一棒并停链,半截正文照旧持久化', async () => {
+    vi.useFakeTimers()
+    const configured = member(0)
+    mocks.conversation = configuredConversation([configured])
+    mocks.models.set(configured.modelRowId, model(configured.modelRowId))
+    mocks.streamText.mockImplementation(failingStream)
+
+    sendGroupMessage(sender() as never, input(mention(configured)))
+    await advanceUntilTerminal()
+
+    expect(mocks.streamText).toHaveBeenCalledTimes(3)
+    expect(
+      mocks.events.flatMap((event) => (event.type === 'agent-retry' ? [event.attempt] : []))
+    ).toEqual([2, 3])
+    expect(mocks.events.some((event) => event.type === 'error')).toBe(true)
+    expect(mocks.events.some((event) => event.type === 'chain-done')).toBe(true)
+    expect(mocks.messages.find((m) => m.role === 'assistant')).toMatchObject({
+      status: 'error',
+      parts: [{ type: 'text', text: '写了一半的' }]
+    })
+  })
+
+  it('非瞬时错误(配置类)不重试:一次失败立刻标错', async () => {
+    const configured = member(0)
+    mocks.conversation = configuredConversation([configured])
+    mocks.models.set(configured.modelRowId, model(configured.modelRowId))
+    mocks.outputs.push(new Error('供应商「x」缺少 Base URL'))
+
+    sendGroupMessage(sender() as never, input(mention(configured)))
+    await waitForTerminal()
+
+    expect(mocks.streamText).toHaveBeenCalledTimes(1)
+    expect(mocks.events.some((event) => event.type === 'agent-retry')).toBe(false)
+    expect(mocks.events.some((event) => event.type === 'error')).toBe(true)
   })
 })

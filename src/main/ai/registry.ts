@@ -3,7 +3,7 @@ import { createDeepSeek } from '@ai-sdk/deepseek'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { APICallError, RetryError, generateText } from 'ai'
+import { generateText } from 'ai'
 import type { LanguageModel } from 'ai'
 import type { AdapterType, ProviderTestResult } from '../../shared/types'
 import { decryptSecret } from '../crypto'
@@ -11,7 +11,11 @@ import { getProviderRowById } from '../db/repo/provider'
 import { listModels } from '../db/repo/model'
 import { RunTraceCollector } from './run-trace'
 import { openaiCompatOptions } from './provider-options'
+import { errorMessage } from './ai-errors'
 import type { KeyStorage } from '../crypto'
+
+// 错误解读已搬家到 ai-errors.ts;这里保留再导出,老的引用方不用改
+export { errorMessage, isTransientAiError } from './ai-errors'
 
 /**
  * AI SDK 实例工厂。
@@ -126,64 +130,5 @@ export async function testProvider(
     return { ok: true, latencyMs: Date.now() - start }
   } catch (err) {
     return { ok: false, error: errorMessage(err) }
-  }
-}
-
-/** 把 SDK 的各式异常压成一句人能读的话,渲染层直接展示 */
-/**
- * 把 SDK 抛出来的错误翻成用户看得懂、且**能据此行动**的一句话。
- *
- * 原来直接returnerr.message,遇到网关 502 时用户只看到 "Upstream request
- * failed"——既不知道是哪一层挂的,也不知道该不该改配置,只能去猜 Base URL
- * 写错了。这里把状态码和它的含义摆出来,把"该改配置"和"上游抽风、重试即
- * 可"这两类彻底分开。
- */
-export function errorMessage(err: unknown): string {
-  // 重试耗尽:外层只说"试了 N 次",真正的原因在 lastError 里
-  if (RetryError.isInstance(err)) {
-    const inner = describe(err.lastError)
-    return `重试 ${err.errors.length} 次仍失败:${inner}`
-  }
-  return describe(err)
-}
-
-function describe(err: unknown): string {
-  if (APICallError.isInstance(err)) {
-    const status = err.statusCode
-    const detail = upstreamMessage(err.responseBody) ?? err.message
-    const hint = status ? STATUS_HINTS[status] : undefined
-    return hint ? `${hint}(HTTP ${status}:${detail})` : `HTTP ${status ?? '?'}:${detail}`
-  }
-  if (err instanceof Error) {
-    if (err.name === 'TimeoutError' || err.name === 'AbortError') return '请求超时'
-    return err.message
-  }
-  return String(err)
-}
-
-/**
- * 按状态码分流:哪些是"你的配置有问题",哪些是"服务端的事,重试就好"。
- * 这个区分比错误原文有用得多——它直接决定用户下一步做什么。
- */
-const STATUS_HINTS: Record<number, string> = {
-  401: 'API Key 无效或已过期,检查供应商配置',
-  403: '没有访问这个模型的权限',
-  404: '接口或模型不存在,检查 Base URL 是否需要带 /v1、模型名是否拼对',
-  413: '请求体太大,减少附件或让对话短一些',
-  429: '被限流了,稍等再试',
-  500: '服务端内部错误,不是本地配置的问题',
-  502: '网关的上游服务挂了,不是本地配置的问题,稍后重试',
-  503: '服务暂时不可用,稍后重试',
-  504: '上游响应超时,稍后重试'
-}
-
-/** 响应体通常是 `{"error":{"message":"..."}}`,把那句话挖出来,别把整段 JSON 甩给用户 */
-function upstreamMessage(body: string | undefined): string | undefined {
-  if (!body) return undefined
-  try {
-    const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string }
-    return parsed.error?.message ?? parsed.message
-  } catch {
-    return undefined
   }
 }

@@ -182,6 +182,11 @@ export type GroupStreamEvent = { conversationId: string } & (
       execMs?: number
     }
   | { type: 'agent-done'; messageId: string }
+  /**
+   * 瞬时上游故障后当前棒原地重试:同一条消息从头重新流式,
+   * 渲染层要清掉已流出的半截正文与工具流水。message 是失败原因(人话)
+   */
+  | { type: 'agent-retry'; messageId: string; attempt: number; message: string }
   /** 整条接力链正常结束(没人再被 @、@用户或用户中止) */
   | { type: 'chain-done' }
   | {

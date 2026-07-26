@@ -1,6 +1,7 @@
 import { APICallError, RetryError } from 'ai'
 import { describe, expect, it } from 'vitest'
-import { errorMessage } from './registry'
+// 经 registry 再导出引入:顺带钉住"搬家后老引用方不用改"这件事
+import { errorMessage, isTransientAiError } from './registry'
 
 /**
  * 这段文案是用户在出错时**唯一**能看到的东西,所以它得回答一个问题:
@@ -73,6 +74,64 @@ describe('重试耗尽', () => {
     )
     expect(out).toContain('重试 3 次')
     expect(out).toContain('上游')
+  })
+})
+
+describe('流中途的裸错误对象', () => {
+  // 真实案例:中转站读上游失败。HTTP 已经 200,错误作为 SSE 事件回流,
+  // SDK 原样透传这个非 Error 对象
+  const STREAM_ERROR = {
+    type: 'error',
+    sequence_number: 0,
+    error: { type: 'upstream_error', code: 'stream_read_error', message: 'stream_read_error' }
+  }
+
+  it('挖出嵌套的 message/type,不显示 [object Object]', () => {
+    const out = errorMessage(STREAM_ERROR)
+    expect(out).toContain('stream_read_error')
+    expect(out).toContain('upstream_error')
+    expect(out).not.toContain('object Object')
+  })
+
+  it('平铺形态(没有再包一层 error)也能读', () => {
+    const out = errorMessage({ type: 'overloaded_error', message: 'Overloaded' })
+    expect(out).toContain('Overloaded')
+    expect(out).not.toContain('object Object')
+  })
+})
+
+describe('isTransientAiError:重试与否的分界线', () => {
+  it('流中途的 upstream_error 事件判为瞬时', () => {
+    expect(
+      isTransientAiError({
+        type: 'error',
+        error: { type: 'upstream_error', code: 'stream_read_error', message: 'stream_read_error' }
+      })
+    ).toBe(true)
+  })
+
+  it('5xx / 429 判为瞬时', () => {
+    expect(isTransientAiError(apiError(502, UPSTREAM_502))).toBe(true)
+    expect(isTransientAiError(apiError(429, '{}'))).toBe(true)
+  })
+
+  it('鉴权/配置类错误判为永久:重试只会重复计费', () => {
+    expect(isTransientAiError(apiError(401, '{}'))).toBe(false)
+    expect(isTransientAiError(new Error('供应商「x」缺少 Base URL'))).toBe(false)
+  })
+
+  it('RetryError 穿透到 lastError 判定', () => {
+    const retry = new RetryError({
+      message: 'Failed after 3 attempts',
+      reason: 'maxRetriesExceeded',
+      errors: [apiError(503, '{}')]
+    })
+    expect(isTransientAiError(retry)).toBe(true)
+  })
+
+  it('网络类 Error 按特征词识别', () => {
+    expect(isTransientAiError(new Error('fetch failed'))).toBe(true)
+    expect(isTransientAiError(new TypeError('terminated'))).toBe(true)
   })
 })
 

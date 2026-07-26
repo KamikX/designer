@@ -14,6 +14,7 @@ import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { getLanguageModel, errorMessage } from './registry'
+import { isTransientAiError } from './ai-errors'
 import { buildTimeTools } from './time-tools'
 import { buildLocalTools } from './local-tools'
 import { listRoots } from '../workspace/roots'
@@ -42,6 +43,16 @@ import type { AdapterType } from '../../shared/types'
 
 /** 单个 agent 一轮的工具调用上限。它只是读文档,不需要设计会话那么多 */
 const MAX_TOOL_CALLS = 40
+
+/**
+ * 单棒的最大尝试次数(1 次正常 + 2 次重试)与退避基数。
+ *
+ * 群组一棒天然无状态:群聊记录每次从库重建,工具全是只读——重跑一遍没有
+ * 副作用。中转站的瞬时故障(流中途 upstream_error、5xx、限流)在这里原地
+ * 消化,不值得打断整条接力链让用户手动重新 @ 一遍。
+ */
+const HOP_MAX_ATTEMPTS = 3
+const RETRY_BASE_DELAY_MS = 1500
 
 const running = new Map<string, AbortController>()
 
@@ -145,133 +156,157 @@ async function runChain(
     })
 
     let text = ''
-    /** 每一棒是一次独立 run:各有自己的模型与消息 */
+    /** 每次尝试是一次独立 run:重试在观测里可见,各有自己的步与用量 */
     let trace: RunTraceCollector | null = null
     try {
       if (resolutionError) throw resolutionError
       if (!agent) throw resolutionError ?? new Error(`成员“${source.name}”解析失败`)
-      trace = new RunTraceCollector({
-        scene: 'group',
-        messageId: message.id,
-        conversationId,
-        providerId: agent.model.providerId,
-        providerSlug: providerSlug ?? '',
-        modelId: agent.model.modelId,
-        adapter: providerAdapter
-      })
-      trace.start()
-      // 群组里没有"自动内置"的技能:builtin 设计技能也只在被显式勾选时生效
+      // 与重试无关的一次性准备。群组里没有"自动内置"的技能:builtin 设计
+      // 技能也只在被显式勾选时生效
       const wantedSkills = new Set(agent.skillIds)
       const selectedSkills = installedSkills.filter((skill) => wantedSkills.has(skill.name))
       const userRoots = listRoots({ conversationId })
       const roots = [...userRoots, ...skillRoots(selectedSkills)]
       const catalog = skillCatalog(selectedSkills, agent.model.contextWindow)
       const system = buildAgentSystem(agent, members, userRoots.length > 0, catalog)
-      emit({
-        conversationId,
-        type: 'agent-start',
-        messageId: message.id,
-        author: agent.id,
-        system
-      })
+      const content = transcript(conversationId, message.id, agent.name, mentionMembers)
 
-      const result = streamText({
-        model: getLanguageModel(agent.model.providerId, agent.model.modelId),
-        system,
-        // OpenAI 协议兼容参数,与设计/纯聊天同一套(见 provider-options.ts)。
-        // 群组 agent 带工具必然多步,漏掉它就会复发 rs_ 条目找不到的报错
-        providerOptions: { openai: openaiCompatOptions() },
-        messages: [
-          {
-            role: 'user',
-            content: transcript(conversationId, message.id, agent.name, mentionMembers)
-          }
-        ],
-        abortSignal: abort.signal,
-        onLanguageModelCallStart: ({ callId }) => trace?.modelCallStart(callId),
-        onLanguageModelCallEnd: (event) =>
-          trace?.stepEnd(event.callId, event.usage, {
-            finishReason: event.finishReason,
-            responseTimeMs: event.performance?.responseTimeMs ?? null,
-            timeToFirstOutputMs: event.performance?.timeToFirstOutputMs ?? null
-          }),
-        onToolExecutionStart: (event) => {
-          trace?.toolExecutionStart(event.toolCall.toolCallId)
+      for (let attempt = 1; ; attempt++) {
+        text = ''
+        trace = new RunTraceCollector({
+          scene: 'group',
+          messageId: message.id,
+          conversationId,
+          providerId: agent.model.providerId,
+          providerSlug: providerSlug ?? '',
+          modelId: agent.model.modelId,
+          adapter: providerAdapter
+        })
+        trace.start()
+        if (attempt === 1) {
           emit({
             conversationId,
-            type: 'tool-exec',
+            type: 'agent-start',
             messageId: message.id,
-            callId: event.toolCall.toolCallId,
-            label: verbOf(event.toolCall.toolName)
+            author: agent.id,
+            system
           })
-        },
-        // 与设计会话同一套硬预算语义:同步预留名额,单 step 超发的并行
-        // 调用原地拒绝,不产生副作用
-        tools: wrapToolsWithBudget(
-          {
-            ...buildTimeTools(),
-            ...buildLocalTools(roots, {
-              canSeeImages: agent.model.abilities.includes('vision'),
-              intent: input.text
-            }),
-            ...buildSkillTools(selectedSkills)
-          },
-          new ToolBudgetGate(MAX_TOOL_CALLS)
-        ),
-        stopWhen: ({ steps }) => steps.reduce((n, s) => n + s.toolCalls.length, 0) >= MAX_TOOL_CALLS
-      })
-
-      let streamError: unknown = null
-      for await (const part of result.fullStream) {
-        if (part.type === 'error') {
-          streamError = part.error
-          break
         }
-        if (part.type === 'abort') break
-        switch (part.type) {
-          case 'text-delta':
-            trace?.markFirstOutput()
-            text += part.text
-            emit({ conversationId, type: 'delta', messageId: message.id, text: part.text })
-            break
-          case 'tool-input-start':
-            trace?.toolInputStart(part.id, part.toolName)
-            emit({
-              conversationId,
-              type: 'tool-start',
-              messageId: message.id,
-              callId: part.id,
-              label: verbOf(part.toolName)
-            })
-            break
-          case 'tool-call':
-            trace?.toolInputStart(part.toolCallId, part.toolName)
-            trace?.toolInputEnd(part.toolCallId, part.input)
-            emit({
-              conversationId,
-              type: 'tool-update',
-              messageId: message.id,
-              callId: part.toolCallId,
-              label: labelFor(part.toolName, part.input as Record<string, unknown>)
-            })
-            break
-          case 'tool-result':
-            trace?.toolExecutionEnd(part.toolCallId, {
-              status: 'success',
-              outputChars: typeof part.output === 'string' ? part.output.length : null
-            })
-            emit({
-              conversationId,
-              type: 'tool-end',
-              messageId: message.id,
-              callId: part.toolCallId,
-              ok: true,
-              status: 'success'
-            })
-            break
+
+        try {
+          const result = streamText({
+            model: getLanguageModel(agent.model.providerId, agent.model.modelId),
+            system,
+            // OpenAI 协议兼容参数,与设计/纯聊天同一套(见 provider-options.ts)。
+            // 群组 agent 带工具必然多步,漏掉它就会复发 rs_ 条目找不到的报错
+            providerOptions: { openai: openaiCompatOptions() },
+            messages: [{ role: 'user', content }],
+            abortSignal: abort.signal,
+            onLanguageModelCallStart: ({ callId }) => trace?.modelCallStart(callId),
+            onLanguageModelCallEnd: (event) =>
+              trace?.stepEnd(event.callId, event.usage, {
+                finishReason: event.finishReason,
+                responseTimeMs: event.performance?.responseTimeMs ?? null,
+                timeToFirstOutputMs: event.performance?.timeToFirstOutputMs ?? null
+              }),
+            onToolExecutionStart: (event) => {
+              trace?.toolExecutionStart(event.toolCall.toolCallId)
+              emit({
+                conversationId,
+                type: 'tool-exec',
+                messageId: message.id,
+                callId: event.toolCall.toolCallId,
+                label: verbOf(event.toolCall.toolName)
+              })
+            },
+            // 与设计会话同一套硬预算语义:同步预留名额,单 step 超发的并行
+            // 调用原地拒绝,不产生副作用
+            tools: wrapToolsWithBudget(
+              {
+                ...buildTimeTools(),
+                ...buildLocalTools(roots, {
+                  canSeeImages: agent.model.abilities.includes('vision'),
+                  intent: input.text
+                }),
+                ...buildSkillTools(selectedSkills)
+              },
+              new ToolBudgetGate(MAX_TOOL_CALLS)
+            ),
+            stopWhen: ({ steps }) =>
+              steps.reduce((n, s) => n + s.toolCalls.length, 0) >= MAX_TOOL_CALLS
+          })
+
+          let streamError: unknown = null
+          for await (const part of result.fullStream) {
+            if (part.type === 'error') {
+              streamError = part.error
+              break
+            }
+            if (part.type === 'abort') break
+            switch (part.type) {
+              case 'text-delta':
+                trace?.markFirstOutput()
+                text += part.text
+                emit({ conversationId, type: 'delta', messageId: message.id, text: part.text })
+                break
+              case 'tool-input-start':
+                trace?.toolInputStart(part.id, part.toolName)
+                emit({
+                  conversationId,
+                  type: 'tool-start',
+                  messageId: message.id,
+                  callId: part.id,
+                  label: verbOf(part.toolName)
+                })
+                break
+              case 'tool-call':
+                trace?.toolInputStart(part.toolCallId, part.toolName)
+                trace?.toolInputEnd(part.toolCallId, part.input)
+                emit({
+                  conversationId,
+                  type: 'tool-update',
+                  messageId: message.id,
+                  callId: part.toolCallId,
+                  label: labelFor(part.toolName, part.input as Record<string, unknown>)
+                })
+                break
+              case 'tool-result':
+                trace?.toolExecutionEnd(part.toolCallId, {
+                  status: 'success',
+                  outputChars: typeof part.output === 'string' ? part.output.length : null
+                })
+                emit({
+                  conversationId,
+                  type: 'tool-end',
+                  messageId: message.id,
+                  callId: part.toolCallId,
+                  ok: true,
+                  status: 'success'
+                })
+                break
+            }
+          }
+          if (streamError) throw streamError
+          break
+        } catch (err) {
+          trace.finish(abort.signal.aborted ? 'aborted' : 'error')
+          trace = null
+          const retryable =
+            !abort.signal.aborted && attempt < HOP_MAX_ATTEMPTS && isTransientAiError(err)
+          if (!retryable) throw err
+          await backoff(RETRY_BASE_DELAY_MS * attempt, abort.signal)
+          if (abort.signal.aborted) throw err
+          // 等真正开始下一次尝试才通知渲染层清半截正文:退避期间用户
+          // 还能看到已生成的内容,不会平白闪空
+          emit({
+            conversationId,
+            type: 'agent-retry',
+            messageId: message.id,
+            attempt: attempt + 1,
+            message: errorMessage(err)
+          })
         }
       }
-      if (streamError) throw streamError
 
       trace?.finish(abort.signal.aborted ? 'aborted' : 'complete')
       updateMessage(message.id, {
@@ -355,6 +390,19 @@ function buildAgentSystem(
       : '- 用户没有授权本地目录,基于群聊内容做合理假设,并把关键假设写在文档开头。',
     catalog
   ].join('\n\n')
+}
+
+/** 可被停止打断的退避等待:用户点了停止,不该被重试计时器多卡几秒 */
+function backoff(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms)
+    function done(): void {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', done)
+      resolve()
+    }
+    signal.addEventListener('abort', done)
+  })
 }
 
 function resolveStoredMembers(members: SessionSettings['members']): GroupMember[] {
