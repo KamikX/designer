@@ -238,13 +238,14 @@ function onEnter(e: KeyboardEvent): void {
 /**
  * 技能与 MCP 都是**手动勾选制,默认零加载**。
  *
- * 技能按来源分三组:
- * - 内置(builtin):设计会话里按项目勾选的端自动生效,这里只展示不勾选——
- *   关不掉才更该让用户看见,否则模型行为里有一大块来源不明;
+ * 技能按来源分组:
  * - 我的(app,~/.antd-designer/skills):勾了才可用;
- * - 全局(agents/claude,跨工具共享目录):同上。
+ * - 全局(agents/claude,跨工具共享目录):同上;
+ * - 内置(builtin 与 builtin-* 领域包):同样勾了才可用。唯一例外是
+ *   **设计会话里的 builtin 设计技能**——自动生效,只展示不勾选,
+ *   关不掉才更该让用户看见,否则模型行为里有一大块来源不明。
  *
- * MCP 来自 ~/.antd-designer/mcp.json,勾了才连接。
+ * MCP 来自 ~/.antd-designer/mcp.json,勾了才连接,没有内置一说。
  */
 const mcpServers = ref<McpServerView[]>([])
 const mcpProblem = ref('')
@@ -271,6 +272,7 @@ const filteredMcpServers = computed(() =>
 )
 
 const isDesign = computed(() => !!chatStore.projectId)
+/** 自动生效、锁死展示的技能:仅设计会话里的 builtin 设计技能 */
 const builtinSkills = computed(() =>
   isDesign.value
     ? fileSkills.value.filter(
@@ -278,7 +280,6 @@ const builtinSkills = computed(() =>
       )
     : []
 )
-/** 可勾选的技能:内置之外的全部,分「我的」和「全局」两组 */
 const mySkills = computed(() =>
   fileSkills.value.filter(
     (s) => s.source === 'app' && matches(skillFilter.value, s.name, s.description)
@@ -291,6 +292,18 @@ const globalSkills = computed(() =>
       matches(skillFilter.value, s.name, s.description)
   )
 )
+/**
+ * 可勾选的内置技能:builtin-* 领域包一直可勾;builtin 设计技能只在纯聊天
+ * 可勾(设计会话里它已经自动生效,再给复选框就成了"看起来能关其实关不掉")。
+ */
+const builtinSelectable = computed(() =>
+  fileSkills.value.filter(
+    (s) =>
+      s.source.startsWith('builtin') &&
+      !(isDesign.value && s.source === 'builtin') &&
+      matches(skillFilter.value, s.name, s.description)
+  )
+)
 
 async function loadToolbox(): Promise<void> {
   const [m, s] = await Promise.all([window.api.mcp.list(), window.api.market.installedSkills()])
@@ -300,9 +313,10 @@ async function loadToolbox(): Promise<void> {
   // 只在内存里对齐(剔掉已不存在的名字),不写回存档:用户可能只是暂时
   // 把某个技能移走了,再装回来时这个会话还该记得它
   chatStore.mcpIds = reconcileNames(chatStore.mcpIds, m.servers)
+  // 设计会话里 builtin 设计技能是自动生效的,不该出现在勾选存档里;纯聊天全放行
   chatStore.skillIds = reconcileNames(
     chatStore.skillIds,
-    s.filter((x) => x.source !== 'builtin')
+    isDesign.value ? s.filter((x) => x.source !== 'builtin') : s
   )
 }
 
@@ -546,8 +560,22 @@ function toggleId(list: string[] | null, id: string): string[] {
                 </label>
               </template>
 
-              <!-- 内置技能放最后:关不掉也取消不了,但必须让用户看见——否则
-                   模型行为里有一大块来源不明,他会以为是模型自己的脾气 -->
+              <template v-if="builtinSelectable.length">
+                <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
+                  内置技能
+                </div>
+                <label v-for="s in builtinSelectable" :key="s.name" class="toolbox-pop-row">
+                  <a-checkbox
+                    :checked="chatStore.skillIds?.includes(s.name)"
+                    @change="chatStore.setSkillIds(toggleId(chatStore.skillIds, s.name))"
+                  />
+                  <span class="toolbox-pop-name">{{ s.name }}</span>
+                  <span class="toolbox-pop-meta">{{ s.description }}</span>
+                </label>
+              </template>
+
+              <!-- 自动生效的内置技能放最后:关不掉也取消不了,但必须让用户看见
+                   ——否则模型行为里有一大块来源不明,他会以为是模型自己的脾气 -->
               <template v-if="builtinSkills.length">
                 <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
                   内置(设计会话自动生效)
@@ -564,7 +592,12 @@ function toggleId(list: string[] | null, id: string): string[] {
               </template>
 
               <a-empty
-                v-if="!builtinSkills.length && !mySkills.length && !globalSkills.length"
+                v-if="
+                  !builtinSkills.length &&
+                  !builtinSelectable.length &&
+                  !mySkills.length &&
+                  !globalSkills.length
+                "
                 :description="fileSkills.length ? '没有匹配的技能' : '还没有任何技能'"
                 :image-style="{ height: '48px' }"
               />
