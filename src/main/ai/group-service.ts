@@ -63,6 +63,11 @@ export function abortGroup(conversationId: string): void {
   running.get(conversationId)?.abort()
 }
 
+/** 编辑群组前的检查:每一棒开始时都重读成员配置,链跑一半改配置=中途换人设 */
+export function isGroupChainRunning(conversationId: string): boolean {
+  return running.has(conversationId)
+}
+
 export function sendGroupMessage(sender: WebContents, input: GroupSendInput): void {
   const conversation = getConversation(input.conversationId)
   if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')

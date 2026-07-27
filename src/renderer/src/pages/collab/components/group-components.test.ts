@@ -16,12 +16,13 @@ import type {
   InstalledSkill,
   Message,
   Model,
-  Provider
+  Provider,
+  UpdateGroupInput
 } from '@shared/types'
 import type { MemberDraft } from '../member-drafts'
 import GroupMemberEditor from './GroupMemberEditor.vue'
 import GroupMemberList from './GroupMemberList.vue'
-import CreateGroupModal from './CreateGroupModal.vue'
+import GroupFormModal from './GroupFormModal.vue'
 import GroupComposer from './GroupComposer.vue'
 import GroupMarkdownStream from './GroupMarkdownStream.vue'
 import GroupMentionText from './GroupMentionText.vue'
@@ -158,6 +159,9 @@ function textMessage(overrides: Partial<Message> = {}): Message {
 const createGroup = vi
   .fn<(input: CreateGroupInput) => Promise<Conversation>>()
   .mockResolvedValue(createdGroup)
+const updateGroup = vi
+  .fn<(input: UpdateGroupInput) => Promise<Conversation>>()
+  .mockResolvedValue(createdGroup)
 
 function installApi(): void {
   Object.defineProperty(window, 'api', {
@@ -168,6 +172,7 @@ function installApi(): void {
       },
       group: {
         create: createGroup,
+        update: updateGroup,
         roles: vi.fn(async () => [template]),
         list: vi.fn(async () => [createdGroup]),
         messages: vi.fn(async () => []),
@@ -219,6 +224,8 @@ beforeEach(() => {
   installApi()
   createGroup.mockReset()
   createGroup.mockResolvedValue(createdGroup)
+  updateGroup.mockReset()
+  updateGroup.mockResolvedValue(createdGroup)
   appMessage.warning.mockClear()
   appMessage.error.mockClear()
   modalConfirm.mockClear()
@@ -318,12 +325,23 @@ describe('GroupMemberList', () => {
     expect(wrapper.emitted('move')).toEqual([['member-1', 'down']])
     expect(members).toHaveLength(2)
   })
+
+  it('已有成员(带 persistedId)没有删除按钮,新成员有', () => {
+    const members = [
+      editableMember({ persistedId: MEMBER_ID }),
+      editableMember({ tempKey: 'member-2', name: 'UI 设计师' })
+    ]
+    const wrapper = mount(GroupMemberList, { props: { members } })
+
+    expect(wrapper.find('[data-testid="remove-member-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="remove-member-2"]').exists()).toBe(true)
+  })
 })
 
-describe('CreateGroupModal', () => {
+describe('GroupFormModal', () => {
   it('群名输入可由标签定位', async () => {
     const pinia = prepareStores()
-    mount(CreateGroupModal, {
+    mount(GroupFormModal, {
       attachTo: document.body,
       props: { open: true },
       global: { plugins: [pinia] }
@@ -336,7 +354,7 @@ describe('CreateGroupModal', () => {
 
   it('从模板或空白新增成员，并在新增后打开对应编辑区', async () => {
     const pinia = prepareStores()
-    const wrapper = mount(CreateGroupModal, {
+    const wrapper = mount(GroupFormModal, {
       attachTo: document.body,
       props: { open: true },
       global: { plugins: [pinia] }
@@ -354,7 +372,7 @@ describe('CreateGroupModal', () => {
 
   it('重复名称或缺少有效模型时不提交', async () => {
     const pinia = prepareStores()
-    const wrapper = mount(CreateGroupModal, {
+    const wrapper = mount(GroupFormModal, {
       attachTo: document.body,
       props: { open: true },
       global: { plugins: [pinia] }
@@ -381,7 +399,7 @@ describe('CreateGroupModal', () => {
 
   it('提交 plain payload，不携带 UI 临时 key', async () => {
     const pinia = prepareStores()
-    const wrapper = mount(CreateGroupModal, {
+    const wrapper = mount(GroupFormModal, {
       attachTo: document.body,
       props: { open: true },
       global: { plugins: [pinia] }
@@ -427,7 +445,7 @@ describe('CreateGroupModal', () => {
       })
     )
     const onCreated = vi.fn()
-    const wrapper = mount(CreateGroupModal, {
+    const wrapper = mount(GroupFormModal, {
       attachTo: document.body,
       props: { open: true, onCreated },
       global: { plugins: [pinia] }
@@ -453,6 +471,57 @@ describe('CreateGroupModal', () => {
     await flushPromises()
 
     expect(onCreated).toHaveBeenCalledTimes(1)
+  })
+
+  it('编辑模式预填标题与成员,已有成员标记 persistedId', async () => {
+    const pinia = prepareStores()
+    const wrapper = mount(GroupFormModal, {
+      attachTo: document.body,
+      props: { open: true, group: groupWithMembers([configuredMember]) },
+      global: { plugins: [pinia] }
+    })
+    await flushPromises()
+
+    expect((page().get('#group-name').element as HTMLInputElement).value).toBe(createdGroup.title)
+    const members = wrapper.findComponent(GroupMemberList).props('members') as MemberDraft[]
+    expect(members).toHaveLength(1)
+    expect(members[0].persistedId).toBe(MEMBER_ID)
+    // 已有成员没有删除入口:历史消息的 author 引用着 TA
+    expect(page().find(`[data-testid="remove-${members[0].tempKey}"]`).exists()).toBe(false)
+  })
+
+  it('编辑提交走 update:已有成员带回 ULID,新成员不带 id', async () => {
+    const pinia = prepareStores()
+    const wrapper = mount(GroupFormModal, {
+      attachTo: document.body,
+      props: { open: true, group: groupWithMembers([configuredMember]) },
+      global: { plugins: [pinia] }
+    })
+    await flushPromises()
+
+    await page().get('[data-testid="group-name"]').setValue('充储专项')
+    await page().get('[data-testid="add-blank-member"]').trigger('click')
+    wrapper.findComponent(GroupMemberEditor).vm.$emit(
+      'update:modelValue',
+      editableMember({
+        tempKey: (wrapper.findComponent(GroupMemberEditor).props('modelValue') as MemberDraft)
+          .tempKey,
+        name: 'UI 设计师',
+        modelRowId: toolsModel.id
+      })
+    )
+    await clickModalOk()
+
+    expect(createGroup).not.toHaveBeenCalled()
+    expect(updateGroup).toHaveBeenCalledTimes(1)
+    const payload = updateGroup.mock.calls[0][0]
+    expect(payload.id).toBe(createdGroup.id)
+    expect(payload.name).toBe('充储专项')
+    expect(payload.members).toHaveLength(2)
+    expect(payload.members[0].id).toBe(MEMBER_ID)
+    expect(payload.members[1]).not.toHaveProperty('id')
+    expect(payload.members[1]).not.toHaveProperty('tempKey')
+    expect(payload.members[1]).not.toHaveProperty('persistedId')
   })
 })
 
@@ -570,7 +639,7 @@ describe('GroupComposer', () => {
 })
 
 describe('CollabPage group navigation', () => {
-  it('用同级按钮呈现打开和删除操作，并支持 Enter 打开群组', async () => {
+  it('用同级按钮呈现打开、设置和删除操作，并支持 Enter 打开群组', async () => {
     const pinia = prepareStores()
     const wrapper = mount(CollabPage, {
       attachTo: document.body,
@@ -580,7 +649,7 @@ describe('CollabPage group navigation', () => {
           MemberBar: true,
           GroupMessage: true,
           GroupComposer: true,
-          CreateGroupModal: true
+          GroupFormModal: true
         }
       }
     })
@@ -588,15 +657,38 @@ describe('CollabPage group navigation', () => {
 
     const row = wrapper.get('.collab-item')
     const buttons = row.findAll('button')
-    expect(buttons).toHaveLength(2)
+    expect(buttons).toHaveLength(3)
     expect(buttons[0].text()).toContain(createdGroup.title)
-    expect(buttons[1].attributes('aria-label')).toBe(`删除群组 ${createdGroup.title}`)
+    expect(buttons[1].attributes('aria-label')).toBe(`群组设置 ${createdGroup.title}`)
+    expect(buttons[2].attributes('aria-label')).toBe(`删除群组 ${createdGroup.title}`)
 
     await buttons[0].trigger('keydown', { key: 'Enter' })
     await flushPromises()
 
     expect(useCollabStore().conversationId).toBe(createdGroup.id)
     expect(window.api.group.messages).toHaveBeenCalledWith(createdGroup.id)
+  })
+
+  it('接力进行中的群禁用设置入口,避免链中换配置', async () => {
+    const pinia = prepareStores()
+    const wrapper = mount(CollabPage, {
+      attachTo: document.body,
+      global: {
+        plugins: [pinia],
+        stubs: {
+          MemberBar: true,
+          GroupMessage: true,
+          GroupComposer: true,
+          GroupFormModal: true
+        }
+      }
+    })
+    await flushPromises()
+    useCollabStore().chaining[createdGroup.id] = true
+    await flushPromises()
+
+    const setting = wrapper.get(`button[aria-label="群组设置 ${createdGroup.title}"]`)
+    expect(setting.attributes('disabled')).toBeDefined()
   })
 })
 

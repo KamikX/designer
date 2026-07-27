@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type {
   Conversation,
   CreateGroupInput,
+  UpdateGroupInput,
   GroupMemberTemplate,
   GroupRoleMeta,
   GroupStreamEvent,
@@ -155,6 +156,17 @@ export const useCollabStore = defineStore('collab', {
       })
       this.groups.unshift(created)
       return created
+    },
+
+    /** 编辑群名与成员配置。成员表读的是 groups 里的 settings,原位替换即可全局生效 */
+    async updateGroup(input: UpdateGroupInput): Promise<Conversation> {
+      const updated = await window.api.group.update({
+        id: input.id,
+        name: input.name,
+        members: input.members.map((member) => ({ ...member, skillIds: [...member.skillIds] }))
+      })
+      this.groups = this.groups.map((g) => (g.id === updated.id ? updated : g))
+      return updated
     },
 
     async removeGroup(id: string): Promise<void> {

@@ -63,7 +63,9 @@ const { token } = theme.useToken()
         >
           <template #icon><ArrowDownOutlined /></template>
         </a-button>
+        <!-- 已有成员没有删除入口:历史消息的 author 引用着 TA 的 ULID -->
         <a-button
+          v-if="!member.persistedId"
           :data-testid="`remove-${member.tempKey}`"
           type="text"
           size="small"

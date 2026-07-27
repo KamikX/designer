@@ -8,16 +8,27 @@ import GroupMemberList from './GroupMemberList.vue'
 import {
   createBlankMemberDraft,
   createMemberDraftFromTemplate,
+  memberToDraft,
   moveMemberDraft,
   removeMemberDraft,
   toGroupMemberDrafts,
+  toGroupMemberUpdates,
   validateMemberDrafts
 } from '../member-drafts'
+import { normalizeGroupMembers } from '@shared/group-members'
 import type { Conversation, GroupMemberTemplate, InstalledSkill } from '@shared/types'
 import type { MemberDraft, MoveDirection } from '../member-drafts'
 
+/**
+ * 群组表单弹窗,创建 / 编辑双模式:传了 group 就是编辑。
+ * 编辑模式下已有成员只能改配置不能删除——历史消息的 author 引用着成员
+ * ULID,删人会让 TA 的发言变成查无此人;新加的成员保存前仍可自由移除。
+ */
+const props = defineProps<{ group?: Conversation | null }>()
 const open = defineModel<boolean>('open', { default: false })
-const emit = defineEmits<{ created: [group: Conversation] }>()
+const emit = defineEmits<{ created: [group: Conversation]; saved: [group: Conversation] }>()
+
+const isEdit = computed(() => Boolean(props.group))
 
 const { token } = theme.useToken()
 const { message } = App.useApp()
@@ -38,9 +49,17 @@ watch(
   open,
   (now) => {
     if (!now) return
-    name.value = ''
-    members.value = []
-    editingKey.value = ''
+    if (props.group) {
+      name.value = props.group.title
+      members.value = normalizeGroupMembers(props.group.settings?.members).map((member) =>
+        memberToDraft(member)
+      )
+      editingKey.value = members.value[0]?.tempKey ?? ''
+    } else {
+      name.value = ''
+      members.value = []
+      editingKey.value = ''
+    }
     void loadOptions()
   },
   { immediate: true }
@@ -112,12 +131,22 @@ async function submit(): Promise<void> {
   creating.value = true
   try {
     // 每层都摊成普通对象/数组，避免把 Vue Proxy 交给 structured clone。
-    const created = await collab.createGroup({
-      name: groupName,
-      members: toGroupMemberDrafts(members.value)
-    })
-    open.value = false
-    emit('created', created)
+    if (props.group) {
+      const saved = await collab.updateGroup({
+        id: props.group.id,
+        name: groupName,
+        members: toGroupMemberUpdates(members.value)
+      })
+      open.value = false
+      emit('saved', saved)
+    } else {
+      const created = await collab.createGroup({
+        name: groupName,
+        members: toGroupMemberDrafts(members.value)
+      })
+      open.value = false
+      emit('created', created)
+    }
   } catch (error) {
     message.error(error instanceof Error ? error.message : String(error))
   } finally {
@@ -129,11 +158,11 @@ async function submit(): Promise<void> {
 <template>
   <a-modal
     v-model:open="open"
-    title="新建群组"
+    :title="isEdit ? '群组设置' : '新建群组'"
     :confirm-loading="creating"
     :width="900"
     centered
-    ok-text="建群"
+    :ok-text="isEdit ? '保存' : '建群'"
     @ok="submit"
   >
     <div class="create-body">
@@ -177,6 +206,9 @@ async function submit(): Promise<void> {
       <div class="member-layout">
         <section class="member-column">
           <div class="section-title">群组成员 · {{ members.length }}</div>
+          <div v-if="isEdit" class="section-hint" :style="{ color: token.colorTextTertiary }">
+            已有成员可修改配置但不能移除——TA 的历史发言还在群里
+          </div>
           <GroupMemberList
             :members="members"
             :active-key="editingKey"
@@ -260,6 +292,10 @@ async function submit(): Promise<void> {
 .member-column > .section-title {
   display: block;
   margin-bottom: 8px;
+}
+
+.member-column > .section-hint {
+  margin: -4px 0 8px;
 }
 
 .editor-placeholder {

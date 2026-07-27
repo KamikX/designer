@@ -18,6 +18,7 @@ import type {
   CreateProjectInput,
   CreateGroupInput,
   CreateProviderInput,
+  UpdateGroupInput,
   FetchModelsInput,
   McpServerInput,
   ModelSelection,
@@ -40,15 +41,18 @@ import {
   createGroup,
   deleteConversation,
   ensureDesignConversation,
+  getConversation,
   listChats,
   listGroups,
   renameConversation,
-  saveConversationSettings
+  saveConversationSettings,
+  updateGroup
 } from '../db/repo/conversation'
-import { abortGroup, sendGroupMessage } from '../ai/group-service'
+import { abortGroup, isGroupChainRunning, sendGroupMessage } from '../ai/group-service'
+import { normalizeGroupMembers } from '../../shared/group-members'
 import { clearUsage, getRunDiagnostics, queryDailyUsage } from '../db/repo/ai-observability'
 import type { RunDiagnostics, UsageQuery, UsageReport } from '../../shared/types'
-import { createGroupMembers } from '../ai/group-members'
+import { createGroupMembers, updateGroupMembers } from '../ai/group-members'
 import { roleTemplates } from '../ai/prompts/group-roles'
 import {
   clearProviderKey,
@@ -148,6 +152,24 @@ export function registerIpc(): void {
       createId: ulid
     })
     return createGroup({ name: input.name.trim(), members })
+  })
+  ipcMain.handle('group:update', (_e, input: UpdateGroupInput) => {
+    if (input == null || typeof input.id !== 'string') throw new Error('群组不存在')
+    if (typeof input.name !== 'string' || !input.name.trim()) {
+      throw new Error('群组名称不能为空')
+    }
+    const conversation = getConversation(input.id)
+    if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')
+    // 每一棒开始时都重读成员配置,链跑一半改配置=中途换人设
+    if (isGroupChainRunning(input.id)) {
+      throw new Error('接力进行中,先等它结束或点停止,再修改群组配置。')
+    }
+    const members = updateGroupMembers(
+      normalizeGroupMembers(conversation.settings?.members),
+      input.members,
+      { models: listModels(), skills: scanSkills(), createId: ulid }
+    )
+    return updateGroup({ id: input.id, name: input.name.trim(), members })
   })
   ipcMain.handle('group:rename', (_e, id: string, name: string) => renameConversation(id, name))
   ipcMain.handle('group:delete', (_e, id: string) => deleteConversation(id))

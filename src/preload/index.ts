@@ -67,6 +67,7 @@ const api: DesignerApi = {
     roles: () => ipcRenderer.invoke('group:roles'),
     list: () => ipcRenderer.invoke('group:list'),
     create: (input) => ipcRenderer.invoke('group:create', input),
+    update: (input) => ipcRenderer.invoke('group:update', input),
     rename: (id, name) => ipcRenderer.invoke('group:rename', id, name),
     remove: (id) => ipcRenderer.invoke('group:delete', id),
     messages: (id) => ipcRenderer.invoke('group:messages', id),

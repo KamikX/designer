@@ -86,6 +86,31 @@ export function createGroup(input: { name: string; members: GroupMember[] }): Co
   )
 }
 
+/**
+ * 群组改名与成员配置一次落库。不动 updatedAt——群列表按活跃度排序,
+ * "改了个头像色"不该把群顶到最前面。settings 走合并,保住 members 之外
+ * 将来可能出现的其他键。
+ */
+export function updateGroup(input: {
+  id: string
+  name: string
+  members: GroupMember[]
+}): Conversation {
+  const current = getConversation(input.id)
+  if (!current) throw new Error('群组不存在')
+  return toView(
+    getDb()
+      .update(conversations)
+      .set({
+        title: input.name,
+        settings: { ...current.settings, members: input.members }
+      })
+      .where(eq(conversations.id, input.id))
+      .returning()
+      .get()
+  )
+}
+
 export function createChat(title = ''): Conversation {
   return toView(
     getDb().insert(conversations).values({ projectId: null, kind: 'chat', title }).returning().get()

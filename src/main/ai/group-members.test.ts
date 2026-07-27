@@ -8,7 +8,7 @@ import type {
   SessionSettings
 } from '../../shared/types'
 import { isConfiguredGroupMembers, normalizeGroupMembers } from '../../shared/group-members'
-import { createGroupMembers, resolveGroupAgent } from './group-members'
+import { createGroupMembers, resolveGroupAgent, updateGroupMembers } from './group-members'
 import { roleTemplates } from './prompts/group-roles'
 
 const MEMBER_ID = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
@@ -164,6 +164,84 @@ describe('createGroupMembers', () => {
     })
 
     expect(members.map((member) => member.id)).toEqual(['same', 'unique'])
+  })
+})
+
+describe('updateGroupMembers', () => {
+  const existing: GroupMember[] = [
+    { ...draft(), id: MEMBER_ID },
+    { ...draft({ name: 'UI设计师' }), id: '01ARZ3NDEKTSV4RRFFQ69G5FAW' }
+  ]
+
+  function run(
+    drafts: Parameters<typeof updateGroupMembers>[1],
+    overrides: Partial<Parameters<typeof updateGroupMembers>[2]> = {}
+  ): GroupMember[] {
+    let nextId = 0
+    return updateGroupMembers(existing, drafts, {
+      models: [model()],
+      skills: [],
+      createId: () => `new-${++nextId}`,
+      ...overrides
+    })
+  }
+
+  it('已有成员保留原 ULID,新成员拿新 id', () => {
+    const result = run([
+      { ...draft({ name: '产品经理·改' }), id: MEMBER_ID },
+      { ...draft({ name: 'UI设计师' }), id: existing[1].id },
+      draft({ name: '后端工程师' })
+    ])
+
+    expect(result.map((member) => member.id)).toEqual([MEMBER_ID, existing[1].id, 'new-1'])
+    expect(result[0].name).toBe('产品经理·改')
+  })
+
+  it('缺席任何已有成员都拒绝:历史消息引用着 TA 的 ULID', () => {
+    expect(() => run([{ ...draft(), id: MEMBER_ID }])).toThrow(/UI设计师.*不能被移除/)
+  })
+
+  it('拒绝不属于本群的成员 id(渲染层输入不可信)', () => {
+    expect(() =>
+      run([
+        { ...draft(), id: MEMBER_ID },
+        { ...draft({ name: 'UI设计师' }), id: existing[1].id },
+        { ...draft({ name: '入侵者' }), id: '01BX5ZZKBKACTAV9WEVGEMMVRZ' }
+      ])
+    ).toThrow(/不属于这个群组/)
+  })
+
+  it('拒绝同一位成员出现两次', () => {
+    expect(() =>
+      run([
+        { ...draft(), id: MEMBER_ID },
+        { ...draft({ name: '分身' }), id: MEMBER_ID },
+        { ...draft({ name: 'UI设计师' }), id: existing[1].id }
+      ])
+    ).toThrow(/两次/)
+  })
+
+  it('沿用建群同一套字段校验(如重名)', () => {
+    expect(() =>
+      run([
+        { ...draft(), id: MEMBER_ID },
+        { ...draft({ name: '产品经理' }), id: existing[1].id }
+      ])
+    ).toThrow(/重复/)
+  })
+
+  it('新成员的 id 不会与已有成员碰撞', () => {
+    const ids = [MEMBER_ID, 'fresh']
+    const result = run(
+      [
+        { ...draft(), id: MEMBER_ID },
+        { ...draft({ name: 'UI设计师' }), id: existing[1].id },
+        draft({ name: '后端工程师' })
+      ],
+      { createId: () => ids.shift() ?? 'unused' }
+    )
+
+    expect(result[2].id).toBe('fresh')
   })
 })
 

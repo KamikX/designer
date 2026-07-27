@@ -139,6 +139,19 @@ export interface CreateGroupInput {
   members: GroupMemberDraft[]
 }
 
+/**
+ * 群组编辑提交的成员:带 id 的是已有成员(id 只能来自本群,主进程校验),
+ * 不带 id 的是新成员。已有成员**不允许缺席**——历史消息的 author 就是
+ * 成员 ULID,删人会让 TA 的发言在界面上变成查无此人。
+ */
+export type GroupMemberUpdate = GroupMemberDraft & { id?: string }
+
+export interface UpdateGroupInput {
+  id: string
+  name: string
+  members: GroupMemberUpdate[]
+}
+
 /** 群组角色的展示元数据。人设提示词在主进程,渲染层只需要这些 */
 export interface GroupRoleMeta {
   id: string
@@ -1034,6 +1047,8 @@ export interface DesignerApi {
     roles: () => Promise<GroupMemberTemplate[]>
     list: () => Promise<Conversation[]>
     create: (input: CreateGroupInput) => Promise<Conversation>
+    /** 改名与成员配置。已有成员只能改不能删;接力进行中会被拒绝 */
+    update: (input: UpdateGroupInput) => Promise<Conversation>
     rename: (id: string, name: string) => Promise<void>
     remove: (id: string) => Promise<void>
     messages: (conversationId: string) => Promise<Message[]>

@@ -1,8 +1,18 @@
-import type { GroupMemberDraft, GroupMemberTemplate } from '@shared/types'
+import type {
+  GroupMember,
+  GroupMemberDraft,
+  GroupMemberTemplate,
+  GroupMemberUpdate
+} from '@shared/types'
 
 export interface MemberDraft extends GroupMemberDraft {
   /** 仅用于 Vue 列表和编辑态定位，绝不跨 IPC。 */
   tempKey: string
+  /**
+   * 编辑已有群组时携带的成员 ULID。有它 = 已有成员:不可删除(历史消息的
+   * author 引用着这个 id),提交时原样带回;没有 = 保存前可自由增删的新成员。
+   */
+  persistedId?: string
 }
 
 type CreateKey = () => string
@@ -45,8 +55,27 @@ export function createBlankMemberDraft(createKey: CreateKey = createTempKey): Me
   }
 }
 
+/** 编辑已有群组时,把落库成员还原成可编辑草稿 */
+export function memberToDraft(
+  member: GroupMember,
+  createKey: CreateKey = createTempKey
+): MemberDraft {
+  return {
+    tempKey: createKey(),
+    persistedId: member.id,
+    name: member.name,
+    color: member.color,
+    duty: member.duty,
+    deliverable: member.deliverable,
+    persona: member.persona,
+    modelRowId: member.modelRowId,
+    skillIds: [...member.skillIds]
+  }
+}
+
 export function removeMemberDraft(members: readonly MemberDraft[], tempKey: string): MemberDraft[] {
-  return members.filter((member) => member.tempKey !== tempKey)
+  // 已有成员不许删:历史消息的 author 引用着 TA 的 ULID
+  return members.filter((member) => member.tempKey !== tempKey || member.persistedId)
 }
 
 export function moveMemberDraft(
@@ -99,5 +128,13 @@ export function toGroupMemberDrafts(members: readonly MemberDraft[]): GroupMembe
     persona: persona.trim(),
     modelRowId,
     skillIds: [...skillIds]
+  }))
+}
+
+/** 编辑提交:已有成员带回 ULID,新成员不带(id 由主进程生成) */
+export function toGroupMemberUpdates(members: readonly MemberDraft[]): GroupMemberUpdate[] {
+  return members.map((member) => ({
+    ...toGroupMemberDrafts([member])[0],
+    ...(member.persistedId ? { id: member.persistedId } : {})
   }))
 }

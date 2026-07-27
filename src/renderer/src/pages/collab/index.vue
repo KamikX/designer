@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
-import { DeleteOutlined, LoadingOutlined, PlusOutlined, TeamOutlined } from '@antdv-next/icons'
+import {
+  DeleteOutlined,
+  LoadingOutlined,
+  PlusOutlined,
+  SettingOutlined,
+  TeamOutlined
+} from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
 import MemberBar from './components/MemberBar.vue'
 import GroupMessage from './components/GroupMessage.vue'
 import GroupComposer from './components/GroupComposer.vue'
-import CreateGroupModal from './components/CreateGroupModal.vue'
+import GroupFormModal from './components/GroupFormModal.vue'
 import type { Conversation } from '@shared/types'
 
 /**
@@ -20,8 +26,20 @@ const { token } = theme.useToken()
 const { modal, message } = App.useApp()
 const collab = useCollabStore()
 
-const createOpen = ref(false)
+const formOpen = ref(false)
+/** 编辑目标;null = 新建模式。两种模式共用同一个表单弹窗 */
+const editTarget = ref<Conversation | null>(null)
 const listEl = ref<HTMLElement | null>(null)
+
+function openCreate(): void {
+  editTarget.value = null
+  formOpen.value = true
+}
+
+function openEdit(group: Conversation): void {
+  editTarget.value = group
+  formOpen.value = true
+}
 
 onMounted(() => {
   void collab.init()
@@ -71,7 +89,7 @@ function scrollToBottom(smooth: boolean): void {
 <template>
   <div class="collab-page">
     <div class="collab-sider" :style="{ borderColor: token.colorBorderSecondary }">
-      <a-button block size="small" style="margin-bottom: 10px" @click="createOpen = true">
+      <a-button block size="small" style="margin-bottom: 10px" @click="openCreate">
         <template #icon><PlusOutlined /></template>
         新建群组
       </a-button>
@@ -109,8 +127,18 @@ function scrollToBottom(smooth: boolean): void {
           <TeamOutlined v-else />
           <span class="collab-item-title">{{ group.title }}</span>
         </button>
+        <!-- 接力进行中禁改:每一棒开始时都重读成员配置,链中换配置=中途换人设 -->
         <button
-          class="collab-item-remove"
+          class="collab-item-action"
+          type="button"
+          :aria-label="`群组设置 ${group.title}`"
+          :disabled="collab.chaining[group.id]"
+          @click="openEdit(group)"
+        >
+          <SettingOutlined />
+        </button>
+        <button
+          class="collab-item-action"
           type="button"
           :aria-label="`删除群组 ${group.title}`"
           @click="remove(group)"
@@ -130,7 +158,7 @@ function scrollToBottom(smooth: boolean): void {
           2. (可选)授权本地目录,让它们参考你的真实项目<br />
           3. @产品经理 说你要做什么——它产出文档后会 @下一位,链条自动接力
         </div>
-        <a-button type="primary" @click="createOpen = true">
+        <a-button type="primary" @click="openCreate">
           <template #icon><PlusOutlined /></template>
           新建群组
         </a-button>
@@ -163,7 +191,7 @@ function scrollToBottom(smooth: boolean): void {
       </div>
     </div>
 
-    <CreateGroupModal v-model:open="createOpen" @created="onCreated" />
+    <GroupFormModal v-model:open="formOpen" :group="editTarget" @created="onCreated" />
   </div>
 </template>
 
@@ -197,7 +225,7 @@ function scrollToBottom(smooth: boolean): void {
   font-size: 12px;
 }
 
-.collab-item:hover .collab-item-remove {
+.collab-item:hover .collab-item-action {
   opacity: 0.6;
 }
 
@@ -217,7 +245,7 @@ function scrollToBottom(smooth: boolean): void {
 }
 
 .collab-item-open:focus-visible,
-.collab-item-remove:focus-visible {
+.collab-item-action:focus-visible {
   outline: 2px solid var(--ant-color-primary);
   outline-offset: 1px;
 }
@@ -230,8 +258,8 @@ function scrollToBottom(smooth: boolean): void {
   white-space: nowrap;
 }
 
-/* 常态隐藏,悬停才出现:一排删除图标会把列表变得很吵 */
-.collab-item-remove {
+/* 常态隐藏,悬停才出现:一排操作图标会把列表变得很吵 */
+.collab-item-action {
   border: none;
   background: none;
   cursor: pointer;
@@ -241,12 +269,16 @@ function scrollToBottom(smooth: boolean): void {
   transition: opacity 0.15s;
 }
 
-.collab-item-remove:hover {
+.collab-item-action:hover:not(:disabled) {
   opacity: 1;
 }
 
-.collab-item-remove:focus-visible {
+.collab-item-action:focus-visible {
   opacity: 1;
+}
+
+.collab-item-action:disabled {
+  cursor: not-allowed;
 }
 
 /* ---------------- 空状态 ---------------- */
