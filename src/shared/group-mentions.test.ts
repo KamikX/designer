@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import {
   createGroupMention,
   firstMention,
+  mentionAssignments,
   mentionsToMarkdown,
   mentionsToModelText,
   nextMention,
+  nextMentions,
   tokenizeGroupMentions,
   type GroupMentionMember
 } from './group-mentions'
@@ -297,5 +299,59 @@ describe('提及路由', () => {
 
   it('末尾 blockquote 代码围栏中的提及不参与路由', () => {
     expect(nextMention('> ~~~md\n> @UI 设计师\n> ~~~', MEMBERS, PM_ID)).toBeNull()
+  })
+})
+
+/**
+ * 多 @ 并行 fan-out 的入口。以前只取第一个提及，后面被点名的人根本不会被唤起
+ * ——用户得再发一条。这里钉住"每个人都拿到、且只拿到自己那份任务"。
+ */
+describe('mentionAssignments：一条消息里的全部点名', () => {
+  it('按出现顺序返回全部成员，各自带到下一个 @ 为止的交代', () => {
+    const text = '@产品经理 补一版需求。@UI 设计师 按需求出视觉稿。'
+    expect(mentionAssignments(text, MEMBERS)).toEqual([
+      { memberId: PM_ID, instruction: '补一版需求。' },
+      { memberId: UI_ID, instruction: '按需求出视觉稿。' }
+    ])
+  })
+
+  it('同一个人被 @ 两次只派一次活，避免同一件事被拉起两棒', () => {
+    const text = '@产品经理 先出需求。@UI 设计师 出稿。最后 @产品经理 复核一下。'
+    const assignments = mentionAssignments(text, MEMBERS)
+    expect(assignments.map((a) => a.memberId)).toEqual([PM_ID, UI_ID])
+    // 保留首次那份交代
+    expect(assignments[0].instruction).toBe('先出需求。')
+  })
+
+  it('只 @ 名字没说要干嘛时交代为空串，仍然算一次点名', () => {
+    expect(mentionAssignments('@产品经理', MEMBERS)).toEqual([{ memberId: PM_ID, instruction: '' }])
+  })
+
+  it('代码区里的 @ 不算点名', () => {
+    expect(mentionAssignments('`@产品经理` 只是个例子', MEMBERS)).toEqual([])
+  })
+})
+
+describe('nextMentions：一次交接可以点多位', () => {
+  it('末尾多行交接全部返回，按顺序去重且跳过自己', () => {
+    const text = [
+      '# 数据库设计',
+      '',
+      '@UI 设计师 出稿',
+      '@产品经理 复核',
+      '@UI 设计师 再看一眼'
+    ].join('\n')
+    expect(nextMentions(text, MEMBERS, FE_ID).map((a) => a.memberId)).toEqual([UI_ID, PM_ID])
+    // 自己不算后继，否则一个人能把自己无限接下去
+    expect(nextMentions(text, MEMBERS, UI_ID).map((a) => a.memberId)).toEqual([PM_ID])
+  })
+
+  it('@用户 仍然一票收尾：这条分支到此为止', () => {
+    expect(nextMentions('@UI 设计师 接棒\n@用户 请验收', MEMBERS, PM_ID)).toEqual([])
+  })
+
+  it('nextMention 就是第一位后继，语义不变', () => {
+    const text = '@UI 设计师 出稿\n@产品经理 复核'
+    expect(nextMention(text, MEMBERS, FE_ID)).toBe(UI_ID)
   })
 })

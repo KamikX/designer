@@ -4,6 +4,10 @@ import ToolActivityList from '../../project/components/ToolActivityList.vue'
 import RoleAvatar from './RoleAvatar.vue'
 import GroupMarkdownStream from './GroupMarkdownStream.vue'
 import GroupMentionText from './GroupMentionText.vue'
+import CopyButton from '@renderer/components/CopyButton.vue'
+import { splitMessageStream } from '@renderer/components/message-segments'
+import { isActiveToolState } from '@renderer/stores/chat'
+import { mentionsToModelText } from '@shared/group-mentions'
 import { useCollabStore } from '@renderer/stores/collab'
 import type { ToolActivity } from '@renderer/stores/chat'
 import type { Message } from '@shared/types'
@@ -32,16 +36,29 @@ const textContent = computed(() =>
     .join('')
 )
 
+/**
+ * 复制出去的原文。
+ *
+ * **必须先把结构化提及转成 `@名字`**:库里存的是 `@[架构师](member:01ARZ...)`,
+ * 界面上显示的是「@架构师」。直接复制正文,用户粘到别处就是一串 ULID——
+ * 他要的是能存档的文档,不是我们的内部标识。
+ */
+const copyText = computed(() => mentionsToModelText(textContent.value, collab.mentionMembers))
+
 // 复用工作台的 ToolActivityList(折叠/摘要逻辑都是现成的)。它的类型多要
 // 一个 toolName,群组事件不带这个字段,补空串——它只用于日志,界面不显示
 const activities = computed<ToolActivity[]>(() =>
   (collab.activities[props.message.id] ?? []).map((a) => ({ ...a, toolName: '' }))
 )
+
+/** 正文与工具调用按发生顺序交替,而不是把工具全堆在气泡底部 */
+const segments = computed(() => splitMessageStream(textContent.value, activities.value))
 </script>
 
 <template>
   <!-- 用户发言:右对齐主色气泡,和聊天页同款 -->
   <div v-if="isUser" class="gmsg gmsg--user">
+    <span class="gmsg-copy"><CopyButton :text="copyText" label="复制这条消息" /></span>
     <div class="gmsg-bubble" :style="{ background: token.colorPrimary, color: '#fff' }">
       <div class="gmsg-text">
         <GroupMentionText :content="textContent" :members="collab.mentionMembers" />
@@ -51,20 +68,34 @@ const activities = computed<ToolActivity[]>(() =>
 
   <!-- 角色发言:头像 + 角色名 + markdown 文档 -->
   <div v-else class="gmsg">
-    <RoleAvatar :role="role" :speaking="streaming && collab.speakingAuthor === message.author" />
+    <!-- 按这条消息判,不看"谁最后开始说话":并行时那不是同一个人 -->
+    <RoleAvatar
+      :role="role"
+      :speaking="streaming && collab.speakingByMessage[message.id] === message.author"
+    />
     <div class="gmsg-body">
-      <div class="gmsg-name" :style="{ color: role?.color ?? token.colorTextSecondary }">
-        {{ role?.name ?? message.author }}
+      <div class="gmsg-head">
+        <span class="gmsg-name" :style="{ color: role?.color ?? token.colorTextSecondary }">
+          {{ role?.name ?? message.author }}
+        </span>
+        <!-- 复制放在名字行:文档动辄几千字,按钮跟着正文走到底部就没人找得到 -->
+        <span class="gmsg-copy"><CopyButton :text="copyText" label="复制这份文档" /></span>
       </div>
       <div class="gmsg-bubble" :style="{ background: token.colorFillQuaternary }">
-        <GroupMarkdownStream
-          v-if="textContent"
-          :content="textContent"
-          :members="collab.mentionMembers"
-          :streaming="streaming"
-        />
-
-        <ToolActivityList :activities="activities" :streaming="streaming" />
+        <!-- 解说与工具调用按发生顺序交替,读起来是一条链而不是一坨 -->
+        <template v-for="(seg, index) in segments" :key="index">
+          <GroupMarkdownStream
+            v-if="seg.kind === 'text'"
+            :content="seg.text"
+            :members="collab.mentionMembers"
+            :streaming="streaming && index === segments.length - 1"
+          />
+          <ToolActivityList
+            v-else
+            :activities="seg.activities"
+            :streaming="streaming && seg.activities.some((a) => isActiveToolState(a.state))"
+          />
+        </template>
 
         <div v-if="streaming && !textContent" class="gmsg-typing">
           <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
@@ -104,10 +135,36 @@ const activities = computed<ToolActivity[]>(() =>
   max-width: 88%;
 }
 
+.gmsg-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
 .gmsg-name {
   font-size: 12px;
   font-weight: 600;
-  margin: 2px 0 4px;
+}
+
+/*
+ * 复制按钮 hover 才现身:一屏十几条消息,每条都常驻一个图标会把版面吵散。
+ * 但**键盘焦点也要现身**,否则 tab 到一个看不见的按钮上。
+ */
+.gmsg-copy {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.gmsg:hover .gmsg-copy,
+.gmsg-copy:focus-within {
+  opacity: 1;
+}
+
+/* 用户气泡右对齐,按钮摆在气泡左边,不挤压正文宽度 */
+.gmsg--user .gmsg-copy {
+  align-self: center;
+  color: inherit;
 }
 
 .gmsg-bubble {

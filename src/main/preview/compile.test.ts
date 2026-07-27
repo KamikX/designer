@@ -125,6 +125,70 @@ const n: number = 1
   })
 })
 
+/**
+ * 预览标注要靠 data-antd-src 把用户点中的元素映射回源码。
+ *
+ * 这组用例同时在钉两件事:行号换算的口径(内联模板是文件绝对行,单独编译的
+ * 模板是块内相对行),以及构造属性节点用的那几个写死的枚举值——compiler-core
+ * 没被 re-export,枚举一旦变了只有这里会炸。
+ */
+describe('源码位置注入(预览标注)', () => {
+  it('script setup 内联模板:行号是文件绝对行', () => {
+    const out = compilePreviewFile(
+      'components/LoginForm.vue',
+      `<script setup>
+const n = 1
+</script>
+
+<template>
+  <div class="card">
+    <button class="btn">提交</button>
+  </div>
+</template>`
+    ).code
+
+    expect(out).toContain('"data-antd-src": "components/LoginForm.vue:6:3"')
+    expect(out).toContain('"data-antd-src": "components/LoginForm.vue:7:5"')
+  })
+
+  it('普通 script:模板单独编译,行号补上块偏移后仍是文件绝对行', () => {
+    const out = compilePreviewFile(
+      'App.vue',
+      `<script>
+export default { name: 'App' }
+</script>
+
+<template>
+  <section>
+    <h1>标题</h1>
+  </section>
+</template>`
+    ).code
+
+    expect(out).toContain('"data-antd-src": "App.vue:6:3"')
+    expect(out).toContain('"data-antd-src": "App.vue:7:5"')
+  })
+
+  it('只标普通元素:组件与 template 不标,用户自己写的不覆盖', () => {
+    const out = compilePreviewFile(
+      'App.vue',
+      `<template>
+  <MyCard>
+    <template #title><b>x</b></template>
+    <p data-antd-src="手写的">y</p>
+  </MyCard>
+</template>`
+    ).code
+
+    expect(out).not.toContain('MyCard:')
+    // <b> 是普通元素,照标
+    expect(out).toContain('"data-antd-src": "App.vue:3:22"')
+    // 手写的值原样保留,不被第二个属性顶掉
+    expect(out).toContain('手写的')
+    expect(out).not.toContain('App.vue:4:5')
+  })
+})
+
 describe('TSX / JSX', () => {
   it('JSX 转成 createElement,并自动注入 React', () => {
     const out = compilePreviewFile(

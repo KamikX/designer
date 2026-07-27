@@ -5,6 +5,7 @@ import { ArrowLeftOutlined } from '@antdv-next/icons'
 import ChatPanel from './components/ChatPanel.vue'
 import WorkspacePane from './components/WorkspacePane.vue'
 import ExportButton from './components/ExportButton.vue'
+import ProjectSettingsButton from './components/ProjectSettingsButton.vue'
 
 /**
  * 项目工作台:左对话 / 右预览与代码,中间分割条可拖拽调宽。
@@ -46,8 +47,9 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
       <a-tag v-if="store.current" style="margin-left: 4px">
         {{ STACK_LABEL[store.current.stack] }}
       </a-tag>
-      <!-- 顶到最右:导出是项目级动作,和标题同级 -->
+      <!-- 顶到最右:导出与项目设置都是项目级动作,和标题同级 -->
       <ExportButton v-if="store.current" style="margin-left: auto" />
+      <ProjectSettingsButton v-if="store.current" :project="store.current" />
     </a-flex>
 
     <!-- flex 收在行内:<a-splitter> 的 class 同样带不上 scoped 的 data-v,

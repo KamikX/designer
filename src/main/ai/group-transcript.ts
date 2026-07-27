@@ -74,6 +74,15 @@ export interface GroupTranscriptInput {
    * 没必要每棒都去查库。
    */
   loadDigest?: () => GroupDigestSnapshot | null
+  /**
+   * 本棒的任务,由编排显式带下来:谁交接的 + 交代了什么。
+   *
+   * 并行接力下"记录里的最后一条"未必是交接给我的那位(兄弟分支可能后收棒),
+   * 从记录里倒推交接指令会认错人;而用户一次点名多人时,给我的那句话还埋在
+   * 上游的用户消息里。两种情况都得由编排告诉我,不能靠猜。缺省时退回从
+   * 上一条发言的末五行里找(单链时代的行为)。
+   */
+  assignment?: { from: string; line: string }
 }
 
 /** 消息 → 可参与预算计算的条目(排除流式中的半条与空正文) */
@@ -210,12 +219,17 @@ export function buildGroupTranscript(input: GroupTranscriptInput): string {
     blocks.push(`【${entry.name}】\n${body}`)
   })
 
-  // 交接指令埋在上一篇几万字文档的最后一行,重述一遍钉在 recency 位置,
-  // 接棒的人不用从头翻
+  // 交接指令埋在上一篇几万字文档的最后一行(或上游的用户消息里),重述一遍
+  // 钉在 recency 位置,接棒的人不用从头翻
   const last = entries[entries.length - 1]
-  const handoff = last ? extractHandoff(last, input.selfName) : null
+  const explicit = input.assignment
+  const handoff = explicit
+    ? { name: explicit.from, line: explicit.line }
+    : last
+      ? extractHandoff(last, input.selfName)
+      : null
   const footer = [
-    handoff ? `上一棒【${handoff.name}】结尾的交接指令,这就是你本棒的任务:\n> ${handoff.line}` : '',
+    handoff ? `【${handoff.name}】交给你的任务,这就是你本棒要做的事:\n> ${handoff.line}` : '',
     `现在轮到你(${input.selfName})发言。按你的职责与协作协议产出文档。`
   ]
     .filter(Boolean)

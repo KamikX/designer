@@ -4,6 +4,7 @@ import { CheckOutlined, CloseOutlined, LoadingOutlined } from '@antdv-next/icons
 import { useCollabStore } from '@renderer/stores/collab'
 import WorkspaceRoots from '../../project/components/WorkspaceRoots.vue'
 import RoleAvatar from './RoleAvatar.vue'
+import DeliverablePanel from './DeliverablePanel.vue'
 import type { GroupActivity } from '@renderer/stores/collab'
 import type { GroupRoleMeta } from '@shared/types'
 
@@ -45,7 +46,7 @@ const drawerSystem = computed(() =>
 )
 
 const drawerSpeaking = computed(
-  () => drawerRole.value != null && collab.speakingAuthor === drawerRole.value.id
+  () => drawerRole.value != null && collab.speakingAuthors.includes(drawerRole.value.id)
 )
 
 const activeStates = new Set(['preparing', 'executing'])
@@ -64,9 +65,14 @@ const statusText = computed(() => {
       :title="`${role.name} · ${role.duty}`"
     >
       <button type="button" class="member-btn" @click="openRole(role)">
-        <RoleAvatar :role="role" :speaking="collab.speakingAuthor === role.id" />
+        <!-- 并行接力时同时有几位在说话,呼吸光环也就同时亮几个 -->
+        <RoleAvatar :role="role" :speaking="collab.speakingAuthors.includes(role.id)" />
       </button>
     </a-tooltip>
+
+    <!-- 交付物清单:这个群**产出了什么**,和"能动用什么"分开 -->
+    <span class="member-divider" :style="{ background: token.colorBorderSecondary }" />
+    <DeliverablePanel />
 
     <!-- 目录授权和成员放一起:都是"这个群能动用什么"的范畴 -->
     <span class="member-divider" :style="{ background: token.colorBorderSecondary }" />

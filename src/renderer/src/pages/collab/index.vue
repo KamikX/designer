@@ -169,7 +169,8 @@ function scrollToBottom(smooth: boolean): void {
     <div v-else class="collab-main">
       <MemberBar />
       <div ref="listEl" class="collab-messages">
-        <GroupMessage v-for="m in collab.messages" :key="m.id" :message="m" />
+        <!-- 带上 DOM id:交付物面板据此跳到承载那份文档的消息 -->
+        <GroupMessage v-for="m in collab.messages" :id="`gmsg-${m.id}`" :key="m.id" :message="m" />
         <a-alert
           v-if="collab.error"
           :type="collab.resumeMember ? 'warning' : 'error'"

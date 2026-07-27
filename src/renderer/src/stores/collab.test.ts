@@ -7,7 +7,6 @@ import type {
   DesignerApi,
   GroupMember,
   GroupMemberTemplate,
-  GroupStreamEvent,
   Message
 } from '@shared/types'
 import { useCollabStore } from './collab'
@@ -74,23 +73,34 @@ beforeEach(() => {
 })
 
 describe('collab send chain state', () => {
-  it.each(['error', 'chain-done'] as const)(
-    'IPC 返回前同步收到 %s 后保持非运行态',
-    async (type) => {
-      const store = prepareStore(vi.fn(async () => undefined))
-      window.api.group.send = vi.fn(async () => {
-        const event: GroupStreamEvent =
-          type === 'error'
-            ? { type, conversationId: group.id, message: '启动失败' }
-            : { type, conversationId: group.id }
-        store.handleEvent(event)
-      })
+  it('IPC 返回前同步收到 chain-done 后保持非运行态', async () => {
+    const store = prepareStore(vi.fn(async () => undefined))
+    window.api.group.send = vi.fn(async () => {
+      store.handleEvent({ type: 'chain-done', conversationId: group.id })
+    })
 
-      await store.send('@产品经理 开始')
+    await store.send('@产品经理 开始')
 
-      expect(store.chainingHere).toBe(false)
-    }
-  )
+    expect(store.chainingHere).toBe(false)
+  })
+
+  /**
+   * 并行接力后 error 是**分支级**的:一条分支挂了别的还在跑,这时解锁输入框
+   * 会让用户的下一条被主进程以"上一条还在跑"顶回来。收口只认 chain-done。
+   */
+  it('error 只记错误不解锁,收到 chain-done 才算结束', async () => {
+    const store = prepareStore(vi.fn(async () => undefined))
+    window.api.group.send = vi.fn(async () => {
+      store.handleEvent({ type: 'error', conversationId: group.id, message: '这条分支挂了' })
+    })
+
+    await store.send('@产品经理 开始')
+    expect(store.error).toBe('这条分支挂了')
+    expect(store.chainingHere).toBe(true)
+
+    store.handleEvent({ type: 'chain-done', conversationId: group.id })
+    expect(store.chainingHere).toBe(false)
+  })
 
   it('IPC 成功且尚未收到终止事件时保持运行态', async () => {
     const store = prepareStore(vi.fn(async () => undefined))

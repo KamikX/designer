@@ -13,6 +13,7 @@ import type {
 } from '@shared/types'
 import { normalizeGroupMembers } from '@shared/group-members'
 import { createGroupMention, firstMention } from '@shared/group-mentions'
+import { groupDeliverables, type DeliverableEntry } from '@shared/group-deliverables'
 import { useProviderStore } from './provider'
 
 /**
@@ -27,6 +28,11 @@ export interface GroupActivity {
   /** 与 chat store 的 ToolActivityState 同构:相位 + 四种终态 */
   state: 'preparing' | 'executing' | 'success' | 'recoverable_error' | 'fatal_error' | 'aborted'
   summary?: string
+  /**
+   * 这次调用发起时,这条消息的正文已经写到第几个字。渲染层据此把工具活动
+   * 插回正文里对应的位置(见 components/message-segments.ts)。
+   */
+  afterChars?: number
 }
 
 /**
@@ -57,8 +63,14 @@ export const useCollabStore = defineStore('collab', {
      * 不碰消息——内容等切回去时从库重拉。
      */
     chaining: {} as Record<string, boolean>,
-    /** 当前打开的群里正在发言的角色 id;没人发言时为空 */
-    speakingAuthor: '' as string,
+    /**
+     * 当前打开的群里正在发言的人:messageId → 成员 id。
+     *
+     * 不能是单值:一条消息 @ 多位会并行 fan-out,同一时刻好几个人在说话。
+     * 按 messageId 记还顺带修好了 delta 的乱序兜底——单值时晚到的分片会被
+     * 记到"最后一个开始说话的人"身上,内容直接串到别人的消息里。
+     */
+    speakingByMessage: {} as Record<string, string>,
     /** 流事件里报上来的错误(发送失败的错误走 message.error,不进这里) */
     error: '' as string,
     /**
@@ -91,6 +103,17 @@ export const useCollabStore = defineStore('collab', {
     /** 当前打开的群有没有接力在跑。别的群在后台跑不关这里的事 */
     chainingHere(state): boolean {
       return state.chaining[state.conversationId] === true
+    },
+    /**
+     * 本轮交付清单。纯派生:内容只有 messages 一份,这里不另存状态。
+     * 面板、徽标、导出用的是同一份规则(shared/group-deliverables.ts)。
+     */
+    deliverables(state): DeliverableEntry[] {
+      return groupDeliverables(state.messages, this.memberRoles)
+    },
+    /** 此刻正在发言的成员 id(并行时不止一个) */
+    speakingAuthors(state): string[] {
+      return [...new Set(Object.values(state.speakingByMessage))]
     },
     /** 一键续棒的目标成员;成员已被移出群时返回 null,按钮随之消失 */
     resumeMember(state): GroupRoleMeta | null {
@@ -133,7 +156,7 @@ export const useCollabStore = defineStore('collab', {
       this.messages = await window.api.group.messages(id)
       this.activities = {}
       this.systemPrompts = {}
-      this.speakingAuthor = ''
+      this.speakingByMessage = {}
       this.error = ''
       this.resumeMemberId = ''
     },
@@ -144,7 +167,7 @@ export const useCollabStore = defineStore('collab', {
       this.messages = []
       this.activities = {}
       this.systemPrompts = {}
-      this.speakingAuthor = ''
+      this.speakingByMessage = {}
       this.error = ''
       this.resumeMemberId = ''
     },
@@ -234,6 +257,12 @@ export const useCollabStore = defineStore('collab', {
       this.error = ''
     },
 
+    /** 把本轮交付物导出成一份 markdown;用户取消返回 null */
+    async exportDeliverables(): Promise<string | null> {
+      if (!this.conversationId) return null
+      return window.api.group.exportDeliverables(this.conversationId)
+    },
+
     /** 停止当前群的接力链 */
     async abort(): Promise<void> {
       const cid = this.conversationId
@@ -241,7 +270,7 @@ export const useCollabStore = defineStore('collab', {
       await window.api.group.abort(cid)
       // 主进程随后还会广播 chain-done,这里先清一次让按钮立即复原
       delete this.chaining[cid]
-      this.speakingAuthor = ''
+      this.speakingByMessage = {}
       for (const m of this.messages) {
         if (m.status === 'streaming') m.status = 'aborted'
       }
@@ -256,28 +285,29 @@ export const useCollabStore = defineStore('collab', {
     handleEvent(event: GroupStreamEvent): void {
       const cid = event.conversationId
       if (cid !== this.conversationId) {
-        if (
-          event.type === 'chain-done' ||
-          event.type === 'chain-stopped' ||
-          event.type === 'error'
-        ) {
-          delete this.chaining[cid]
-        } else this.chaining[cid] = true
+        // 只认 chain-done:拦停与报错都只结束**一条分支**,别的分支还在跑,
+        // 这时把列表上的转圈撤掉是假的
+        if (event.type === 'chain-done') delete this.chaining[cid]
+        else this.chaining[cid] = true
         return
       }
 
       switch (event.type) {
         case 'agent-start': {
           this.chaining[cid] = true
-          this.speakingAuthor = event.author
+          this.speakingByMessage[event.messageId] = event.author
           this.systemPrompts[event.messageId] = event.system
           this.activities[event.messageId] = []
           this.ensureAgentMessage(event.messageId, event.author)
           break
         }
         case 'delta': {
-          // 正常时序 agent-start 先到、占位消息已在;兜一层防事件乱序
-          const msg = this.ensureAgentMessage(event.messageId, this.speakingAuthor)
+          // 正常时序 agent-start 先到、占位消息已在;兜一层防事件乱序。
+          // 作者按 messageId 取:并行时"最后一个开始说话的人"根本不是这条的作者
+          const msg = this.ensureAgentMessage(
+            event.messageId,
+            this.speakingByMessage[event.messageId] ?? ''
+          )
           const last = msg.parts[msg.parts.length - 1]
           if (last?.type === 'text') last.text += event.text
           else msg.parts.push({ type: 'text', text: event.text })
@@ -285,7 +315,15 @@ export const useCollabStore = defineStore('collab', {
         }
         case 'tool-start': {
           const list = this.activities[event.messageId] ?? (this.activities[event.messageId] = [])
-          list.push({ callId: event.callId, label: event.label, state: 'preparing' })
+          const written = this.messages
+            .find((m) => m.id === event.messageId)
+            ?.parts.reduce((n, part) => (part.type === 'text' ? n + part.text.length : n), 0)
+          list.push({
+            callId: event.callId,
+            label: event.label,
+            state: 'preparing',
+            ...(written === undefined ? {} : { afterChars: written })
+          })
           break
         }
         case 'tool-update': {
@@ -330,27 +368,30 @@ export const useCollabStore = defineStore('collab', {
         case 'agent-done': {
           const msg = this.messages.find((m) => m.id === event.messageId)
           if (msg?.status === 'streaming') msg.status = 'complete'
-          this.speakingAuthor = ''
+          // 只熄这一条的灯:并行的同伴可能还在说
+          delete this.speakingByMessage[event.messageId]
           break
         }
         case 'chain-done': {
           delete this.chaining[cid]
-          this.speakingAuthor = ''
+          this.speakingByMessage = {}
           break
         }
+        /*
+         * 拦停与报错都是**分支级**的:别的分支还在跑,不能在这里把运行态清掉,
+         * 否则输入框提前解锁、用户发第二条会被主进程以"上一条还在跑"顶回来。
+         * 收口统一交给必然会到的 chain-done。
+         */
         case 'chain-stopped': {
-          delete this.chaining[cid]
-          this.speakingAuthor = ''
           this.error = event.message
           this.resumeMemberId = event.nextMemberId ?? ''
           break
         }
         case 'error': {
-          delete this.chaining[cid]
-          this.speakingAuthor = ''
           if (event.messageId) {
             const msg = this.messages.find((m) => m.id === event.messageId)
             if (msg && msg.status === 'streaming') msg.status = 'error'
+            delete this.speakingByMessage[event.messageId]
           }
           this.error = event.message
           break

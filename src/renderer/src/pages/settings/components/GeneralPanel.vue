@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { App } from 'antdv-next'
 import { useAppConfig } from '@renderer/components/config/config'
+import { DEFAULT_TOOL_CALL_LIMIT } from '@shared/limits'
 import AssistantModelField from './AssistantModelField.vue'
 
 const { lang, dark, primaryColor, langOptions, colorPresets, resetTheme } = useAppConfig()
@@ -14,10 +15,28 @@ const { message } = App.useApp()
  * 无效的东西,每敲一个字符就写盘、市场页就跟着请求一次,不如攒到点保存。
  */
 const marketUrl = ref(window.api.initialConfig.marketUrl ?? '')
+
+/**
+ * 单轮工具调用上限。同样是"敲一半无效"的东西,显式保存。
+ *
+ * 老配置文件里没这个键,读到 undefined 时用默认值兜底——不能让输入框
+ * 空着,那看起来像"没有上限"。
+ */
+const toolCallLimit = ref<number>(window.api.initialConfig.toolCallLimit ?? DEFAULT_TOOL_CALL_LIMIT)
+
 onMounted(async () => {
   // initialConfig 是 preload 启动时取的快照,别的窗口可能改过,进面板时读一次新的
-  marketUrl.value = (await window.api.config.read()).marketUrl
+  const config = await window.api.config.read()
+  marketUrl.value = config.marketUrl
+  toolCallLimit.value = config.toolCallLimit ?? DEFAULT_TOOL_CALL_LIMIT
 })
+
+async function saveToolCallLimit(): Promise<void> {
+  const value = Math.max(0, Math.floor(Number(toolCallLimit.value) || 0))
+  toolCallLimit.value = value
+  await window.api.config.patch({ toolCallLimit: value })
+  message.success(value === 0 ? '已设为不限次数,下一轮对话生效' : `已保存,上限 ${value} 次`)
+}
 
 async function saveMarketUrl(): Promise<void> {
   const url = marketUrl.value.trim()
@@ -62,6 +81,26 @@ async function saveMarketUrl(): Promise<void> {
         </a-space-compact>
         <div style="font-size: 12px; margin-top: 6px; opacity: 0.55">
           指向一个 JSON 端点:{ "skills": [...], "mcp": [...] }。配置后市场页自动加载远程清单。
+        </div>
+      </a-form-item>
+
+      <a-divider />
+      <a-form-item label="单轮工具调用上限">
+        <a-space-compact>
+          <a-input-number
+            v-model:value="toolCallLimit"
+            :min="0"
+            :step="10"
+            :precision="0"
+            style="width: 140px"
+            @press-enter="saveToolCallLimit"
+          />
+          <a-button type="primary" @click="saveToolCallLimit">保存</a-button>
+        </a-space-compact>
+        <div style="font-size: 12px; margin-top: 6px; opacity: 0.55">
+          AI 在一轮里最多调用多少次工具(读写文件、搜索等)。改动越复杂需要的次数越多;
+          <strong>0 = 不限</strong>,这时只剩"累计输入超上下文预算"这一条熔断,单轮会更慢更贵。
+          单个项目可以在工作台里另设。
         </div>
       </a-form-item>
 

@@ -1,28 +1,37 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ModelMessage } from 'ai'
-import { ContextGovernor, ToolBudgetGate, wrapToolsWithBudget } from './context-governor'
+import {
+  ContextGovernor,
+  ToolBudgetGate,
+  effectiveToolCallLimit,
+  resolveToolLimits,
+  wrapToolsWithBudget
+} from './context-governor'
 import { RunContextLedger } from './run-context-ledger'
 import { normalizeStepUsage } from './usage'
 
 /**
- * 分级预算:20 软阈值(强制压缩+合并指引)、30 禁止重读未变化文件、
- * 40 硬上限;累计输入 3× 上下文窗口强压缩、5× 结束。
+ * 分级预算按硬上限等比派生(50% 软阈值强制压缩+合并指引、75% 禁止重读
+ * 未变化文件、100% 硬上限);累计输入 3× 上下文窗口强压缩、5× 结束。
+ * 用例仍按上限 40 写,读起来就是原来的 20 / 30 / 40。
  * stopWhen 挡不住单个 step 一次吐超额并行调用,所以所有 execute 外层
  * 共用同步的 ToolBudgetGate.reserve。
  */
 
 function governorWith(
   toolCalls: number,
-  contextWindow = 64_000
+  contextWindow = 64_000,
+  limit = 40
 ): {
   governor: ContextGovernor
   ledger: RunContextLedger
   gate: ToolBudgetGate
 } {
   const ledger = new RunContextLedger()
-  const gate = new ToolBudgetGate(40)
+  const limits = resolveToolLimits(limit)
+  const gate = new ToolBudgetGate(limits.hard)
   for (let i = 0; i < toolCalls; i++) gate.reserve(`c${i}`)
-  const governor = new ContextGovernor({ ledger, gate, contextWindow })
+  const governor = new ContextGovernor({ ledger, gate, contextWindow, limits })
   return { governor, ledger, gate }
 }
 
@@ -60,6 +69,76 @@ describe('分级工具预算', () => {
   it('40 次硬上限停止后续 step', () => {
     expect(governorWith(39).governor.shouldStop()).toBe(false)
     expect(governorWith(40).governor.shouldStop()).toBe(true)
+  })
+})
+
+describe('可配置的工具预算', () => {
+  it('三档阈值按硬上限等比缩放', () => {
+    expect(resolveToolLimits(40)).toEqual({ hard: 40, soft: 20, noReread: 30 })
+    expect(resolveToolLimits(200)).toEqual({ hard: 200, soft: 100, noReread: 150 })
+    // 上限调高之后不该还在第 20 次就压缩历史
+    expect(
+      governorWith(20, 64_000, 200).governor.prepareStep({
+        messages: MESSAGES,
+        serializedChars: 1000
+      }).messages
+    ).toBeUndefined()
+  })
+
+  it('0 = 不限:调用不被拦,只剩 token 窗口那条熔断', async () => {
+    const limits = resolveToolLimits(0)
+    expect(limits.hard).toBe(Infinity)
+    // 软阈值与禁重读不跟着消失——它们防的是上下文膨胀,不是次数
+    expect(limits.soft).toBe(20)
+    expect(limits.noReread).toBe(30)
+
+    const { governor, ledger, gate } = governorWith(500, 1000, 0)
+    expect(governor.shouldStop()).toBe(false)
+    const execute = vi.fn(async () => 'ok')
+    const wrapped = wrapToolsWithBudget({ t: { description: '', execute } } as never, gate)
+    await (wrapped.t as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute(
+      {},
+      { toolCallId: 'more' }
+    )
+    expect(execute).toHaveBeenCalled()
+
+    // token 熔断照旧:5× 窗口
+    ledger.addUsage(
+      normalizeStepUsage({
+        inputTokens: 5000,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: undefined
+        },
+        outputTokens: 1,
+        outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        totalTokens: 5001
+      })
+    )
+    expect(governor.shouldStop()).toBe(true)
+  })
+
+  it('压缩提示与收尾文案说的是真实上限', () => {
+    const compact = governorWith(100, 64_000, 200).governor.prepareStep({
+      messages: MESSAGES,
+      serializedChars: 1000
+    })
+    expect(JSON.stringify(compact.messages)).toContain('硬上限 200 次')
+    expect(governorWith(0, 64_000, 200).governor.hardLimitText()).toBe('200 次')
+    expect(governorWith(0, 64_000, 0).governor.hardLimitText()).toBe('不限次数')
+  })
+
+  it('项目覆盖优先于全局,0 能穿过去,没设过才落全局', () => {
+    expect(effectiveToolCallLimit(120, 80)).toBe(120)
+    // 0 是"明确要不限",不能被当成 falsy 吞掉
+    expect(effectiveToolCallLimit(0, 80)).toBe(0)
+    expect(effectiveToolCallLimit(null, 80)).toBe(80)
+    expect(effectiveToolCallLimit(undefined, 0)).toBe(0)
+    // 两边都没有(老配置文件)退回默认值
+    expect(effectiveToolCallLimit(null, undefined)).toBe(80)
+    // 负数是脏数据,当没设过
+    expect(effectiveToolCallLimit(-5, 80)).toBe(80)
   })
 })
 

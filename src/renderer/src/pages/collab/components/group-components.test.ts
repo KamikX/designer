@@ -27,6 +27,8 @@ import GroupComposer from './GroupComposer.vue'
 import GroupMarkdownStream from './GroupMarkdownStream.vue'
 import GroupMentionText from './GroupMentionText.vue'
 import GroupMessage from './GroupMessage.vue'
+import DeliverablePanel from './DeliverablePanel.vue'
+import CopyButton from '@renderer/components/CopyButton.vue'
 import CollabPage from '../index.vue'
 
 const appMessage = vi.hoisted(() => ({
@@ -35,6 +37,7 @@ const appMessage = vi.hoisted(() => ({
   success: vi.fn()
 }))
 const modalConfirm = vi.hoisted(() => vi.fn())
+const exportDeliverables = vi.hoisted(() => vi.fn(async () => '/tmp/交付.md'))
 
 vi.mock('antdv-next', async (importOriginal) => {
   const actual = await importOriginal<typeof import('antdv-next')>()
@@ -177,7 +180,8 @@ function installApi(): void {
         list: vi.fn(async () => [createdGroup]),
         messages: vi.fn(async () => []),
         onStream: vi.fn(() => () => undefined),
-        send: vi.fn(async () => undefined)
+        send: vi.fn(async () => undefined),
+        exportDeliverables: exportDeliverables
       }
     } as unknown as DesignerApi
   })
@@ -871,31 +875,192 @@ describe('collab store mentions and stop state', () => {
     expect(collab.mentionMembers).toEqual([])
   })
 
-  it('chain-stopped 清理当前与后台群运行态，并展示当前群中文原因', () => {
+  /**
+   * 接力是树之后,拦停只结束**一条分支**:别的分支还在写,这时撤掉运行态
+   * 会提前解锁输入框,用户发下一条会被主进程以"上一条还在跑"顶回来。
+   * 收口只认 chain-done。
+   */
+  it('chain-stopped 只记原因与续棒目标，运行态留给 chain-done 收口', () => {
     prepareStores()
     const collab = useCollabStore()
     collab.groups = [groupWithMembers([configuredMember])]
     collab.conversationId = createdGroup.id
     collab.chaining = { [createdGroup.id]: true, background: true }
-    collab.speakingAuthor = MEMBER_ID
+    collab.speakingByMessage = { 'message-1': MEMBER_ID }
 
     collab.handleEvent({
       type: 'chain-stopped',
       conversationId: createdGroup.id,
       reason: 'cycle-detected',
-      message: '检测到重复接力，已停止'
+      message: '检测到重复接力，已停止',
+      nextMemberId: MEMBER_ID
     })
 
-    expect(collab.chaining[createdGroup.id]).toBeUndefined()
-    expect(collab.speakingAuthor).toBe('')
+    expect(collab.chaining[createdGroup.id]).toBe(true)
     expect(collab.error).toBe('检测到重复接力，已停止')
+    expect(collab.resumeMemberId).toBe(MEMBER_ID)
 
+    // 后台群同理:拦停不撤转圈
     collab.handleEvent({
       type: 'chain-stopped',
       conversationId: 'background',
       reason: 'hop-limit',
       message: '接力次数已达上限'
     })
-    expect(collab.chaining.background).toBeUndefined()
+    expect(collab.chaining.background).toBe(true)
+
+    // chain-done 才是终点
+    collab.handleEvent({ type: 'chain-done', conversationId: createdGroup.id })
+    expect(collab.chaining[createdGroup.id]).toBeUndefined()
+    expect(collab.speakingAuthors).toEqual([])
+  })
+
+  it('并行接力:多位同时发言,各自的头像与内容互不串味', () => {
+    prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+
+    collab.handleEvent({
+      type: 'agent-start',
+      conversationId: createdGroup.id,
+      messageId: 'm-a',
+      author: MEMBER_ID,
+      system: 'A'
+    })
+    collab.handleEvent({
+      type: 'agent-start',
+      conversationId: createdGroup.id,
+      messageId: 'm-b',
+      author: 'member-b',
+      system: 'B'
+    })
+    expect(collab.speakingAuthors).toEqual([MEMBER_ID, 'member-b'])
+
+    // 分片交叉到达:各回各的消息,不能按"最后开始说话的人"归属
+    collab.handleEvent({
+      type: 'delta',
+      conversationId: createdGroup.id,
+      messageId: 'm-a',
+      text: 'AA'
+    })
+    collab.handleEvent({
+      type: 'delta',
+      conversationId: createdGroup.id,
+      messageId: 'm-b',
+      text: 'BB'
+    })
+    const textOf = (id: string): string => {
+      const part = collab.messages.find((m) => m.id === id)?.parts[0]
+      return part?.type === 'text' ? part.text : ''
+    }
+    expect(textOf('m-a')).toBe('AA')
+    expect(textOf('m-b')).toBe('BB')
+
+    // 一位收棒不该把另一位的呼吸环也熄掉
+    collab.handleEvent({ type: 'agent-done', conversationId: createdGroup.id, messageId: 'm-a' })
+    expect(collab.speakingAuthors).toEqual(['member-b'])
+  })
+})
+
+/**
+ * 交付物散在时间线上、同一个人返工两次就有三条,用户得自己找哪条算数——
+ * 这是"整体太乱"的主因。面板把它收成一张清单,并且**一个字都不复制**。
+ *
+ * 抽屉内容走 teleport,组件测试里够不着;清单本身的规则在
+ * shared/group-deliverables.test.ts 里钉,这里只管入口的可用性。
+ */
+describe('DeliverablePanel', () => {
+  function deliverable(author: string, text: string, id: string): Message {
+    return textMessage({ id, author, role: 'assistant', parts: [{ type: 'text', text }] })
+  }
+
+  it('徽标显示已交/应交,数的是清单不是消息条数', () => {
+    prepareStores()
+    const collab = useCollabStore()
+    const second: GroupMember = {
+      ...configuredMember,
+      id: '01ARZ3NDEKTSV4RRFFQ69G5FAW',
+      name: '架构师',
+      deliverable: '架构设计文档'
+    }
+    collab.groups = [groupWithMembers([configuredMember, second])]
+    collab.conversationId = createdGroup.id
+    collab.messages = [
+      deliverable(MEMBER_ID, '# 需求文档:记账 v1\n\n旧稿', 'm-1'),
+      deliverable(MEMBER_ID, '# 需求文档:记账 v2\n\n返工稿', 'm-2'),
+      deliverable(second.id, '还在看资料', 'm-3')
+    ]
+
+    // 三条消息、两项清单:返工不算第二份交付
+    expect(mount(DeliverablePanel).text()).toContain('1/2')
+    expect(collab.deliverables[0].title).toBe('需求文档:记账 v2')
+  })
+
+  it('一份都没交时入口禁用,不给一个点开是空的抽屉', () => {
+    prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+    collab.messages = []
+
+    expect(mount(DeliverablePanel).get('button').attributes('disabled')).toBeDefined()
+  })
+
+  it('导出走主进程,按当前群的 id', async () => {
+    prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+
+    await expect(collab.exportDeliverables()).resolves.toBe('/tmp/交付.md')
+    expect(exportDeliverables).toHaveBeenCalledWith(createdGroup.id)
+  })
+})
+
+/**
+ * 复制的用途是"存到别处",所以复制出去的必须是**人能读的那份**:
+ * 库里存的是 `@[架构师](member:01ARZ…)`,界面显示的是「@架构师」——
+ * 直接复制正文,用户粘出去就是一串 ULID。
+ */
+describe('消息复制', () => {
+  it('把结构化提及转成 @名字 再复制,不带 ULID', () => {
+    prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+
+    const wrapper = mount(GroupMessage, {
+      props: {
+        message: textMessage({
+          id: 'm-1',
+          author: MEMBER_ID,
+          role: 'assistant',
+          parts: [
+            {
+              type: 'text',
+              text: `# 需求文档\n\n@[${configuredMember.name}](member:${MEMBER_ID}) 复核`
+            }
+          ]
+        })
+      }
+    })
+
+    const copied = wrapper.findComponent(CopyButton).props('text') as string
+    expect(copied).toContain(`@${configuredMember.name} 复核`)
+    expect(copied).not.toContain(MEMBER_ID)
+    expect(copied).toContain('# 需求文档')
+  })
+
+  it('用户消息也能复制', () => {
+    prepareStores()
+    const collab = useCollabStore()
+    collab.groups = [groupWithMembers([configuredMember])]
+    collab.conversationId = createdGroup.id
+
+    const wrapper = mount(GroupMessage, {
+      props: { message: textMessage({ parts: [{ type: 'text', text: '请开始' }] }) }
+    })
+    expect(wrapper.findComponent(CopyButton).props('text')).toBe('请开始')
   })
 })

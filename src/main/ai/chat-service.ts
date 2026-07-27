@@ -12,6 +12,7 @@ import type {
   SendChatResult,
   WorkspaceRoot
 } from '../../shared/types'
+import { readConfig } from '../config'
 import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
@@ -56,10 +57,12 @@ import { SessionVfs } from './session-vfs'
 import { RunContextLedger } from './run-context-ledger'
 import {
   ContextGovernor,
-  HARD_TOOL_LIMIT,
   ToolBudgetGate,
+  effectiveToolCallLimit,
+  resolveToolLimits,
   wrapToolsWithBudget
 } from './context-governor'
+import { withCacheBreakpoints } from './prompt-cache'
 import { buildFileTools } from './tools'
 import { askUser, buildAskUserTool, releaseQuestions } from './ask-user'
 import { buildImageTools } from './image-tools'
@@ -233,12 +236,19 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const vfs = new SessionVfs(currentFiles)
   /** 回合账本:锚点、指纹、失败熔断都以它为准,跟这一轮同生共死 */
   const runLedger = new RunContextLedger()
-  /** 同步名额闸门 + step 级治理:20 软阈值 / 30 禁重读 / 40 硬上限,3×/5× 窗口 */
-  const budgetGate = new ToolBudgetGate(HARD_TOOL_LIMIT)
+  /**
+   * 同步名额闸门 + step 级治理:软阈值压缩 / 禁重读 / 硬上限,3×/5× 窗口。
+   * 硬上限来自用户配置(项目覆盖 > 全局),0 = 不限,另两档按比例派生。
+   */
+  const toolLimits = resolveToolLimits(
+    effectiveToolCallLimit(project?.settings?.toolCallLimit, readConfig().toolCallLimit)
+  )
+  const budgetGate = new ToolBudgetGate(toolLimits.hard)
   const governor = new ContextGovernor({
     ledger: runLedger,
     gate: budgetGate,
-    contextWindow: model.contextWindow
+    contextWindow: model.contextWindow,
+    limits: toolLimits
   })
   const initialStyleGate = project
     ? createInitialStyleWriteGate({
@@ -545,7 +555,14 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                 // 序列化字符数做保守估算的分母;system 一并计入
                 const serializedChars = JSON.stringify(messages).length + (system?.length ?? 0)
                 const governed = governor.prepareStep({ messages, serializedChars })
-                return governed.messages ? { messages: governed.messages } : {}
+                /*
+                 * 缓存断点每步重打:工具协议下一步就往尾部加好几个 block,
+                 * 断点必须跟着走,否则下一步的回溯窗口够不着上一步的条目。
+                 * 内容字节没变,挪断点不会让前缀失效(见 prompt-cache.ts)。
+                 */
+                return {
+                  messages: withCacheBreakpoints(governed.messages ?? messages, providerAdapter)
+                }
               }
             }
           : {})
@@ -730,8 +747,13 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       const usage = markerUsage ?? (await result.usage)
       if (cappedOut) {
         // 分清是工具次数还是 token 预算触顶,诊断里也各记各的熔断
-        trace.setBreaker(countToolCalls(await result.steps) >= HARD_TOOL_LIMIT ? 'tool' : 'token')
-        const note = `\n\n(已达单轮预算上限(工具 ${HARD_TOOL_LIMIT} 次或累计输入超限),先停在这里。改动已保存,可以继续让我接着改。)`
+        const hitTool = governor.hitToolLimit(countToolCalls(await result.steps))
+        trace.setBreaker(hitTool ? 'tool' : 'token')
+        // 两种触顶给的下一步不一样:次数触顶可以去设置里调高,token 触顶只能拆需求
+        const reason = hitTool
+          ? `本轮工具调用已达上限(${governor.hardLimitText()},可在设置或项目里调整)`
+          : '本轮累计输入已超上下文预算'
+        const note = `\n\n(${reason},先停在这里。改动已保存,可以继续让我接着改。)`
         toolNarration += note
         emit({ streamId, type: 'delta', text: note })
       }
@@ -741,7 +763,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           `本轮发生致命一致性错误(${runLedger.fatalLockReason()}),已中止,不产出新版本。`
         )
       }
-      if (cappedOut) trace.setBreaker('tool')
+      // 熔断类型在上面按 tool / token 分好了,这里不能再无条件盖成 'tool'
       trace.finish(cappedOut || modelAborted ? 'aborted' : 'complete')
       await finalize(cappedOut || modelAborted ? 'aborted' : 'complete', {
         inputTokens: usage.inputTokens ?? 0,

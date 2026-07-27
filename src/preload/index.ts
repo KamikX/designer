@@ -73,6 +73,7 @@ const api: DesignerApi = {
     messages: (id) => ipcRenderer.invoke('group:messages', id),
     send: (input) => ipcRenderer.invoke('group:send', input),
     abort: (id) => ipcRenderer.invoke('group:abort', id),
+    exportDeliverables: (id) => ipcRenderer.invoke('group:export', id),
     onStream: (cb) => {
       const listener = (_e: Electron.IpcRendererEvent, event: Parameters<typeof cb>[0]): void =>
         cb(event)

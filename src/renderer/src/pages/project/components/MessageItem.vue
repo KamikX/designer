@@ -11,6 +11,9 @@ import MarkdownStream from '@renderer/markdown/MarkdownStream.vue'
 import QuestionCard from './QuestionCard.vue'
 import RunDiagnostics from './RunDiagnostics.vue'
 import ToolActivityList from './ToolActivityList.vue'
+import CopyButton from '@renderer/components/CopyButton.vue'
+import { splitMessageStream } from '@renderer/components/message-segments'
+import { isActiveToolState } from '@renderer/stores/chat'
 import type { AskUserAnswer, Message } from '@shared/types'
 
 const props = defineProps<{ message: Message }>()
@@ -47,6 +50,8 @@ const imageParts = computed(() =>
 )
 
 const activities = computed(() => chatStore.activities[props.message.id] ?? [])
+/** 正文与工具调用按发生顺序交替,而不是把工具全堆在气泡底部 */
+const segments = computed(() => splitMessageStream(textContent.value, activities.value))
 const reasoning = computed(() => chatStore.reasoning[props.message.id] ?? '')
 const reasoningOpen = ref(false)
 
@@ -77,6 +82,11 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
     <!-- AI 头像:渐变小方块,让对话流有呼吸感;用户消息不放头像 -->
     <div v-if="!isUser" class="message-avatar">✦</div>
 
+    <!-- 用户气泡右对齐,复制按钮摆左边;AI 的在气泡内底部(见下) -->
+    <span v-if="isUser" class="message-copy">
+      <CopyButton :text="textContent" label="复制这条消息" />
+    </span>
+
     <div
       class="message-bubble"
       :style="
@@ -100,7 +110,22 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
       <!-- 用户消息保持纯文本:气泡是主色底,markdown 的标题/代码块在上面
            反而更难读;AI 的解说才需要结构 -->
       <div v-if="isUser && textContent" class="message-text">{{ textContent }}</div>
-      <MarkdownStream v-else-if="textContent" :content="textContent" :streaming="streaming" />
+      <!-- AI 的解说与工具调用**按发生顺序**交替:说一句 → 调一次 → 再说一句。
+           都堆在气泡底部的话,哪句话之前调了什么完全看不出来 -->
+      <template v-else>
+        <template v-for="(seg, index) in segments" :key="index">
+          <MarkdownStream
+            v-if="seg.kind === 'text'"
+            :content="seg.text"
+            :streaming="streaming && index === segments.length - 1"
+          />
+          <ToolActivityList
+            v-else
+            :activities="seg.activities"
+            :streaming="streaming && seg.activities.some((a) => isActiveToolState(a.state))"
+          />
+        </template>
+      </template>
 
       <!-- 思考流:本来就在计费,显示出来不额外花钱,但默认收起 -->
       <div v-if="reasoning" class="message-reasoning">
@@ -120,9 +145,6 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
           {{ reasoning }}
         </div>
       </div>
-
-      <!-- 工具活动:没有它,调工具的那几十秒聊天框就是死的 -->
-      <ToolActivityList :activities="activities" :streaming="streaming" />
 
       <!-- AI 的提问:主进程的工具循环正停在这里等作答 -->
       <QuestionCard
@@ -174,6 +196,11 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
         已停止
       </a-typography-text>
 
+      <!-- AI 的解说复制:摆在气泡内底部,和诊断入口同一排 -->
+      <span v-if="!isUser && textContent" class="message-copy message-copy--inline">
+        <CopyButton :text="textContent" label="复制这条回复" />
+      </span>
+
       <!-- 运行诊断入口:阶段耗时、工具时间线、详细 token 都在抽屉里 -->
       <button
         v-if="canDiagnose"
@@ -204,6 +231,30 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
 
 .message--user {
   justify-content: flex-end;
+}
+
+/*
+ * 复制按钮 hover 才现身:一屏十几条消息,常驻图标会把版面吵散。
+ * 键盘焦点也要现身,否则 tab 到一个看不见的按钮上。
+ */
+.message-copy {
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: inherit;
+}
+
+.message-copy--inline {
+  display: inline-flex;
+  margin-top: 2px;
+}
+
+.message:hover .message-copy,
+.message-copy:focus-within {
+  opacity: 1;
+}
+
+.message--user .message-copy {
+  align-self: center;
 }
 
 .message-avatar {

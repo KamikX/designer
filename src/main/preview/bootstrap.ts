@@ -1,4 +1,5 @@
 import type { PreviewLib, Stack } from '../../shared/types'
+import { ANNOTATE_RUNTIME } from './annotate-runtime'
 import { LIB_VERSIONS, libSetupPaths } from './lib-setup'
 
 /**
@@ -147,6 +148,7 @@ const COMMON_HEAD = `
     if (!window.__previewAwaitMount) notifyReady()
   })
 </script>
+${ANNOTATE_RUNTIME}
 `
 
 /**

@@ -49,6 +49,23 @@ export const useProjectStore = defineStore('project', {
       if (this.current?.id === id) this.current = updated
     },
 
+    /**
+     * 本项目的单轮工具调用上限。`null` = 跟随全局,`0` = 不限。
+     *
+     * saveSettings 是合并写且不回吐整行,所以这里手动把本地快照也补上——
+     * 不补的话弹层一关再开,输入框又变回旧值。
+     */
+    async setToolCallLimit(id: string, limit: number | null): Promise<void> {
+      await window.api.project.saveSettings(id, { toolCallLimit: limit })
+      const patch = (project: Project): Project => ({
+        ...project,
+        settings: { ...project.settings, toolCallLimit: limit }
+      })
+      const at = this.projects.findIndex((p) => p.id === id)
+      if (at >= 0) this.projects[at] = patch(this.projects[at])
+      if (this.current?.id === id) this.current = patch(this.current)
+    },
+
     async remove(id: string): Promise<void> {
       await window.api.project.remove(id)
       this.projects = this.projects.filter((p) => p.id !== id)

@@ -6,10 +6,11 @@ import { describe, expect, it } from 'vitest'
 import { AnchorRegistry } from './anchor-registry'
 import {
   ContextGovernor,
-  HARD_TOOL_LIMIT,
   ToolBudgetGate,
+  resolveToolLimits,
   wrapToolsWithBudget
 } from './context-governor'
+import { DEFAULT_TOOL_CALL_LIMIT } from '../../shared/limits'
 import { RunContextLedger } from './run-context-ledger'
 import { SessionVfs } from './session-vfs'
 import { MagicStringBatchEditor } from './string-edits'
@@ -107,8 +108,9 @@ describe('确定性编排基准', () => {
   it('5 文件修改:无截断失配、无重复失败、调用数在软阈值内', async () => {
     const vfs = new SessionVfs(loadFixture())
     const ledger = new RunContextLedger()
-    const gate = new ToolBudgetGate(HARD_TOOL_LIMIT)
-    const governor = new ContextGovernor({ ledger, gate, contextWindow: 64_000 })
+    const limits = resolveToolLimits(DEFAULT_TOOL_CALL_LIMIT)
+    const gate = new ToolBudgetGate(limits.hard)
+    const governor = new ContextGovernor({ ledger, gate, contextWindow: 64_000, limits })
     const tools = wrapToolsWithBudget(
       buildFileTools(
         vfs,
@@ -242,15 +244,16 @@ describe('确定性编排基准', () => {
     console.info(`[bench] 编排:${gate.count()} 次工具调用,${failures.length} 次失败`)
   })
 
-  it('硬上限 40:超发的并行调用被同步闸门拒绝且无副作用', async () => {
+  it('硬上限:超发的并行调用被同步闸门拒绝且无副作用', async () => {
     const vfs = new SessionVfs(loadFixture())
     const ledger = new RunContextLedger()
-    const gate = new ToolBudgetGate(HARD_TOOL_LIMIT)
+    const hard = resolveToolLimits(DEFAULT_TOOL_CALL_LIMIT).hard
+    const gate = new ToolBudgetGate(hard)
     const tools = wrapToolsWithBudget(
       buildFileTools(vfs, { onPatch: () => {}, onDelete: () => {} }, { ledger }),
       gate
     )
-    for (let i = 0; i < HARD_TOOL_LIMIT - 1; i++) gate.reserve(`pre-${i}`)
+    for (let i = 0; i < hard - 1; i++) gate.reserve(`pre-${i}`)
 
     const write = tools.write_file as {
       execute: (input: unknown, opts: unknown) => Promise<unknown>
@@ -271,6 +274,6 @@ describe('确定性编排基准', () => {
     // 被拒的那个没有任何副作用
     const created = ['rbac/new-a.css', 'rbac/new-b.css'].filter((p) => vfs.has(p))
     expect(created).toHaveLength(1)
-    expect(gate.count()).toBe(HARD_TOOL_LIMIT)
+    expect(gate.count()).toBe(hard)
   })
 })

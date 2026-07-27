@@ -1,4 +1,5 @@
 import type { ModelMessage, ToolSet } from 'ai'
+import { DEFAULT_TOOL_CALL_LIMIT } from '../../shared/limits'
 import { compactToolHistory } from './compact-tool-history'
 import type { RunContextLedger } from './run-context-ledger'
 import { renderToolResult, toolError } from './tool-result'
@@ -9,13 +10,13 @@ import { renderToolResult, toolError } from './tool-result'
  * ## 为什么不能只靠 stopWhen 和提示词
  *
  * stopWhen 只能阻止**下一个** step,挡不住模型在单个 step 里一次吐出超过
- * 剩余额度的并行工具调用;提示词里的"最多 40 次"对失控的循环没有强制力。
+ * 剩余额度的并行工具调用;提示词里的"最多 N 次"对失控的循环没有强制力。
  * 所以三层配合:
  * - ToolBudgetGate:所有 execute 外层共用的**同步**名额预留,先到先得,
  *   超出的调用直接返回 TOOL_BUDGET_EXCEEDED,不产生任何副作用;
- * - prepareStep:20 次 / 3× 窗口触发历史压缩与合并指引,30 次后禁止
- *   重读未变化文件;
- * - shouldStop:40 次 / 5× 窗口结束循环,已完成的修改照常保留。
+ * - prepareStep:软阈值 / 3× 窗口触发历史压缩与合并指引,禁重读阈值后
+ *   拒绝重读未变化文件;
+ * - shouldStop:硬上限 / 5× 窗口结束循环,已完成的修改照常保留。
  *
  * ## token 估算的口径
  *
@@ -24,12 +25,58 @@ import { renderToolResult, toolError } from './tool-result'
  * 永不写进长期"provider 报告"字段。
  */
 
-/** 64K 模型的默认分级预算 */
-export const SOFT_TOOL_LIMIT = 20
-export const NO_REREAD_TOOL_LIMIT = 30
-export const HARD_TOOL_LIMIT = 40
+/** 不限次数时,压缩与禁重读仍按这两个固定值生效 */
+const UNLIMITED_SOFT = 20
+const UNLIMITED_NO_REREAD = 30
 const COMPACT_WINDOW_MULTIPLIER = 3
 const STOP_WINDOW_MULTIPLIER = 5
+
+export interface ToolLimits {
+  /** 硬上限。Infinity 表示不限次数 */
+  hard: number
+  /** 触发历史压缩与"合并剩余操作"指引 */
+  soft: number
+  /** 之后拒绝重读未变化的文件 */
+  noReread: number
+}
+
+/**
+ * 把用户配的一个数摊成三档阈值。
+ *
+ * 原来 20 / 30 / 40 正好是硬上限的 50% / 75% / 100%,按这个比例缩放即可:
+ * 上限调到 200 时还在第 20 次就压缩历史,压得太早,后面每一步都在读被
+ * 折叠掉的东西。
+ *
+ * @param limit 0(或负数)表示不限次数。这时**只剩 token 窗口那一条熔断**,
+ *        软阈值与禁重读退回固定值——它们防的是上下文膨胀,和次数上限
+ *        是两件事,不该跟着一起消失。
+ */
+/**
+ * 项目覆盖 > 全局配置。
+ *
+ * `null` / `undefined` 都是"没设过",要落到全局;`0` 是**用户明确要不限**,
+ * 必须能穿过来——所以这里不能用 `||`。
+ */
+export function effectiveToolCallLimit(
+  projectLimit: number | null | undefined,
+  globalLimit: number | undefined
+): number {
+  if (typeof projectLimit === 'number' && Number.isFinite(projectLimit) && projectLimit >= 0) {
+    return projectLimit
+  }
+  if (typeof globalLimit === 'number' && Number.isFinite(globalLimit) && globalLimit >= 0) {
+    return globalLimit
+  }
+  return DEFAULT_TOOL_CALL_LIMIT
+}
+
+export function resolveToolLimits(limit: number): ToolLimits {
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return { hard: Infinity, soft: UNLIMITED_SOFT, noReread: UNLIMITED_NO_REREAD }
+  }
+  const hard = Math.floor(limit)
+  return { hard, soft: Math.ceil(hard / 2), noReread: Math.ceil((hard * 3) / 4) }
+}
 
 /**
  * 同步预留名额的工具闸门。reserve 在 execute promise 开始前同步改内存
@@ -38,7 +85,7 @@ const STOP_WINDOW_MULTIPLIER = 5
 export class ToolBudgetGate {
   private reserved = new Set<string>()
 
-  constructor(private readonly limit: number = HARD_TOOL_LIMIT) {}
+  constructor(private readonly limit: number = Infinity) {}
 
   reserve(callId: string): boolean {
     if (this.reserved.has(callId)) return true
@@ -58,6 +105,11 @@ const BUDGET_EXCEEDED_TEXT = renderToolResult(
     '本轮工具调用已达硬上限,此调用未执行。已完成的修改都已保存,请直接收尾总结。'
   )
 )
+
+/** 阈值文案里的次数。不限时不写数字,免得模型对着 Infinity 犯迷糊 */
+function limitText(limit: number): string {
+  return Number.isFinite(limit) ? `${limit} 次` : '不限次数'
+}
 
 /**
  * 把整套工具的 execute 包上同一个闸门。读写一视同仁:副作用与额度都在
@@ -87,6 +139,8 @@ interface GovernorOptions {
   ledger: RunContextLedger
   gate: ToolBudgetGate
   contextWindow: number
+  /** 缺省按全局默认上限派生;实际调用方都从用户配置算好了传进来 */
+  limits?: ToolLimits
 }
 
 export interface GovernPrepareInput {
@@ -104,6 +158,7 @@ export class ContextGovernor {
   private readonly ledger: RunContextLedger
   private readonly gate: ToolBudgetGate
   private readonly contextWindow: number
+  private readonly limits: ToolLimits
   private estimatedInputTokens = 0
   private estimated = false
 
@@ -111,6 +166,7 @@ export class ContextGovernor {
     this.ledger = options.ledger
     this.gate = options.gate
     this.contextWindow = options.contextWindow
+    this.limits = options.limits ?? resolveToolLimits(DEFAULT_TOOL_CALL_LIMIT)
   }
 
   /** 累计输入:已上报优先;完全没报过才用估算,并如实标记 */
@@ -126,9 +182,9 @@ export class ContextGovernor {
     return this.estimated && !this.ledger.cumulativeUsage.reported.inputTokens
   }
 
-  /** 30 次之后拒绝重读未变化的文件;返回给模型的拒绝文案,可通过则 null */
+  /** 禁重读阈值之后拒绝重读未变化的文件;返回给模型的拒绝文案,可通过则 null */
   readGate(path: string, revision: number): string | null {
-    if (this.gate.count() < NO_REREAD_TOOL_LIMIT) return null
+    if (this.gate.count() < this.limits.noReread) return null
     if (!this.ledger.hasReadAtRevision(path, revision)) return null
     return (
       `${path} 在本轮已读过且未变化(工具调用已达 ${this.gate.count()} 次)。` +
@@ -136,10 +192,20 @@ export class ContextGovernor {
     )
   }
 
-  /** 40 次 / 5× 窗口:停止循环,保留已完成的修改 */
+  /** 硬上限 / 5× 窗口:停止循环,保留已完成的修改 */
   shouldStop(): boolean {
-    if (this.gate.count() >= HARD_TOOL_LIMIT) return true
+    if (this.gate.count() >= this.limits.hard) return true
     return this.cumulativeInputTokens().value >= STOP_WINDOW_MULTIPLIER * this.contextWindow
+  }
+
+  /** 触顶的是次数还是 token,诊断里各记各的熔断 */
+  hitToolLimit(toolCalls: number): boolean {
+    return toolCalls >= this.limits.hard
+  }
+
+  /** 收尾文案要说出真实上限,不能再写死 40 */
+  hardLimitText(): string {
+    return limitText(this.limits.hard)
   }
 
   /**
@@ -155,7 +221,7 @@ export class ContextGovernor {
 
     const tokens = this.cumulativeInputTokens().value
     const needCompact =
-      this.gate.count() >= SOFT_TOOL_LIMIT ||
+      this.gate.count() >= this.limits.soft ||
       tokens >= COMPACT_WINDOW_MULTIPLIER * this.contextWindow
 
     if (!needCompact) return {}
@@ -164,8 +230,13 @@ export class ContextGovernor {
       completedWrites: this.ledger.completedWrites,
       recentErrors: this.ledger.recentErrors,
       activatedSkills: this.ledger.activatedSkills,
+      /*
+       * 提醒里**不写当前已用次数**:这段会随消息一起重发,每步一个新数字
+       * 就是每步一个新前缀,缓存从这里往后全废。上限是常量,写它足够表达
+       * "该收尾了",而"已用几次"模型从自己的调用历史里看得出来。
+       */
       extraNotes: [
-        `预算提醒:本轮已用 ${this.gate.count()} 次工具调用(硬上限 ${HARD_TOOL_LIMIT} 次)。` +
+        `预算提醒:本轮工具调用接近上限(硬上限 ${limitText(this.limits.hard)})。` +
           '请合并剩余操作:同文件用 multi_edit_file / apply_string_edits 一次改完,尽快收尾。'
       ]
     })

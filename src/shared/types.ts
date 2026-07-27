@@ -37,6 +37,17 @@ export interface AppConfig {
    */
   marketUrl: string
   /**
+   * 单轮工具调用的硬上限,**0 表示不限**。
+   *
+   * 复杂改动经常在几十次调用上被熔断,只能再说一句"继续";而次数上限本来
+   * 就是钱与耐心的取舍,该由用户按自己的模型和任务定。项目可以再覆盖一层
+   * (SessionSettings.toolCallLimit)。
+   *
+   * 设成 0 之后只剩累计输入超 5× 上下文窗口那一条熔断——不是没有护栏,
+   * 但护栏变成了"token 烧完",要贵得多。
+   */
+  toolCallLimit: number
+  /**
    * OpenAI 协议的兼容开关。中转站行为各不相同,这里留给用户手改
    * (~/.antd-designer/config.json),不用重新打包就能试。
    */
@@ -109,6 +120,11 @@ export interface SessionSettings {
   mcpIds?: string[]
   /** 是否开着联网。按会话记,不是全局——不然会出现"忘了它还开着" */
   webSearch?: boolean
+  /**
+   * 本项目的单轮工具调用上限,覆盖全局配置。`null` / 缺省 = 跟随全局,
+   * `0` = 不限。改一版落地页和重构一个后台管理系统不该共用同一个数。
+   */
+  toolCallLimit?: number | null
   /** 群组会话成员 */
   members?: GroupMember[]
 }
@@ -1056,6 +1072,11 @@ export interface DesignerApi {
     send: (input: GroupSendInput) => Promise<void>
     /** 停止当前接力链 */
     abort: (conversationId: string) => Promise<void>
+    /**
+     * 把本轮交付物拼成一份 markdown 存盘,返回文件路径;用户取消返回 null。
+     * 内容仍然只有 messages 一份,这里只是拼装视图(见 main/group-export.ts)
+     */
+    exportDeliverables: (conversationId: string) => Promise<string | null>
     onStream: (cb: (event: GroupStreamEvent) => void) => () => void
   }
   chat: {

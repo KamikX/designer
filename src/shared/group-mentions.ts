@@ -477,24 +477,72 @@ export function mentionsToMarkdown(text: string, members: readonly GroupMentionM
     .join('')
 }
 
-/** 用户消息只由第一个有效、非代码区的成员提及启动接力。 */
+/** 一次点名：被 @ 的成员，以及这个 @ 之后、下一个 @ 之前的那句交代。 */
+export interface MentionAssignment {
+  memberId: string
+  /** 交代给这个人的话；只 @ 了名字没说要干嘛时为空串 */
+  instruction: string
+}
+
+/**
+ * 一条消息里点名的**全部**成员，按出现顺序、按人去重（保留首次）。
+ *
+ * 去重是必需的：同一条消息里重复 @ 一个人（开头点名、结尾又提一句）很常见，
+ * 每次都当成一次派活的话，那个人会被拉起两棒做同一件事。
+ *
+ * instruction 切到下一个提及为止——多人点名时每个人的任务是分开写的，
+ * 把整条消息原样交给每一个人，他们会互相抢活。
+ */
+export function mentionAssignments(
+  text: string,
+  members: readonly GroupMentionMember[],
+  startAt = 0
+): MentionAssignment[] {
+  const mentions = findMentions(text, members, startAt)
+  const assignments: MentionAssignment[] = []
+  const seen = new Set<string>()
+
+  mentions.forEach((mention, index) => {
+    if (seen.has(mention.member.id)) return
+    seen.add(mention.member.id)
+    const next = mentions[index + 1]
+    assignments.push({
+      memberId: mention.member.id,
+      instruction: text.slice(mention.end, next ? next.start : text.length).trim()
+    })
+  })
+
+  return assignments
+}
+
+/** 用户消息只由第一个有效、非代码区的成员提及决定"这条消息会不会起链"。 */
 export function firstMention(text: string, members: readonly GroupMentionMember[]): string | null {
-  return findMentions(text, members)[0]?.member.id ?? null
+  return mentionAssignments(text, members)[0]?.memberId ?? null
 }
 
 /**
  * Agent 只在末尾五行移交；@用户 的正常收链优先于成员接棒。
- * 自我提及不立即结束，以便继续寻找同一片段里的下一位成员。
+ * 自我提及被跳过，以便继续寻找同一片段里的其他成员。
+ *
+ * 返回**全部**后继：一次交接可以点多位，他们并行接棒（见 group-service 的分支模型）。
  */
+export function nextMentions(
+  text: string,
+  members: readonly GroupMentionMember[],
+  selfId: string
+): MentionAssignment[] {
+  const startAt = lastLinesStart(text, 5)
+  if (hasUserMention(text, startAt)) return []
+  return mentionAssignments(text, members, startAt).filter(
+    (assignment) => assignment.memberId !== selfId
+  )
+}
+
+/** 只要第一位后继。留给"只关心链会不会继续"的调用点 */
 export function nextMention(
   text: string,
   members: readonly GroupMentionMember[],
   selfId: string
 ): string | null {
-  const startAt = lastLinesStart(text, 5)
-  if (hasUserMention(text, startAt)) return null
-  return (
-    findMentions(text, members, startAt).find((mention) => mention.member.id !== selfId)?.member
-      .id ?? null
-  )
+  return nextMentions(text, members, selfId)[0]?.memberId ?? null
 }

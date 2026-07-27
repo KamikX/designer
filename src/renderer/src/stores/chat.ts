@@ -30,6 +30,11 @@ function toPlainAnswer(answer: AskUserAnswer): AskUserAnswer {
   }
 }
 
+/** 正文已经写了多少字。工具活动按它记录自己发生在哪一句之后 */
+function textLength(parts: readonly MessagePart[]): number {
+  return parts.reduce((n, part) => (part.type === 'text' ? n + part.text.length : n), 0)
+}
+
 /** Composer 里待发送的参考图 */
 export interface ChatAttachment {
   assetId: string
@@ -94,6 +99,14 @@ export interface ToolActivity {
   summary?: string
   /** 本地执行耗时;超过 500ms 界面才显示性能提示 */
   execMs?: number
+  /**
+   * 这次调用发起时,正文已经写到第几个字。
+   *
+   * 渲染层据此把工具活动插回正文里对应的位置(见 components/message-segments.ts)
+   * ——工具活动不落库,没有别的办法恢复"先说了什么再调的工具"。缺省表示未知
+   * (从库里重新加载的老消息),按"发生在末尾"处理。
+   */
+  afterChars?: number
 }
 
 export const useChatStore = defineStore('chat', {
@@ -373,7 +386,8 @@ export const useChatStore = defineStore('chat', {
             callId: event.callId,
             toolName: event.toolName,
             label: event.label,
-            state: 'preparing'
+            state: 'preparing',
+            afterChars: textLength(entry.parts)
           })
           break
         }

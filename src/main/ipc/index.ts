@@ -49,6 +49,7 @@ import {
   updateGroup
 } from '../db/repo/conversation'
 import { abortGroup, isGroupChainRunning, sendGroupMessage } from '../ai/group-service'
+import { exportGroupDeliverables } from '../group-export'
 import { normalizeGroupMembers } from '../../shared/group-members'
 import { clearUsage, getRunDiagnostics, queryDailyUsage } from '../db/repo/ai-observability'
 import type { RunDiagnostics, UsageQuery, UsageReport } from '../../shared/types'
@@ -176,6 +177,7 @@ export function registerIpc(): void {
   ipcMain.handle('group:messages', (_e, id: string) => listMessages(id))
   ipcMain.handle('group:send', (e, input: GroupSendInput) => sendGroupMessage(e.sender, input))
   ipcMain.handle('group:abort', (_e, id: string) => abortGroup(id))
+  ipcMain.handle('group:export', (_e, id: string) => exportGroupDeliverables(id))
 
   ipcMain.handle('chat:list', () => listChats())
   ipcMain.handle('chat:create', () => createChat())

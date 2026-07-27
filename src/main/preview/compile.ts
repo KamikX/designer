@@ -118,6 +118,67 @@ function hashId(filename: string): string {
   return createHash('sha256').update(filename).digest('hex').slice(0, 8)
 }
 
+/* ---------------- 源码位置注入(给预览标注用) ---------------- */
+
+/**
+ * 给模板里的每个普通元素加一个 `data-antd-src="App.vue:12:5"`。
+ *
+ * 为什么值得做:用户在预览里点中一个元素提需求时,模型只能拿到 DOM 特征
+ * (标签、class、文本)去 search_files 猜位置,重复结构(v-for 出来的列表项、
+ * 复用的卡片)必然猜歪。有了这一条,标注就是**精确坐标**。
+ *
+ * 只注入 vue3:html 栈渲染的就是源码本身,文本和 class 直接可搜;react 那边
+ * prod 构建不透传 __source,没有等价的低成本注入点。
+ */
+const SRC_ATTR = 'data-antd-src'
+
+/*
+ * @vue/compiler-sfc 没把 compiler-core 的 NodeTypes / ElementTypes 枚举
+ * re-export 出来(compiler-core 被打进了它的 dist,也不是我们的直接依赖),
+ * 构造属性节点只能按枚举值写死。compile.test.ts 里那条断言是这几个数字
+ * 唯一的防线——Vue 大版本升级时它会先炸,不要删。
+ */
+const NODE_ELEMENT = 1
+const NODE_TEXT = 2
+const NODE_ATTRIBUTE = 6
+const TAG_PLAIN_ELEMENT = 0
+
+interface TemplateNode {
+  type: number
+  tagType?: number
+  props?: { name?: string }[]
+  loc: { start: { line: number; column: number } }
+}
+
+/**
+ * @param lineOffset 节点行号要加的偏移。
+ *
+ *   - `<script setup>` 走 compileScript 内联模板,拿到的 loc **已经是文件绝对行**,偏移为 0;
+ *   - 普通 script 走 compileTemplate(source 是 template 块的内容),loc 相对块内容,
+ *     要补上块的起始行 - 1。
+ *
+ * 两条路的口径不一样,这是最容易写错、且错了只表现为"AI 改错了行"的地方。
+ */
+function sourceLocTransform(filename: string, lineOffset: number) {
+  return (node: TemplateNode): void => {
+    if (node.type !== NODE_ELEMENT || node.tagType !== TAG_PLAIN_ELEMENT) return
+    const props = node.props
+    if (!props || props.some((p) => p.name === SRC_ATTR)) return
+    const line = node.loc.start.line + lineOffset
+    props.push({
+      type: NODE_ATTRIBUTE,
+      name: SRC_ATTR,
+      nameLoc: node.loc,
+      value: {
+        type: NODE_TEXT,
+        content: `${filename}:${line}:${node.loc.start.column}`,
+        loc: node.loc
+      },
+      loc: node.loc
+    } as never)
+  }
+}
+
 function compileSfc(source: string, filename: string): string {
   const { descriptor, errors } = parse(source, { filename })
   if (errors.length) throw new Error(errors.map((e) => e.message).join('\n'))
@@ -137,7 +198,13 @@ function compileSfc(source: string, filename: string): string {
       inlineTemplate: inline,
       genDefaultAs: SFC,
       templateOptions: inline
-        ? { compilerOptions: { scopeId: scoped ? scopeId : null } }
+        ? {
+            compilerOptions: {
+              scopeId: scoped ? scopeId : null,
+              // 内联模板的 loc 已经是文件绝对行,不用补偏移
+              nodeTransforms: [sourceLocTransform(filename, 0)]
+            }
+          }
         : undefined
     })
     parts.push(script.content)
@@ -152,7 +219,11 @@ function compileSfc(source: string, filename: string): string {
       filename,
       source: descriptor.template.content,
       scoped,
-      compilerOptions: { scopeId: scoped ? scopeId : null }
+      compilerOptions: {
+        scopeId: scoped ? scopeId : null,
+        // source 是 template 块的内容,loc 从块内第 1 行起算
+        nodeTransforms: [sourceLocTransform(filename, descriptor.template.loc.start.line - 1)]
+      }
     })
     if (tpl.errors.length) {
       throw new Error(tpl.errors.map((e) => (typeof e === 'string' ? e : e.message)).join('\n'))

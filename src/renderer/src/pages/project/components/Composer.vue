@@ -22,7 +22,9 @@ import WorkspaceRoots from './WorkspaceRoots.vue'
 import type { ChatAttachment } from '@renderer/stores/chat'
 import { reconcileNames } from '@renderer/stores/selection'
 import { MAX_FILES_AT_ONCE } from '@shared/limits'
-import { composeMessageBody, planAttachment } from '../attach'
+import { useAnnotationStore } from '@renderer/stores/annotation'
+import type { MarkTarget } from '@renderer/stores/annotation'
+import { composeMarks, composeMessageBody, planAttachment } from '../attach'
 import type { GrantedRoot, InstalledSkill, McpServerView, RootScope } from '@shared/types'
 
 /**
@@ -40,8 +42,24 @@ const router = useRouter()
 const { message } = App.useApp()
 const chatStore = useChatStore()
 const providerStore = useProviderStore()
+const annotation = useAnnotationStore()
 
 const draft = ref('')
+
+/**
+ * 预览标注的 chips。和参考图、本地文件同一排位置、同一套语义:
+ * 挂在这里,随下一条消息发出去,发完清空(见 stores/annotation.ts)。
+ *
+ * 本组件被纯聊天页复用,而 annotation 是全局 store:从工作台标了几处又跑去
+ * 聊天页时,那些标记不该跟过去——聊天没有预览,发过去也是无源之水。
+ */
+const marks = computed(() => (chatStore.projectId ? annotation.marks : []))
+
+function markLabel(target: MarkTarget): string {
+  const text = target.text ? `「${target.text.slice(0, 10)}」` : ''
+  const cls = !text && target.classes.length ? `.${target.classes[0]}` : ''
+  return `${target.tag}${text}${cls}`
+}
 
 /* ---------------- 参考图 ---------------- */
 
@@ -200,18 +218,25 @@ function onPick(e: Event): void {
 
 function send(): void {
   const text = draft.value.trim()
-  const hasContent = text || attachments.value.length > 0 || localFiles.value.length > 0
+  // 只标了几处、一个字没打也该能发:标注本身就是需求("这几处改掉")
+  const hasContent =
+    text || attachments.value.length > 0 || localFiles.value.length > 0 || marks.value.length > 0
   if (!hasContent || chatStore.streaming || props.disabled) return
 
   const files = attachments.value
-  const body = composeMessageBody(
-    text,
-    localFiles.value.map((f) => f.path)
+  const body = composeMarks(
+    composeMessageBody(
+      text,
+      localFiles.value.map((f) => f.path)
+    ),
+    marks.value
   )
 
   draft.value = ''
   attachments.value = []
   localFiles.value = []
+  // 只清这一轮真的带上的:在纯聊天里发消息不该把工作台里标好的东西抹掉
+  if (marks.value.length) annotation.clear()
   emit('send', body, files)
 }
 
@@ -366,6 +391,34 @@ function toggleId(list: string[] | null, id: string): string[] {
         <FileTextOutlined v-else />
         <span class="composer-file-name">{{ f.name }}</span>
         <button type="button" class="composer-file-remove" @click="dropLocalFile(i)">
+          <CloseOutlined />
+        </button>
+      </div>
+    </div>
+
+    <!-- 预览里标记的元素。带源码坐标的标一个点,让用户知道这一处是精确的 -->
+    <div v-if="marks.length" class="composer-marks">
+      <div
+        v-for="mark in marks"
+        :key="mark.id"
+        class="composer-mark"
+        :title="mark.note || mark.target.path"
+        :style="{ borderColor: token.colorBorderSecondary, color: token.colorTextSecondary }"
+      >
+        <span class="composer-mark-no" :style="{ background: token.colorPrimary }">
+          {{ mark.index }}
+        </span>
+        <span class="composer-mark-el">{{ markLabel(mark.target) }}</span>
+        <span v-if="mark.note" class="composer-mark-note">{{ mark.note }}</span>
+        <span
+          v-if="mark.target.source"
+          class="composer-mark-src"
+          :style="{ color: token.colorSuccess }"
+          title="已定位到源码行"
+        >
+          ●
+        </span>
+        <button type="button" class="composer-file-remove" @click="annotation.remove(mark.id)">
           <CloseOutlined />
         </button>
       </div>
@@ -781,6 +834,55 @@ function toggleId(list: string[] | null, id: string): string[] {
 
 .composer-file-remove:hover {
   opacity: 1;
+}
+
+/* 标注 chips:和文件 chips 一个形状,只是多一个和 iframe 里徽标对得上的编号 */
+.composer-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 4px 2px;
+}
+
+.composer-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 3px 6px 3px 4px;
+  font-size: 12px;
+}
+
+.composer-mark-no {
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.composer-mark-el {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-mark-note {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.composer-mark-src {
+  font-size: 8px;
 }
 
 .add-pop {

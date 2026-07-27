@@ -9,13 +9,20 @@ import { stackPrompt } from './stacks'
  * 段落按**稳定性分区**(借 open-design 的缓存前缀纪律):
  *
  * - 项目稳定区(整个项目不变,可被前缀缓存命中):身份 → 模式 → 端契约 →
- *   端模板 → 项目背景 → 规范(用户技能)→ 协议 → 技术栈 → 手艺底线 → 技能目录
+ *   项目背景 → 协议 → 技术栈 → 手艺底线 → 技能目录
+ * - 稳定区的尾巴(内容本身稳定,但"这一轮取哪一份"逐轮变):端模板(按活动端
+ *   路由)、本地授权范围(带着这句话里识别出的路径)
  * - 逐轮可变区(每轮都可能不同,放尾部,不污染前缀):当前设计稿 →
  *   预览报错 → 反 AI 味检查 → 收尾要求
  *
  * 预览报错和 lint 结果原来排在头部第 3/4 段——那既让每一轮的前缀都不一样
  * (缓存全废),又把最需要立刻行动的信息放在了离生成最远的位置。挪到尾部
  * 一举两得:前缀稳定,且 recency 偏置恰好落在"这轮必须修的问题"上。
+ *
+ * 端模板与本地范围同理,只是更隐蔽:它们看着像"项目属性",实际一个按用户这句话
+ * 路由活动端、一个带着本轮识别出的路径,**每轮都可能变**。夹在中段时,它们一变
+ * 就把后面的手艺底线和技能目录一起带下水——前缀缓存对"哪个字节变了"没有偏好,
+ * 只认第一个不同的位置。所以它们排在稳定区最后一格。
  *
  * 规范排在协议之前是有意的:协议讲"怎么写文件",规范讲"写成什么样"。
  * 模型读 prompt 时越靠前的约束越容易守住,而设计质量正是这个产品的命根子。
@@ -62,13 +69,14 @@ export function buildSystemPrompt(
     modeText,
     options.styleBriefPrompt ?? '',
     options.targetContract ?? '',
-    options.targetTemplates ?? '',
     project.description ? `项目背景:${project.description}` : '',
     mode === 'tools' ? TOOL_PROTOCOL : FILE_PROTOCOL,
     stackPrompt(project.stack, project.libs ?? []),
-    options.localScope ?? '',
     CRAFT_CORE,
     options.skillCatalog ?? '',
+    // ---- 稳定区的尾巴:内容稳定但**这一轮取哪份**会变,排最后才不牵连前面 ----
+    options.targetTemplates ?? '',
+    options.localScope ?? '',
     // ---- 逐轮可变区 ----
     mode === 'tools' ? renderFileTree(currentFiles) : renderCurrentFiles(currentFiles),
     options.previewError ?? '',

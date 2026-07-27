@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from 'fs'
 import type { AppConfig } from '../shared/types'
+import { DEFAULT_TOOL_CALL_LIMIT } from '../shared/limits'
 import { CONFIG_FILE, ensureDataDirs } from './paths'
 
 /**
@@ -23,6 +24,7 @@ const DEFAULT_CONFIG: AppConfig = {
   assistantModel: null,
   searchApi: null,
   marketUrl: '',
+  toolCallLimit: DEFAULT_TOOL_CALL_LIMIT,
   // 最保守的组合:不依赖服务端持久化,也不用任何非标准选项
   openaiCompat: { store: false, encryptedReasoning: false }
 }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { theme } from 'antdv-next'
-import { ReloadOutlined } from '@antdv-next/icons'
+import { HighlightOutlined, ReloadOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
+import { MAX_MARKS, useAnnotationStore } from '@renderer/stores/annotation'
+import type { MarkTarget } from '@renderer/stores/annotation'
 
 /**
  * 预览面板。iframe 指向 preview://artifact/<id>/,主进程从 DB 直出文件。
@@ -10,16 +12,68 @@ import { useArtifactStore } from '@renderer/stores/artifact'
  * 错误除了显示给用户,还**上报主进程**:下一轮组装 prompt 时会带给模型。
  * 在这之前模型写完代码就没有任何反馈了——它不知道自己生成的东西跑不跑得
  * 起来,得等用户手动把报错粘回对话里。这是整条链路上唯一没闭合的环。
+ *
+ * 标注是同一条链路的另一半:iframe 里点中的元素 + 用户的备注,随下一条消息
+ * 交给模型(见 stores/annotation.ts)。iframe 是另一个源,这边读不到它的 DOM,
+ * 所有拾取与徽标都在 preview/annotate-runtime.ts 里,这里只负责收发和输入。
  */
 
 const { token } = theme.useToken()
 const store = useArtifactStore()
+const annotation = useAnnotationStore()
 
 const reloadKey = ref(0)
 const runtimeError = ref('')
 const loading = ref(false)
+const frame = ref<HTMLIFrameElement | null>(null)
 
 const src = computed(() => (store.currentId ? `preview://artifact/${store.currentId}/` : ''))
+
+/* ---------------- 标注 ---------------- */
+
+/** 拾取到、还没写备注的元素。有值时备注弹窗打开 */
+const picked = ref<MarkTarget | null>(null)
+const note = ref('')
+
+function post(message: Record<string, unknown>): void {
+  frame.value?.contentWindow?.postMessage(message, '*')
+}
+
+function toggleAnnotate(): void {
+  annotation.enabled = !annotation.enabled
+  post({ __previewCmd: 'annotate', on: annotation.enabled })
+}
+
+/** 徽标画在 iframe 里,所以每次增删都要把整份清单同步过去 */
+function syncMarks(): void {
+  post({
+    __previewCmd: 'annotate:sync',
+    marks: annotation.marks.map((m) => ({ id: m.id, index: m.index, selector: m.target.selector }))
+  })
+}
+
+watch(() => annotation.marks.length, syncMarks)
+
+function confirmNote(): void {
+  if (!picked.value) return
+  const added = annotation.add(picked.value, note.value)
+  picked.value = null
+  note.value = ''
+  if (!added) return
+  syncMarks()
+}
+
+function cancelNote(): void {
+  picked.value = null
+  note.value = ''
+}
+
+/** 元素签名的一句话摘要,备注弹窗和输入框 chips 共用同一套口径 */
+function markLabel(target: MarkTarget): string {
+  const text = target.text ? `「${target.text.slice(0, 14)}」` : ''
+  const cls = !text && target.classes.length ? `.${target.classes[0]}` : ''
+  return `${target.tag}${text}${cls}`
+}
 
 /**
  * 兜底时限。
@@ -44,8 +98,15 @@ function endLoad(): void {
   clearTimeout(timer)
 }
 
-// 版本切换 / 新版本生成:重新走一遍加载态
-watch(src, (next) => (next ? beginLoad() : endLoad()), { immediate: true })
+// 版本切换 / 新版本生成:重新走一遍加载态。标记绑在版本上,一起作废
+watch(
+  src,
+  (next) => {
+    annotation.syncArtifact(store.currentId)
+    next ? beginLoad() : endLoad()
+  },
+  { immediate: true }
+)
 
 function refresh(): void {
   reloadKey.value++
@@ -60,9 +121,28 @@ watch(
 
 function onMessage(e: MessageEvent): void {
   if (!e.data?.__preview) return
+  // 标注消息带元素签名,来源要认准是我们这个 iframe
+  const fromFrame = e.source === frame.value?.contentWindow
 
   if (e.data.type === 'ready') {
     endLoad()
+    // iframe 重载后运行时是全新的:标注态和已有徽标都得重新告诉它一遍
+    if (fromFrame) {
+      post({ __previewCmd: 'annotate', on: annotation.enabled })
+      syncMarks()
+    }
+    return
+  }
+  if (e.data.type === 'annotate:pick') {
+    if (!fromFrame) return
+    if (annotation.marks.length >= MAX_MARKS) return
+    picked.value = e.data.target as MarkTarget
+    note.value = ''
+    return
+  }
+  if (e.data.type === 'annotate:cancel') {
+    // iframe 里按了 Esc
+    if (fromFrame) annotation.enabled = false
     return
   }
   if (e.data.type !== 'error') return
@@ -107,6 +187,7 @@ onBeforeUnmount(() => {
       <iframe
         v-if="src"
         :key="`${src}-${reloadKey}`"
+        ref="frame"
         :src="src"
         sandbox="allow-scripts allow-same-origin"
         class="preview-iframe"
@@ -144,9 +225,51 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <a-button v-if="src" class="preview-refresh" size="small" shape="circle" @click="refresh">
-      <template #icon><ReloadOutlined /></template>
-    </a-button>
+    <div v-if="src" class="preview-actions">
+      <!-- 标注态是一种"模式",按钮要一直亮着提示它开着,不然用户会以为页面点不动了 -->
+      <a-tooltip :title="annotation.enabled ? '退出标注(或按 Esc)' : '标注要改的元素'">
+        <a-button
+          size="small"
+          shape="circle"
+          :type="annotation.enabled ? 'primary' : 'default'"
+          @click="toggleAnnotate"
+        >
+          <template #icon><HighlightOutlined /></template>
+        </a-button>
+      </a-tooltip>
+      <a-tooltip title="刷新预览">
+        <a-button size="small" shape="circle" @click="refresh">
+          <template #icon><ReloadOutlined /></template>
+        </a-button>
+      </a-tooltip>
+    </div>
+
+    <div v-if="annotation.enabled" class="preview-tip" :style="{ background: token.colorPrimary }">
+      点页面上任意元素做标记,写一句想怎么改;标记会随下一条消息给 AI
+    </div>
+
+    <a-modal
+      :open="!!picked"
+      title="标记这处元素"
+      ok-text="加入标记"
+      cancel-text="取消"
+      :width="440"
+      @ok="confirmNote"
+      @cancel="cancelNote"
+    >
+      <div v-if="picked" class="mark-form">
+        <div class="mark-el" :style="{ color: token.colorTextSecondary }">
+          <a-tag color="blue">{{ markLabel(picked) }}</a-tag>
+          <span v-if="picked.source" class="mark-src">{{ picked.source }}</span>
+        </div>
+        <a-textarea
+          v-model:value="note"
+          :auto-size="{ minRows: 3, maxRows: 6 }"
+          placeholder="这里想改成什么?例如:按钮太小了,改成主色大号"
+          @press-enter.meta="confirmNote"
+        />
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -203,10 +326,44 @@ onBeforeUnmount(() => {
   display: block;
 }
 
-.preview-refresh {
+.preview-actions {
   position: absolute;
   right: 10px;
   top: 10px;
+  display: flex;
+  gap: 6px;
+}
+
+/* 标注态的说明条:贴底居中,不挡住页面顶部——那儿通常是导航,标注的高频目标 */
+.preview-tip {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+
+.mark-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mark-el {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.mark-src {
+  font-family: var(--mono-font, monospace);
 }
 
 /* ---------------- 骨架屏 ---------------- */

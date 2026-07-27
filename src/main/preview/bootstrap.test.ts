@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBootstrapHtml } from './bootstrap'
+import { buildBootstrapHtml, injectHtmlRuntime } from './bootstrap'
 import { libSetupSource } from './lib-setup'
 
 /**
@@ -55,5 +55,22 @@ describe('buildBootstrapHtml 组件库装配', () => {
   it('版本锁死,不出现 latest', () => {
     const out = buildBootstrapHtml('vue3', undefined, ['antdv-next', '@antdv-next/icons'])
     expect(out).not.toContain('@latest')
+  })
+})
+
+/**
+ * 标注运行时是**三种栈共用**的基建:少注入一种栈,那个栈的用户点「标注」
+ * 就是毫无反应——没有报错,只是没反应,回归时极难归因。
+ */
+describe('标注运行时注入', () => {
+  it.each(['vue3', 'react'] as const)('%s 引导页带标注运行时', (stack) => {
+    const out = buildBootstrapHtml(stack)
+    expect(out).toContain("__previewCmd === 'annotate'")
+    expect(out).toContain('annotate:pick')
+  })
+
+  it('html 栈直出用户文件时同样注入', () => {
+    const out = injectHtmlRuntime('<html><head></head><body>x</body></html>')
+    expect(out).toContain("__previewCmd === 'annotate'")
   })
 })

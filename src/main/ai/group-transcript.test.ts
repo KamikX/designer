@@ -88,8 +88,32 @@ describe('未超预算:全量保留', () => {
       contextWindow: 64_000
     })
 
-    expect(out).toContain('上一棒【产品经理】结尾的交接指令')
+    expect(out).toContain('【产品经理】交给你的任务')
     expect(out).toContain('> @架构师 请输出领域模型与部署架构')
+  })
+
+  /**
+   * 并行接力下"记录里的最后一条"未必是交接给我的那位——兄弟分支可能后收棒。
+   * 编排显式带下来的任务必须压过从记录里倒推的那份。
+   */
+  it('编排显式给的任务覆盖从记录里倒推的交接', () => {
+    const messages = [
+      message('user', '@全栈工程师 改 schema。@技术评审员 验证方案'),
+      message(PM.id, longDoc('需求文档', 10, '@架构师 请输出领域模型'))
+    ]
+
+    const out = buildGroupTranscript({
+      messages,
+      excludeId: 'none',
+      selfName: '架构师',
+      members: MEMBERS,
+      contextWindow: 64_000,
+      assignment: { from: '用户', line: '验证方案是否满足需求规格说明书' }
+    })
+
+    expect(out).toContain('【用户】交给你的任务')
+    expect(out).toContain('> 验证方案是否满足需求规格说明书')
+    expect(out).not.toContain('> @架构师 请输出领域模型')
   })
 })
 
