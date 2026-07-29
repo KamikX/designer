@@ -151,8 +151,9 @@ function scrollToBottom(smooth: boolean): void {
     <!-- 空状态:告诉用户这里怎么玩,而不是一片白 -->
     <div v-if="!collab.conversationId" class="collab-empty">
       <div class="collab-empty-inner">
-        <TeamOutlined class="collab-empty-icon" :style="{ color: token.colorPrimary }" />
-        <div class="collab-empty-title">让一组 AI 角色接力干活</div>
+        <!-- 装饰性图标不上品牌色:颜色留给状态和行动,这里只是个标记 -->
+        <TeamOutlined class="collab-empty-icon" :style="{ color: token.colorTextQuaternary }" />
+        <h2 class="collab-empty-title">让一组 AI 角色接力干活</h2>
         <div class="collab-empty-steps" :style="{ color: token.colorTextTertiary }">
           1. 新建一个群组,勾选需要的角色<br />
           2. (可选)授权本地目录,让它们参考你的真实项目<br />
@@ -305,8 +306,7 @@ function scrollToBottom(smooth: boolean): void {
 }
 
 .collab-empty-title {
-  font-size: 20px;
-  font-weight: 600;
+  margin: 0;
   margin: 14px 0 10px;
 }
 

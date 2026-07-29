@@ -60,15 +60,14 @@ function toggleTarget(value: DesignTarget): void {
   else form.targets.push(value)
 }
 
-const STACK_OPTIONS: { value: Stack; label: string; color: string; hint: string }[] = [
+const STACK_OPTIONS: { value: Stack; label: string; hint: string }[] = [
   {
     value: 'html',
     label: 'HTML',
-    color: '#e8662c',
     hint: '自包含页面,预览最稳,适合视觉稿与营销页'
   },
-  { value: 'vue3', label: 'Vue 3', color: '#31a06e', hint: 'SFC 组件形态,适合落进 Vue 工程' },
-  { value: 'react', label: 'React', color: '#2f7fd6', hint: 'JSX 组件形态,适合落进 React 工程' }
+  { value: 'vue3', label: 'Vue 3', hint: 'SFC 组件形态,适合落进 Vue 工程' },
+  { value: 'react', label: 'React', hint: 'JSX 组件形态,适合落进 React 工程' }
 ]
 
 const MODE_OPTIONS = [
@@ -129,15 +128,20 @@ async function submit(): Promise<void> {
               :class="{ 'stack-item--active': form.stack === opt.value }"
               :style="
                 form.stack === opt.value
-                  ? { borderColor: opt.color, boxShadow: `0 0 0 1px ${opt.color}` }
+                  ? {
+                      borderColor: token.colorText,
+                      boxShadow: `0 0 0 1px ${token.colorText}`,
+                      background: token.colorFillQuaternary
+                    }
                   : { borderColor: token.colorBorderSecondary }
               "
               @click="form.stack = opt.value"
             >
-              <span class="stack-item-label" :style="{ color: opt.color }">
-                <i class="stack-item-dot" :style="{ background: opt.color }" />
-                {{ opt.label }}
-              </span>
+              <!--
+                不给每个技术栈配一套颜色:那个颜色不表达任何状态,HTML 是橙的、
+                Vue 是绿的纯属装饰。选中与否用描边深浅和底色说,颜色留给状态。
+              -->
+              <span class="stack-item-label">{{ opt.label }}</span>
               <span class="stack-item-hint" :style="{ color: token.colorTextTertiary }">
                 {{ opt.hint }}
               </span>
@@ -268,17 +272,8 @@ async function submit(): Promise<void> {
 }
 
 .stack-item-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   font-weight: 600;
   font-size: 13px;
-}
-
-.stack-item-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 3px;
 }
 
 .stack-item-hint {

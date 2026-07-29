@@ -178,4 +178,20 @@ function onSelect(keys: (string | number)[]): void {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/*
+ * 选中态用中性填充,不用 antd 默认的淡蓝。
+ *
+ * 跟左侧导轨同一个决定:"我正在看这个文件"是位置不是状态,颜色在这一屏
+ * 留给生成中 / 出错 / 已写入。填充深一档 + 墨色提到最强,层级已经足够,
+ * 而且换主题色的时候树不会跟着变一片蓝。
+ */
+.file-tree-view :deep(.ant-tree-node-content-wrapper.ant-tree-node-selected) {
+  background: var(--fill);
+  color: var(--text-strong);
+}
+
+.file-tree-view :deep(.ant-tree-node-content-wrapper:hover) {
+  background: var(--fill-subtle);
+}
 </style>

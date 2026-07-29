@@ -206,7 +206,7 @@ function scrollToBottom(smooth: boolean): void {
     <!-- 起始页:输入框在正中间 -->
     <div v-if="!activeId" class="chat-start">
       <div class="chat-start-inner">
-        <div class="chat-start-title">有什么可以帮你的?</div>
+        <h1 class="chat-start-title">有什么可以帮你的?</h1>
         <div class="chat-start-sub" :style="{ color: token.colorTextTertiary }">
           这是一个干净的对话,没有任何预设。
         </div>
@@ -330,8 +330,7 @@ function scrollToBottom(smooth: boolean): void {
 }
 
 .chat-start-title {
-  font-size: 26px;
-  font-weight: 600;
+  margin: 0;
   text-align: center;
 }
 

@@ -87,8 +87,18 @@ watch(
 const platform = window.electron.process.platform
 export const GLASS_ENABLED = platform === 'darwin' || platform === 'win32'
 
-/** 毛玻璃下各层表面的不透明度：太高就看不出玻璃，太低字会糊 */
-const GLASS_ALPHA = { rail: 0.55, container: 0.72 }
+/**
+ * 毛玻璃下各层表面的不透明度：太高就看不出玻璃，太低字会糊。
+ *
+ * `canvas` 这一层是后补的,补的是一个不小的问题:画布原来直接设成
+ * transparent,于是整块底色就是**系统 vibrancy 的中性冷灰**——tokens.css
+ * 里调了半天的暖纸一次都没被画出来,而且颜色还跟着用户的桌面壁纸变,
+ * 同一个应用在两台机器上是两个色温。
+ *
+ * 铺一层 84% 的暖纸:vibrancy 的深度感还在(边缘和窗后的明暗仍透得上来),
+ * 但色温回到我们自己手里。
+ */
+const GLASS_ALPHA = { canvas: 0.84, rail: 0.62, container: 0.72 }
 
 const alpha = (color: string, a: number): string =>
   `color-mix(in srgb, ${color} ${Math.round(a * 100)}%, transparent)`
@@ -152,7 +162,21 @@ const buildTheme = (dark: boolean, primaryColor: string): ThemeConfig => ({
     // 组件级微调:让卡片默认扁平,阴影留给悬停和浮层
     Card: { boxShadowTertiary: 'none' },
     Button: { primaryShadow: 'none', defaultShadow: 'none' },
-    Segmented: { itemSelectedBg: 'var(--bg-elevated)' }
+    Segmented: { itemSelectedBg: 'var(--bg-elevated)' },
+    /*
+     * 侧栏选中态**不用品牌色**。
+     *
+     * 默认是"浅蓝底 + 蓝图标",于是一整片中性灰里唯一的高饱和色用来说
+     * "你在哪一页"——那不是状态,是层级,层级该由填充深浅和字重来说。
+     * 颜色留给真正的状态(生成中、出错、主行动按钮)。
+     */
+    Menu: {
+      itemSelectedBg: 'var(--fill)',
+      itemSelectedColor: 'var(--text-strong)',
+      itemHoverBg: 'var(--fill-subtle)',
+      itemColor: 'var(--text-muted)',
+      itemHoverColor: 'var(--text)'
+    }
   }
 })
 
@@ -163,15 +187,28 @@ watchEffect(() => {
   const token = theme.getDesignToken(buildTheme(dark, primaryColor))
   const root = document.documentElement
 
-  // 开了毛玻璃时页面底色必须透明，任何不透明背景都会把 vibrancy 整个盖掉
-  root.style.setProperty('--app-bg', GLASS_ENABLED ? 'transparent' : token.colorBgLayout)
+  /*
+   * 画布与导轨的底色**取自 tokens.css,不用 antd 派生的那份**。
+   *
+   * 实测:把 colorBgBase 设成暖纸 #faf9f7 之后,算法派生出来的 colorBgLayout
+   * 是 #efeeee——R239 G238 B238,几乎纯中性。"seed 设暖整条色阶跟着暖"这个
+   * 假设在**最大的那块面积**上不成立,于是整个应用看着发灰发冷,而 tokens.css
+   * 里调好的暖纸从来没被画出来过。
+   *
+   * 毛玻璃下不能上不透明底色(会把 vibrancy 整个盖掉),所以铺一层高不透明度的
+   * 暖纸:色温归我们,深度感归 vibrancy。var() 会自己跟着 .dark 翻转。
+   */
+  root.style.setProperty(
+    '--app-bg',
+    GLASS_ENABLED ? alpha('var(--bg)', GLASS_ALPHA.canvas) : 'var(--bg)'
+  )
   root.style.setProperty(
     '--app-rail-bg',
     GLASS_ENABLED
-      ? alpha(dark ? token.colorBgElevated : '#ffffff', GLASS_ALPHA.rail)
-      : dark
-        ? token.colorBgElevated
-        : token.colorFillQuaternary
+      ? // 抬起来的暖白面,不是纯白:纯白在暖底上是一块冷斑,
+        // 而这条导轨占着整个左边缘,它偏冷整个应用就偏冷
+        alpha('var(--bg-panel)', GLASS_ALPHA.rail)
+      : 'var(--bg-panel)'
   )
   root.style.setProperty('--app-text', token.colorText)
   root.style.setProperty('--app-primary', token.colorPrimary)

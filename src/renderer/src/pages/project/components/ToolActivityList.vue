@@ -124,8 +124,10 @@ function perfNote(item: ToolActivity): string {
 </template>
 
 <style scoped>
+/* 字号跟着 MessageItem 那三档走:活动条整体是"次要"(12),
+   右边的执行摘要再退一档到"附注"(11) */
 .activity {
-  margin: 6px 0;
+  margin: 8px 0;
   font-size: 12px;
 }
 
@@ -141,9 +143,10 @@ function perfNote(item: ToolActivity): string {
   color: inherit;
 }
 
+/* 9px 已经小到看不清是个箭头了;10px 是这一屏的最小档 */
 .activity-caret {
-  font-size: 9px;
-  opacity: 0.6;
+  font-size: 10px;
+  opacity: 0.55;
 }
 
 .activity-summary {
@@ -153,10 +156,12 @@ function perfNote(item: ToolActivity): string {
   max-width: 260px;
 }
 
+/* 竖线和 MessageItem 里思考流的引用线取同一个值:同一个气泡里出现两条
+   粗细不同的竖线,读起来像是两种不同的结构 */
 .activity-body {
   margin-top: 4px;
   padding-left: 4px;
-  border-left: 1px solid var(--app-border);
+  border-left: 1px solid var(--border);
 }
 
 .activity-row {

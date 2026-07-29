@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
-import { AppstoreAddOutlined } from '@antdv-next/icons'
+import { AppstoreAddOutlined, FileTextOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { useProjectStore } from '@renderer/stores/project'
 import FileTree from './FileTree.vue'
@@ -90,8 +90,10 @@ async function toggleLib(value: PreviewLib): Promise<void> {
 </script>
 
 <template>
-  <div class="workspace" :style="{ background: token.colorBgContainer, borderRadius: '8px' }">
-    <div class="workspace-header">
+  <div class="workspace" :style="{ background: token.colorBgContainer }">
+    <!-- hairline-b 是 base.css 的半像素发丝线:给这条工具栏一个下边界,
+         否则 segmented 像浮在代码/预览区上面,两块内容之间没有交代 -->
+    <div class="workspace-header hairline-b">
       <a-segmented
         v-model:value="activeTab"
         size="small"
@@ -118,24 +120,27 @@ async function toggleLib(value: PreviewLib): Promise<void> {
         <a-tooltip title="依赖包">
           <button class="libs-btn" :style="{ color: token.colorTextSecondary }" type="button">
             <AppstoreAddOutlined />
-            <span
-              v-if="libDraft.length"
-              class="libs-badge"
-              :style="{ background: token.colorPrimary }"
-            >
-              {{ libDraft.length }}
-            </span>
+            <span v-if="libDraft.length" class="libs-badge tabular">{{ libDraft.length }}</span>
           </button>
         </a-tooltip>
       </a-popover>
     </div>
 
     <div class="workspace-body">
-      <a-empty
-        v-if="empty"
-        description="生成设计稿后,这里会出现文件树与预览"
-        style="margin-top: 120px"
-      />
+      <!-- 和对话侧、首页同一副空态骨架(淡图标 + 真 h3 + 13px 说明)。
+           a-empty 自带的那张灰色插画在三种空态里各画一次,谁都不像这个应用 -->
+      <div v-if="empty" class="workspace-empty">
+        <div class="workspace-empty-inner">
+          <FileTextOutlined
+            class="workspace-empty-icon"
+            :style="{ color: token.colorTextQuaternary }"
+          />
+          <h3 class="workspace-empty-title">还没有设计稿</h3>
+          <div class="workspace-empty-sub" :style="{ color: token.colorTextTertiary }">
+            在左边描述你要的页面,生成后这里会出现文件树与实时预览
+          </div>
+        </div>
+      </div>
 
       <template v-else-if="activeTab === 'code'">
         <a-splitter
@@ -169,16 +174,23 @@ async function toggleLib(value: PreviewLib): Promise<void> {
   height: 100%;
   min-height: 0;
   padding: 0 12px 12px;
+  border-radius: var(--radius);
 }
 
+/*
+ * 负外边距把工具栏撑回卡片的左右边缘,再自己补回 12px 内边距。
+ * 不这么做的话下面那条发丝线是"缩进的",两头各悬空 12px——分隔线一旦
+ * 短于它分隔的内容,就不像结构而像一处装饰。
+ */
 .workspace-header {
   flex-shrink: 0;
   gap: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin: 0 -12px;
   /* 原来的高度由 tabs 的内边距撑出来;换成紧凑的 segmented 后自己补 */
-  padding: 8px 8px 4px;
+  padding: 8px 12px;
 }
 
 .libs-btn {
@@ -193,14 +205,20 @@ async function toggleLib(value: PreviewLib): Promise<void> {
   border-radius: 6px;
 }
 
+/* 和输入框工具条上的计数徽标同一条规矩:数量走中性填充,主色只留给
+   "开着的模式"。之前这颗蓝点是整个右侧面板里最亮的像素,而它说的是
+   "装了 2 个依赖包" */
 .libs-badge {
   position: absolute;
   top: -2px;
   right: -4px;
   min-width: 14px;
   height: 14px;
-  border-radius: 7px;
-  color: #fff;
+  border-radius: var(--radius-pill);
+  /* 实心的中性灰配面板色的字:没有主色也一眼是个"计数芯片",
+     用半透明填充的话圆形边界看不出来,数字像是浮在图标旁边 */
+  background: var(--text-soft);
+  color: var(--bg-panel);
   font-size: 10px;
   line-height: 14px;
   text-align: center;
@@ -236,7 +254,37 @@ async function toggleLib(value: PreviewLib): Promise<void> {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  padding-top: 10px;
+  padding-top: 12px;
+}
+
+.workspace-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspace-empty-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  max-width: 320px;
+}
+
+.workspace-empty-icon {
+  font-size: 28px;
+}
+
+/* 排印来自 base.css 的 h3;比对话侧的 h2 低一级——那边是这一屏的主入口 */
+.workspace-empty-title {
+  margin: 0;
+}
+
+.workspace-empty-sub {
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 /*

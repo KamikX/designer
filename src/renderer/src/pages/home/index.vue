@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { App, theme } from 'antdv-next'
-import { DeleteOutlined, LoadingOutlined, PlusOutlined } from '@antdv-next/icons'
+import { AppstoreOutlined, DeleteOutlined, LoadingOutlined, PlusOutlined } from '@antdv-next/icons'
 import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '@renderer/stores/project'
@@ -19,24 +19,15 @@ store.load()
 
 const createOpen = ref(false)
 
-/** 每个技术栈一套主题色,卡片顶部的渐变条与徽标共用 */
-const STACK_META: Record<Stack, { label: string; color: string; gradient: string }> = {
-  html: {
-    label: 'HTML',
-    color: '#e8662c',
-    gradient: 'linear-gradient(135deg, #ff8a4c33, #ffb45c14)'
-  },
-  vue3: {
-    label: 'Vue 3',
-    color: '#31a06e',
-    gradient: 'linear-gradient(135deg, #42d39222, #35b98014)'
-  },
-  react: {
-    label: 'React',
-    color: '#2f7fd6',
-    gradient: 'linear-gradient(135deg, #58c3ff2b, #3a8fd914)'
-  }
-}
+/*
+ * 技术栈只留一个标签,没有配色。
+ *
+ * 原来每个栈配一套主题色 + 一条顶部渐变条,而 craft-anti-slop 把"圆角卡片配
+ * 彩色竖条"和"双色渐变"直接列为模板感的来源。更关键的是那个颜色**不表达
+ * 任何状态**——HTML 是橙的、Vue 是绿的,只是装饰。颜色留给真正的状态
+ * (生成中、出错),技术栈用小号定宽字说清楚就够了。
+ */
+const STACK_LABEL: Record<Stack, string> = { html: 'HTML', vue3: 'Vue 3', react: 'React' }
 
 const MODE_LABEL: Record<string, string> = { design: 'UI 设计', prototype: '原型' }
 
@@ -69,75 +60,91 @@ function fromNow(time: string): string {
 
 <template>
   <div class="home">
-    <div class="home-head">
-      <div>
-        <div class="home-title">项目</div>
-        <div class="home-sub">从一句需求开始,让 AI 帮你产出可交付的设计稿</div>
+    <!--
+      空态整页居中,而不是"标题在左上 + 一张孤零零的虚线卡片"。
+      一屏一千多像素的宽度只用掉左上角 250px,看着像没做完;而且第一次打开
+      应用的人最需要的是"这东西怎么用",不是一个加号。
+    -->
+    <div v-if="store.loaded && store.projects.length === 0" class="home-empty">
+      <div class="home-empty-inner">
+        <AppstoreOutlined class="home-empty-icon" :style="{ color: token.colorTextQuaternary }" />
+        <h2 class="home-empty-title">新建第一个项目</h2>
+        <div class="home-empty-steps" :style="{ color: token.colorTextTertiary }">
+          <div>1. 选技术栈与要做的端,给一句项目背景</div>
+          <div>2. 用自然语言说要什么——AI 产出可运行的设计稿</div>
+          <div>3. 右侧实时预览,满意了导出</div>
+        </div>
+        <a-button type="primary" @click="createOpen = true">
+          <template #icon><PlusOutlined /></template>
+          新建项目
+        </a-button>
       </div>
     </div>
 
-    <div class="project-grid">
-      <!-- 新建卡片 -->
-      <button
-        class="project-card project-card--new"
-        :style="{ borderColor: token.colorBorderSecondary, color: token.colorTextSecondary }"
-        @click="createOpen = true"
-      >
-        <span
-          class="new-plus"
-          :style="{ background: token.colorPrimaryBg, color: token.colorPrimary }"
-        >
-          <PlusOutlined />
-        </span>
-        <span style="font-size: 13px">新建项目</span>
-      </button>
-
-      <!-- 项目卡片 -->
-      <div
-        v-for="p in store.projects"
-        :key="p.id"
-        class="project-card"
-        :style="{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }"
-        @click="openProject(p.id)"
-      >
-        <div class="card-banner" :style="{ background: STACK_META[p.stack].gradient }">
-          <span class="card-stack" :style="{ color: STACK_META[p.stack].color }">
-            <i class="card-stack-dot" :style="{ background: STACK_META[p.stack].color }" />
-            {{ STACK_META[p.stack].label }}
-          </span>
-          <span
-            v-if="busyProjects.has(p.id)"
-            class="card-busy"
-            :style="{ color: token.colorPrimary }"
-          >
-            <LoadingOutlined spin /> 生成中
-          </span>
-          <span v-else class="card-mode" :style="{ color: token.colorTextTertiary }">
-            {{ MODE_LABEL[p.designMode] }}
-          </span>
-        </div>
-
-        <div class="card-body">
-          <div class="card-name">{{ p.name }}</div>
-          <div class="card-desc" :style="{ color: token.colorTextTertiary }">
-            {{ p.description || '暂无描述' }}
+    <template v-else>
+      <div class="home-head">
+        <div>
+          <h1 class="home-title">项目</h1>
+          <div class="home-sub" :style="{ color: token.colorTextTertiary }">
+            从一句需求开始,让 AI 帮你产出可交付的设计稿
           </div>
         </div>
+      </div>
 
-        <div class="card-foot" :style="{ borderColor: token.colorBorderSecondary }">
-          <span :style="{ color: token.colorTextQuaternary, fontSize: '12px' }">
-            {{ fromNow(p.updatedAt) }}
+      <div class="project-grid">
+        <!-- 新建卡片。加号块不上品牌色:它是入口,不是状态 -->
+        <button
+          class="project-card project-card--new"
+          :style="{ borderColor: token.colorBorderSecondary, color: token.colorTextSecondary }"
+          @click="createOpen = true"
+        >
+          <span class="new-plus" :style="{ background: token.colorFillQuaternary }">
+            <PlusOutlined />
           </span>
-          <button
-            class="card-delete"
-            :style="{ color: token.colorTextQuaternary }"
-            @click.stop="confirmRemove(p)"
-          >
-            <DeleteOutlined />
-          </button>
+          <span style="font-size: 13px">新建项目</span>
+        </button>
+
+        <!-- 项目卡片 -->
+        <div
+          v-for="p in store.projects"
+          :key="p.id"
+          class="project-card"
+          :style="{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }"
+          @click="openProject(p.id)"
+        >
+          <div class="card-body">
+            <div class="card-name">{{ p.name }}</div>
+            <div class="card-desc" :style="{ color: token.colorTextTertiary }">
+              {{ p.description || '暂无描述' }}
+            </div>
+          </div>
+
+          <div class="card-foot" :style="{ borderColor: token.colorBorderSecondary }">
+            <!-- 技术栈与模式:定宽小字,中性色。它们是标注,不是强调 -->
+            <span class="card-meta" :style="{ color: token.colorTextQuaternary }">
+              {{ STACK_LABEL[p.stack] }} · {{ MODE_LABEL[p.designMode] }} ·
+              {{ fromNow(p.updatedAt) }}
+            </span>
+            <!-- 唯一上色的地方:真正的状态 -->
+            <span
+              v-if="busyProjects.has(p.id)"
+              class="card-busy"
+              :style="{ color: token.colorPrimary }"
+            >
+              <LoadingOutlined spin /> 生成中
+            </span>
+            <button
+              v-else
+              class="card-delete"
+              :style="{ color: token.colorTextQuaternary }"
+              @click.stop="confirmRemove(p)"
+            >
+              <DeleteOutlined />
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <CreateProjectModal v-model:open="createOpen" @created="openProject" />
   </div>
@@ -147,6 +154,13 @@ function fromNow(time: string): string {
 /* 页面自己的边距。以前靠 layout-content__inner 统一给,现在各页面自理 */
 .home {
   padding: 0 var(--page-pad) var(--page-pad);
+  /*
+   * min-height 而不是 height:空态要靠 flex 撑满才能垂直居中,而项目多起来
+   * 之后网格得能自然长高、交给外层滚动——height:100% 会把它钉死在一屏内。
+   */
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .home-head {
@@ -154,15 +168,49 @@ function fromNow(time: string): string {
 }
 
 .home-title {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  /* 字号/字重/衬线/字距全部来自 base.css 的 h1——那套排印在这里才第一次真正生效 */
+  margin: 0;
 }
 
 .home-sub {
   margin-top: 4px;
   font-size: 13px;
-  opacity: 0.55;
+}
+
+/* ---------------- 空态:整页居中 ---------------- */
+
+.home-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-empty-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.home-empty-icon {
+  font-size: 28px;
+}
+
+.home-empty-title {
+  margin: 0;
+}
+
+.home-empty-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  /* 步骤左对齐:居中的编号列表读起来每行都要重新找起点 */
+  text-align: left;
+  margin-bottom: 6px;
 }
 
 .project-grid {
@@ -183,15 +231,18 @@ function fromNow(time: string): string {
     transform 0.18s ease,
     box-shadow 0.18s ease,
     border-color 0.18s ease;
-  min-height: 168px;
+  min-height: 132px;
   text-align: left;
   padding: 0;
 }
 
+/*
+ * hover 只加深描边,不位移也不上品牌色。
+ * 卡片整体上浮是最容易辨认的模板手法之一,而"能点"这件事描边已经说清楚了。
+ */
 .project-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--ant-color-primary) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--shadow-sm);
 }
 
 /* 新建卡片:虚线空位 */
@@ -209,28 +260,22 @@ function fromNow(time: string): string {
 }
 
 .new-plus {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
 }
 
-.card-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-}
-
-.card-stack {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 600;
+/* 定宽:技术栈/时间这类标注在卡片之间要对得齐 */
+.card-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-busy {
@@ -240,20 +285,9 @@ function fromNow(time: string): string {
   font-size: 12px;
 }
 
-.card-stack-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 3px;
-  display: inline-block;
-}
-
-.card-mode {
-  font-size: 12px;
-}
-
 .card-body {
   flex: 1;
-  padding: 10px 14px 8px;
+  padding: 14px 14px 10px;
   min-height: 0;
 }
 

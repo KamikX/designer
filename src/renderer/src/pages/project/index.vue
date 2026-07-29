@@ -43,10 +43,15 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
       <a-button type="text" size="small" @click="router.push('/')">
         <template #icon><ArrowLeftOutlined /></template>
       </a-button>
-      <span style="font-weight: 600">{{ store.current?.name }}</span>
-      <a-tag v-if="store.current" style="margin-left: 4px">
+      <!-- 项目名是这一页的标题,写成真 h2 才吃得到 base.css 的衬线排印。
+           不用 h1:h1 是首页那种独占一行的页头,这里是一条工具栏,28px 会
+           把两侧的滚动区各吃掉一截高度 -->
+      <h2 class="workbench-title">{{ store.current?.name }}</h2>
+      <!-- 技术栈是元数据不是标签:和首页项目卡一样降成一行等宽小字,
+           a-tag 的描边框会让它读起来像一个可点的筛选器 -->
+      <span v-if="store.current" class="workbench-stack">
         {{ STACK_LABEL[store.current.stack] }}
-      </a-tag>
+      </span>
       <!-- 顶到最右:导出与项目设置都是项目级动作,和标题同级 -->
       <ExportButton v-if="store.current" style="margin-left: auto" />
       <ProjectSettingsButton v-if="store.current" :project="store.current" />
@@ -81,7 +86,23 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
 
 .workbench-header {
   flex-shrink: 0;
-  padding-bottom: 8px;
+  padding-bottom: 10px;
+}
+
+.workbench-title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-stack {
+  flex-shrink: 0;
+  font-size: 12px;
+  /* 比标题退两级:它是"这是什么栈"的注脚,不参与标题那一层 */
+  color: var(--text-soft);
+  letter-spacing: 0.01em;
 }
 
 /*

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { theme } from 'antdv-next'
+import { MessageOutlined } from '@antdv-next/icons'
 import { useChatStore } from '@renderer/stores/chat'
 import { useProviderStore } from '@renderer/stores/provider'
 import MessageItem from './MessageItem.vue'
@@ -11,6 +13,7 @@ const props = defineProps<{ project: Project }>()
 /** 对话面板:消息流(自动贴底)+ 一体化输入框。 */
 
 const router = useRouter()
+const { token } = theme.useToken()
 const chatStore = useChatStore()
 const providerStore = useProviderStore()
 
@@ -60,13 +63,21 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
         </template>
       </a-alert>
 
+      <!--
+        空态和首页那个"新建第一个项目"用同一副骨架:淡到几乎不见的线性图标
+        + 真 h2(衬线由 base.css 给)+ 一句 13px 的说明。
+        原来那块蓝紫渐变方块里放一个 ✦,渐变和装饰性字符都是模板感的来源,
+        而且它什么都没说明。
+      -->
       <div v-if="chatStore.messages.length === 0 && !noModel" class="chat-empty">
-        <div class="chat-empty-icon">✦</div>
-        <div class="chat-empty-title">开始你的设计</div>
-        <div class="chat-empty-sub">
-          描述页面、风格、内容,AI 会生成可预览的多文件设计稿;
-          <br />
-          后续可以继续对话逐步调整
+        <div class="chat-empty-inner">
+          <MessageOutlined class="chat-empty-icon" :style="{ color: token.colorTextQuaternary }" />
+          <h2 class="chat-empty-title">开始你的设计</h2>
+          <div class="chat-empty-sub" :style="{ color: token.colorTextTertiary }">
+            描述页面、风格、内容,AI 会生成可预览的多文件设计稿;
+            <br />
+            后续可以继续对话逐步调整
+          </div>
         </div>
       </div>
 
@@ -105,34 +116,35 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
   padding: 4px 4px 8px 0;
 }
 
+/* 撑满剩余高度再居中,不用固定的 margin-top:面板高度随窗口和输入框行数变,
+   写死 96px 在矮窗口上会顶到底、在高窗口上又贴在上沿 */
 .chat-empty {
-  margin-top: 96px;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-empty-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   text-align: center;
 }
 
 .chat-empty-icon {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 14px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  color: #fff;
-  background: linear-gradient(135deg, #6a8dff, #9b6aff);
+  font-size: 28px;
 }
 
+/* 字号/字重/衬线全部来自 base.css 的 h2,这里只清掉浏览器默认外边距 */
 .chat-empty-title {
-  font-size: 15px;
-  font-weight: 600;
+  margin: 0;
 }
 
 .chat-empty-sub {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.8;
-  opacity: 0.55;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .chat-composer {

@@ -1,0 +1,172 @@
+// @vitest-environment happy-dom
+
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import type { Artifact, ArtifactFile, ChatStreamEvent, DesignerApi } from '@shared/types'
+import { useArtifactStore } from './artifact'
+
+/**
+ * 这条边以前没人测:chat.test.ts 明写"只测活动相位,不把画布拖下水",
+ * 而 artifact store 根本没有测试文件。于是**跨项目串代码**这个 bug
+ * 一路活到了用户手上——A 项目的文件树里挂着 B 项目的文件、一直转圈,
+ * 点开就是后台管理的代码。
+ *
+ * 这里钉的都是"错了就串项目"的不变量,不是覆盖率。
+ */
+
+function artifact(id: string, version: number): Artifact {
+  return {
+    id,
+    projectId: 'p',
+    messageId: null,
+    version,
+    baseArtifactId: null,
+    summary: '',
+    createdAt: '2026-07-27T00:00:00.000Z'
+  }
+}
+
+function file(path: string, content: string): ArtifactFile {
+  return { path, content }
+}
+
+/** 手动控制 resolve 时机,用来构造"晚到的回复" */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => (resolve = r))
+  return { promise, resolve }
+}
+
+const list = vi.fn<(projectId: string) => Promise<Artifact[]>>()
+const files = vi.fn<(artifactId: string) => Promise<ArtifactFile[]>>()
+
+beforeEach(() => {
+  list.mockReset()
+  files.mockReset()
+  Object.defineProperty(window, 'api', {
+    configurable: true,
+    value: { artifact: { list, files } } as unknown as DesignerApi
+  })
+  setActivePinia(createPinia())
+})
+
+function fileStart(path: string): ChatStreamEvent {
+  return { streamId: 's', type: 'file-start', path }
+}
+
+describe('画布归属', () => {
+  it('别的项目的流事件一律不画进来', () => {
+    const store = useArtifactStore()
+    store.projectId = 'A'
+    store.selectedPath = 'App.vue'
+
+    store.applyStreamEvent(fileStart('admin/Dashboard.vue'), 'B')
+
+    expect(store.pending).toEqual([])
+    // selectedPath 会跟着正在生成的文件走,串进来的话代码视图当场跳到别人的文件
+    expect(store.selectedPath).toBe('App.vue')
+  })
+
+  it('纯聊天的流(没有项目)同样不碰画布', () => {
+    const store = useArtifactStore()
+    store.projectId = 'A'
+
+    store.applyStreamEvent(fileStart('x.vue'), undefined)
+
+    expect(store.pending).toEqual([])
+  })
+
+  it('本项目的流照常画', () => {
+    const store = useArtifactStore()
+    store.projectId = 'A'
+
+    store.applyStreamEvent(fileStart('App.vue'), 'A')
+
+    expect(store.pending).toEqual([{ path: 'App.vue', content: '', done: false }])
+    expect(store.selectedPath).toBe('App.vue')
+  })
+})
+
+describe('afterNewVersion', () => {
+  it('不在本项目版本列表里的 artifactId 绝不 select', async () => {
+    const store = useArtifactStore()
+    store.projectId = 'A'
+    store.files = [file('App.vue', '本项目的内容')]
+    list.mockResolvedValue([artifact('a1', 1)])
+
+    await store.afterNewVersion('别的项目的版本')
+
+    // 一次都不该去拉那个版本的文件——拉了就等于把别的项目整份显示出来
+    expect(files).not.toHaveBeenCalled()
+    expect(store.files).toEqual([file('App.vue', '本项目的内容')])
+  })
+
+  it('是本项目的版本就正常切过去', async () => {
+    const store = useArtifactStore()
+    store.projectId = 'A'
+    list.mockResolvedValue([artifact('a2', 2)])
+    files.mockResolvedValue([file('App.vue', '新版本')])
+
+    await store.afterNewVersion('a2')
+
+    expect(store.currentId).toBe('a2')
+    expect(store.files).toEqual([file('App.vue', '新版本')])
+    expect(store.pending).toEqual([])
+  })
+})
+
+describe('切项目', () => {
+  it('同步阶段就清空视图真值,不让上一个项目的树多显示一帧', () => {
+    const store = useArtifactStore()
+    store.projectId = 'A'
+    store.artifacts = [artifact('a1', 1)]
+    store.currentId = 'a1'
+    store.files = [file('App.vue', 'A 的内容')]
+    store.selectedPath = 'App.vue'
+    list.mockReturnValue(new Promise(() => {}))
+
+    void store.loadForProject('B')
+
+    expect(store.files).toEqual([])
+    expect(store.currentId).toBe('')
+    expect(store.selectedPath).toBe('')
+    expect(store.artifacts).toEqual([])
+  })
+
+  it('晚到的回复不许翻案:A 的数据在切到 B 之后才回来', async () => {
+    const store = useArtifactStore()
+    const slowA = deferred<Artifact[]>()
+    const fastB = deferred<Artifact[]>()
+    list.mockImplementation((projectId) => (projectId === 'A' ? slowA.promise : fastB.promise))
+    files.mockResolvedValue([file('B.vue', 'B 的内容')])
+
+    const loadA = store.loadForProject('A')
+    const loadB = store.loadForProject('B')
+
+    fastB.resolve([artifact('b1', 1)])
+    await loadB
+    // A 的列表现在才回来
+    slowA.resolve([artifact('a1', 1)])
+    await loadA
+
+    expect(store.projectId).toBe('B')
+    expect(store.artifacts.map((a) => a.id)).toEqual(['b1'])
+    expect(store.files).toEqual([file('B.vue', 'B 的内容')])
+  })
+
+  it('新项目还没有任何版本时,旧项目晚到的文件也不许落进来', async () => {
+    const store = useArtifactStore()
+    const slowFiles = deferred<ArtifactFile[]>()
+    list.mockImplementation(async (projectId) => (projectId === 'A' ? [artifact('a1', 1)] : []))
+    files.mockReturnValue(slowFiles.promise)
+
+    const loadA = store.loadForProject('A')
+    // A 的 files 还挂着,直接切到没有版本的 B(走的是 select('') 同步分支)
+    await store.loadForProject('B')
+    slowFiles.resolve([file('A.vue', 'A 的内容')])
+    await loadA
+
+    expect(store.currentId).toBe('')
+    expect(store.files).toEqual([])
+  })
+})

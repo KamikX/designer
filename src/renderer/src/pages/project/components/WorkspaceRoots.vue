@@ -116,9 +116,7 @@ function revoke(root: WorkspaceRoot): void {
     <a-tooltip title="本地目录授权">
       <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
         <FolderOpenOutlined />
-        <span v-if="roots.length" class="toolbox-badge" :style="{ background: token.colorPrimary }">
-          {{ roots.length }}
-        </span>
+        <span v-if="roots.length" class="toolbox-badge tabular">{{ roots.length }}</span>
       </button>
     </a-tooltip>
   </a-popover>
@@ -202,11 +200,21 @@ function revoke(root: WorkspaceRoot): void {
   background: rgba(128, 128, 128, 0.12);
 }
 
+/*
+ * 计数徽标走中性填充,不上主色。
+ *
+ * 这一屏的规矩是:**开着的模式**才配主色(联网开关、标注模式),
+ * "勾了几个"只是一个数。四个工具按钮各挂一颗蓝点的时候,整块面板里
+ * 最亮的像素说的是"你授权了 2 个目录",而那是最不需要被看见的一句话。
+ */
 .toolbox-badge {
   min-width: 16px;
   height: 16px;
-  border-radius: 8px;
-  color: #fff;
+  border-radius: var(--radius-pill);
+  /* 实心的中性灰配面板色的字:没有主色也一眼是个"计数芯片",
+     用半透明填充的话圆形边界看不出来,数字像是浮在图标旁边 */
+  background: var(--text-soft);
+  color: var(--bg-panel);
   font-size: 10px;
   line-height: 16px;
   text-align: center;

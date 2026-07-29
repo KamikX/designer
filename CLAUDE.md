@@ -94,6 +94,7 @@ transcript 有上下文预算(`group-transcript.ts`,按成员模型 contextWindo
 ### 渲染层关键约定(src/renderer/)
 
 - `stores/chat.ts`:流状态**按会话隔离**(`streams: Record<conversationId, StreamState>`),每条流带缓冲(parts/activities/reasoning),消息对象与缓冲**共享引用**——切走会话增量进缓冲,切回接上,一个分片不丢。改这里先读 StreamState 的注释。
+- **画布的归属只由 projectId 决定,不由 conversationId**:`artifact.applyStreamEvent(event, ownerProjectId)` 自己判断这条流属不属于当前项目,判断放在数据主人这一侧(调用方漏判也不会串)。历史教训:闸门曾经比 `conversationId`,而画布的项目身份在 `loadForProject` 第一行**同步**就翻了、会话身份要等 `ensureDesign` 一次 IPC 往返才翻——中间那段窗口足够让上一个项目还在跑的流把文件画进新项目的树里,那些 pending 还永远等不到 `file-end`。同理 `afterNewVersion` **绝不 select 不在本项目版本列表里的 artifactId**,`loadForProject` / `select` 的每个 await 后面都要有后置守卫,切项目时 `files/currentId/selectedPath` **同步清空**(只清 pending 会让上一个项目的整棵树多显示几十毫秒)。这几条的回归钉在 `stores/artifact.test.ts`。
 - 勾选语义:`null` = 没选过 = **什么都不加载**(和空数组等效);技能/MCP 勾选按**名字**存(没有 id)。
 - 消息渲染是**链式**的:正文与工具调用按发生顺序交替(`components/message-segments.ts`),不是把工具堆在气泡底部。顺序靠 `ToolActivity.afterChars`(tool-start 时记下正文已写了多少字)恢复——工具活动不落库,没有别的办法知道"先说了什么再调的工具";缺这个字段的(从库里重新加载的老消息)一律排到末尾,退回旧行为。同一位置的并行调用合成一组交给 `ToolActivityList` 折叠。
 - Monaco:复用 `@renderer/monaco/{setup,highlighter}`;`monaco/vfs.ts` 的 model 池是设计稿专用单例,别的功能要用编辑器就自建 model 自管 dispose(参考 `pages/skill-editor/`)。

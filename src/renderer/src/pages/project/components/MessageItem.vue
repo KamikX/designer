@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { theme } from 'antdv-next'
-import {
-  CheckCircleFilled,
-  DeleteOutlined,
-  FileOutlined,
-  LineChartOutlined
-} from '@antdv-next/icons'
+import { CheckOutlined, DeleteOutlined, FileOutlined, LineChartOutlined } from '@antdv-next/icons'
 import { useChatStore } from '@renderer/stores/chat'
 import MarkdownStream from '@renderer/markdown/MarkdownStream.vue'
 import QuestionCard from './QuestionCard.vue'
@@ -79,22 +74,17 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
 
 <template>
   <div class="message" :class="{ 'message--user': isUser }">
-    <!-- AI 头像:渐变小方块,让对话流有呼吸感;用户消息不放头像 -->
-    <div v-if="!isUser" class="message-avatar">✦</div>
-
     <!-- 用户气泡右对齐,复制按钮摆左边;AI 的在气泡内底部(见下) -->
     <span v-if="isUser" class="message-copy">
       <CopyButton :text="textContent" label="复制这条消息" />
     </span>
 
-    <div
-      class="message-bubble"
-      :style="
-        isUser
-          ? { background: token.colorPrimary, color: '#fff' }
-          : { background: token.colorFillQuaternary }
-      "
-    >
+    <!--
+      谁说的话靠**对齐 + 填充深浅**分,不靠色相:用户在右、填充更实,AI 在左、
+      填充几乎透明。之前用户气泡是整块品牌蓝,而"这条是我发的"根本不是一种
+      状态——颜色在这一屏只留给生成中 / 出错 / 已写入。
+    -->
+    <div class="message-bubble" :class="isUser ? 'message-bubble--user' : 'message-bubble--ai'">
       <!-- 参考图缩略图:asset:// 由主进程的协议处理器直出 -->
       <div v-if="imageParts.length" class="message-images">
         <img
@@ -156,18 +146,18 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
         @submit="(value) => answer(q.questionId, value)"
       />
 
-      <!-- 文件产出 chip:正文里只显示引用,内容去右侧文件树看 -->
+      <!--
+        文件产出 chip:正文里只显示引用,内容去右侧文件树看。
+        图标本身是中性的——一个文件不是一种状态;只有"删掉了"和"已写入"
+        才配得上颜色,前者用错误色、后者用成功色的细勾(不是实心圆,那个
+        圆点在一列三四个 chip 上排下来比文件名还抢眼)。
+      -->
       <div v-if="fileParts.length" class="message-files">
-        <span
-          v-for="f in fileParts"
-          :key="f.path + f.action"
-          class="message-file-chip"
-          :style="{ background: token.colorBgContainer, borderColor: token.colorBorderSecondary }"
-        >
-          <DeleteOutlined v-if="f.action === 'delete'" style="color: var(--ant-color-error)" />
-          <FileOutlined v-else :style="{ color: token.colorPrimary }" />
+        <span v-for="f in fileParts" :key="f.path + f.action" class="message-file-chip">
+          <DeleteOutlined v-if="f.action === 'delete'" :style="{ color: token.colorError }" />
+          <FileOutlined v-else :style="{ color: token.colorTextQuaternary }" />
           <span class="message-file-path">{{ f.path }}</span>
-          <CheckCircleFilled
+          <CheckOutlined
             v-if="f.action === 'write' && message.status !== 'streaming'"
             :style="{ color: token.colorSuccess, fontSize: '11px' }"
           />
@@ -223,10 +213,17 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
 </template>
 
 <style scoped>
+/*
+ * 这一屏的字号只有三档,别再冒出第四档:
+ *   正文 13 / 次要 12 / 附注 11。
+ * 之前 14、15、13、12、11 混着用,气泡、活动条、chip 三个区块各自一套阶梯,
+ * 扫下来找不到"哪一层更重要"。
+ */
 .message {
   display: flex;
   gap: 8px;
-  margin-bottom: 14px;
+  /* 8 的倍数。14 是从别处抄来的孤值,和 chip 间距 4、气泡内边距 12 对不上 */
+  margin-bottom: 16px;
 }
 
 .message--user {
@@ -257,32 +254,23 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
   align-self: center;
 }
 
-.message-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 9px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  color: #fff;
-  background: linear-gradient(135deg, #6a8dff, #9b6aff);
-  margin-top: 2px;
-}
-
 .message-bubble {
   max-width: 88%;
-  border-radius: 14px;
-  padding: 9px 13px;
+  /* 圆角取 token 里的 lg;原来的 14px 不在任何一档上,而且配上 4px 的"尖角"
+     就是即时通讯软件那套气泡尾巴——左右对齐已经说明了谁在说话 */
+  border-radius: var(--radius-lg);
+  padding: 8px 12px;
 }
 
-.message--user .message-bubble {
-  border-bottom-right-radius: 4px;
+/* 用户说的话是"钉在流里的指令",填充更实一档;文字用最强的那级墨色 */
+.message-bubble--user {
+  background: var(--bg-muted);
+  color: var(--text-strong);
 }
 
-.message:not(.message--user) .message-bubble {
-  border-top-left-radius: 4px;
+/* AI 的解说是正文,几乎不该有底——只用一层极浅的填充把它和画布分开 */
+.message-bubble--ai {
+  background: var(--fill-subtle);
 }
 
 .message-text {
@@ -302,13 +290,13 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
 .message-image {
   max-width: 160px;
   max-height: 160px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   object-fit: cover;
-  background: rgba(128, 128, 128, 0.12);
+  background: var(--fill);
 }
 
 .message-reasoning {
-  margin: 4px 0;
+  margin: 6px 0;
 }
 
 .message-reasoning-head {
@@ -323,12 +311,14 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
 .message-reasoning-body {
   margin-top: 4px;
   padding-left: 8px;
-  border-left: 1px solid var(--app-border);
+  /* 引用竖线退成发丝级:它只是"这段是引来的"的标记,不该和正文抢边界 */
+  border-left: 1px solid var(--border);
   font-size: 12px;
   line-height: 1.7;
   white-space: pre-wrap;
   max-height: 220px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .message-files {
@@ -342,16 +332,18 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 4px 10px;
+  /* 抬起来的暖面 + 冷描边,和 tokens.css 里的表面语言一致 */
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 3px 9px;
   font-size: 12px;
   width: fit-content;
   max-width: 100%;
 }
 
 .message-file-path {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

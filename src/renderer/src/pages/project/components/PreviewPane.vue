@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { theme } from 'antdv-next'
-import { HighlightOutlined, ReloadOutlined } from '@antdv-next/icons'
+import { EyeOutlined, HighlightOutlined, ReloadOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { MAX_MARKS, useAnnotationStore } from '@renderer/stores/annotation'
 import type { MarkTarget } from '@renderer/stores/annotation'
@@ -180,10 +180,7 @@ onBeforeUnmount(() => {
       </template>
     </a-alert>
 
-    <div
-      class="preview-frame"
-      :style="{ borderColor: token.colorBorderSecondary, background: token.colorBgContainer }"
-    >
+    <div class="preview-frame" :style="{ background: token.colorBgContainer }">
       <iframe
         v-if="src"
         :key="`${src}-${reloadKey}`"
@@ -192,7 +189,16 @@ onBeforeUnmount(() => {
         sandbox="allow-scripts allow-same-origin"
         class="preview-iframe"
       />
-      <a-empty v-else description="暂无可预览的版本" style="margin-top: 120px" />
+      <!-- 和工作区、对话侧同一副空态骨架,不用 a-empty 的通用插画 -->
+      <div v-else class="preview-empty">
+        <div class="preview-empty-inner">
+          <EyeOutlined class="preview-empty-icon" :style="{ color: token.colorTextQuaternary }" />
+          <h3 class="preview-empty-title">暂无可预览的版本</h3>
+          <div class="preview-empty-sub" :style="{ color: token.colorTextTertiary }">
+            每次生成都会存成一个版本,选中后在这里跑起来
+          </div>
+        </div>
+      </div>
 
       <!-- 骨架屏盖在 iframe 上,而不是替换它:iframe 得先挂载才能开始加载。
            照着页面的样子摆(顶栏 / 侧栏 / 卡片),比一个居中转圈更能说明
@@ -223,29 +229,38 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
-    </div>
 
-    <div v-if="src" class="preview-actions">
-      <!-- 标注态是一种"模式",按钮要一直亮着提示它开着,不然用户会以为页面点不动了 -->
-      <a-tooltip :title="annotation.enabled ? '退出标注(或按 Esc)' : '标注要改的元素'">
-        <a-button
-          size="small"
-          shape="circle"
-          :type="annotation.enabled ? 'primary' : 'default'"
-          @click="toggleAnnotate"
-        >
-          <template #icon><HighlightOutlined /></template>
-        </a-button>
-      </a-tooltip>
-      <a-tooltip title="刷新预览">
-        <a-button size="small" shape="circle" @click="refresh">
-          <template #icon><ReloadOutlined /></template>
-        </a-button>
-      </a-tooltip>
-    </div>
+      <!--
+        悬浮控件挂在**画框里**,不是挂在整个面板上。
+        挂面板上时它们是按面板顶部定位的,而错误条一出现就顶在面板顶部——
+        两颗圆钮正好压住 alert 的关闭 ×,报错之后就再也关不掉了。
+        放进画框后天然让开错误条,DOM 顺序也让它们压在骨架屏上面(加载中要能点刷新)。
+      -->
+      <div v-if="src" class="preview-actions">
+        <!-- 标注态是一种"模式",按钮要一直亮着提示它开着,不然用户会以为页面点不动了 -->
+        <a-tooltip :title="annotation.enabled ? '退出标注(或按 Esc)' : '标注要改的元素'">
+          <a-button
+            size="small"
+            shape="circle"
+            :type="annotation.enabled ? 'primary' : 'default'"
+            @click="toggleAnnotate"
+          >
+            <template #icon><HighlightOutlined /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip title="刷新预览">
+          <a-button size="small" shape="circle" @click="refresh">
+            <template #icon><ReloadOutlined /></template>
+          </a-button>
+        </a-tooltip>
+      </div>
 
-    <div v-if="annotation.enabled" class="preview-tip" :style="{ background: token.colorPrimary }">
-      点页面上任意元素做标记,写一句想怎么改;标记会随下一条消息给 AI
+      <!-- "标注模式开着"这件事由右上角那颗 primary 按钮表达就够了;
+           说明条只是一句话,再铺一整条品牌蓝就是拿颜色当装饰。
+           这里改成抬起的暖面 + 冷描边 + shadow-md,靠材质浮在设计稿之上 -->
+      <div v-if="annotation.enabled" class="preview-tip">
+        点页面上任意元素做标记,写一句想怎么改;标记会随下一条消息给 AI
+      </div>
     </div>
 
     <a-modal
@@ -259,7 +274,9 @@ onBeforeUnmount(() => {
     >
       <div v-if="picked" class="mark-form">
         <div class="mark-el" :style="{ color: token.colorTextSecondary }">
-          <a-tag color="blue">{{ markLabel(picked) }}</a-tag>
+          <!-- 元素签名是一段代码,读起来该是等宽的;原来的蓝色 tag 只是在
+               "这里有个东西"上又加了一层颜色,并不表示任何状态 -->
+          <code class="mark-sig">{{ markLabel(picked) }}</code>
           <span v-if="picked.source" class="mark-src">{{ picked.source }}</span>
         </div>
         <a-textarea
@@ -275,7 +292,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .preview-pane {
-  position: relative;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -287,11 +303,16 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
 }
 
+/* 报错原文是机器写给机器看的:等宽 + 附注级字号,免得它的换行节奏和
+   上面那句人话("预览运行出错")混成一段 */
 .preview-error-detail {
   margin: 0;
   max-height: 120px;
   overflow: auto;
+  overscroll-behavior: contain;
+  font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 
@@ -303,11 +324,43 @@ onBeforeUnmount(() => {
  * 的 #fff,暗色模式下就是一大块刺眼的白。
  */
 .preview-frame {
+  /* 悬浮的动作钮与标注说明条都按这一层定位 */
+  position: relative;
   flex: 1;
   min-height: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
   overflow: hidden;
+}
+
+/* 空态:整块居中,和 WorkspacePane / ChatPanel 用同一副骨架 */
+.preview-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-empty-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  max-width: 320px;
+}
+
+.preview-empty-icon {
+  font-size: 28px;
+}
+
+.preview-empty-title {
+  margin: 0;
+}
+
+.preview-empty-sub {
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 /*
@@ -340,13 +393,16 @@ onBeforeUnmount(() => {
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%);
-  padding: 5px 12px;
-  border-radius: 999px;
-  color: #fff;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   font-size: 12px;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+  /* 阴影用暖近黑那套,不用 rgb(0 0 0 /20%):后者压在暖纸上会显灰显脏 */
+  box-shadow: var(--shadow-md);
 }
 
 .mark-form {
@@ -358,12 +414,20 @@ onBeforeUnmount(() => {
 .mark-el {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
 }
 
+.mark-sig {
+  background: var(--fill-subtle);
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
 .mark-src {
-  font-family: var(--mono-font, monospace);
+  font-family: var(--font-mono);
 }
 
 /* ---------------- 骨架屏 ---------------- */
@@ -419,7 +483,7 @@ onBeforeUnmount(() => {
  * 界面里最大的一块,闪起来很难忽略。
  */
 .sk {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   /* 色值由外层按主题注入:写死的浅灰在暗色下是三条亮带,比没有骨架屏还显眼 */
   background: linear-gradient(
     90deg,

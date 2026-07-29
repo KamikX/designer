@@ -341,8 +341,18 @@ export const useChatStore = defineStore('chat', {
       if (!entry) return
       const isCurrent = entry.conversationId === this.conversationId
 
-      // 画布(文件树 + 代码视图)只属于当前会话,别的会话的文件事件不转发
-      if (isCurrent) useArtifactStore().applyStreamEvent(event)
+      /*
+       * 画布(文件树 + 代码视图)只属于**这条流所属的项目**,归属判断交给
+       * artifact store 自己做(它才是那份数据的主人)。
+       *
+       * 这里原来比的是 conversationId,那是个会串项目的判断:画布的项目身份
+       * 在 loadForProject 第一行同步就翻了,而会话身份要等 ensureDesign 一次
+       * IPC 往返才翻。中间那段窗口(还要叠上路由切换与 Monaco 挂载的几十毫秒,
+       * 期间流事件在消息队列里排队、恢复后成批投递)足够让**上一个项目**还在跑
+       * 的流把文件画进新项目的树里——而且那些 pending 永远等不到 file-end,
+       * 会一直挂在那儿转圈,点开就是别的项目的代码。
+       */
+      useArtifactStore().applyStreamEvent(event, entry.projectId)
 
       /*
        * 内容增量一律写进流缓冲 entry.parts / entry.activities——它们和当前

@@ -557,13 +557,7 @@ function toggleId(list: string[] | null, id: string): string[] {
           <a-tooltip title="MCP 服务">
             <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
               <ApiOutlined />
-              <span
-                v-if="mcpCount"
-                class="toolbox-badge"
-                :style="{ background: token.colorPrimary }"
-              >
-                {{ mcpCount }}
-              </span>
+              <span v-if="mcpCount" class="toolbox-badge tabular">{{ mcpCount }}</span>
             </button>
           </a-tooltip>
         </a-popover>
@@ -662,13 +656,7 @@ function toggleId(list: string[] | null, id: string): string[] {
           <a-tooltip title="技能">
             <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
               <BulbOutlined />
-              <span
-                v-if="skillCount"
-                class="toolbox-badge"
-                :style="{ background: token.colorPrimary }"
-              >
-                {{ skillCount }}
-              </span>
+              <span v-if="skillCount" class="toolbox-badge tabular">{{ skillCount }}</span>
             </button>
           </a-tooltip>
         </a-popover>
@@ -962,11 +950,21 @@ function toggleId(list: string[] | null, id: string): string[] {
   background: rgba(128, 128, 128, 0.12);
 }
 
+/*
+ * 计数徽标走中性填充,不上主色。
+ *
+ * 这一屏的规矩:**开着的模式**才配主色(旁边的联网开关就是),
+ * "勾了几个"只是一个数。一排工具按钮各挂一颗蓝点的话,输入框里最亮的
+ * 像素说的是"你勾了 3 个技能"——而它是这排东西里最不重要的一句。
+ */
 .toolbox-badge {
   min-width: 16px;
   height: 16px;
-  border-radius: 8px;
-  color: #fff;
+  border-radius: var(--radius-pill);
+  /* 实心的中性灰配面板色的字:没有主色也一眼是个"计数芯片",
+     用半透明填充的话圆形边界看不出来,数字像是浮在图标旁边 */
+  background: var(--text-soft);
+  color: var(--bg-panel);
   font-size: 10px;
   line-height: 16px;
   text-align: center;

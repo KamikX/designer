@@ -55,7 +55,7 @@ const current = computed(() => SECTIONS.find((s) => s.key === active.value)!)
       </div>
 
       <div class="settings-content">
-        <div class="settings-content-title">{{ current.label }}</div>
+        <h2 class="settings-content-title">{{ current.label }}</h2>
         <component :is="current.component" />
       </div>
     </div>
@@ -113,8 +113,6 @@ const current = computed(() => SECTIONS.find((s) => s.key === active.value)!)
 }
 
 .settings-content-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
 }
 </style>

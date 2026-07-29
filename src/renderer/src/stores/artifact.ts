@@ -95,24 +95,58 @@ export const useArtifactStore = defineStore('artifact', {
   },
 
   actions: {
+    /**
+     * 换项目。
+     *
+     * **同步先把视图真值全清掉**,再去拉新的。只清 pending 是不够的:
+     * files / currentId / selectedPath 得等两次 IPC 往返才被换掉,那几十毫秒里
+     * 文件树和代码视图显示的是**上一个项目的整棵树**,预览 iframe 也会先去加载
+     * 上一个项目的 preview://artifact/…。用户看到的"串",有一部分就是这个。
+     */
     async loadForProject(projectId: string): Promise<void> {
       this.projectId = projectId
       this.pending = []
       this.pendingDeletes = []
-      this.artifacts = await window.api.artifact.list(projectId)
-      await this.select(this.artifacts[0]?.id ?? '')
+      this.artifacts = []
+      this.currentId = ''
+      this.files = []
+      this.selectedPath = ''
+
+      const artifacts = await window.api.artifact.list(projectId)
+      // await 期间用户可能又切走了:晚到的回复不许翻案
+      if (this.projectId !== projectId) return
+      this.artifacts = artifacts
+      await this.select(artifacts[0]?.id ?? '')
     },
 
     async select(artifactId: string): Promise<void> {
       this.currentId = artifactId
-      this.files = artifactId ? await window.api.artifact.files(artifactId) : []
-      if (!this.files.some((f) => f.path === this.selectedPath)) {
-        this.selectedPath = this.files[0]?.path ?? ''
+      if (!artifactId) {
+        this.files = []
+        this.selectedPath = ''
+        return
+      }
+      const files = await window.api.artifact.files(artifactId)
+      // 同上。注意空 id 走的是上面的同步分支,它不占 IPC 的先后序位,
+      // 单靠"回复按序到达"兜不住这条
+      if (this.currentId !== artifactId) return
+      this.files = files
+      if (!files.some((f) => f.path === this.selectedPath)) {
+        this.selectedPath = files[0]?.path ?? ''
       }
     },
 
-    /** chat store 转发来的流式事件 */
-    applyStreamEvent(event: ChatStreamEvent): void {
+    /**
+     * chat store 转发来的流式事件。
+     *
+     * @param ownerProjectId 这条流属于哪个项目(纯聊天没有,为 undefined)
+     *
+     * 归属判断放在**数据的主人这一侧**,而不是留给调用方:调用方漏判一次,
+     * 上一个项目还在跑的流就会把文件画进当前项目的树里,而且那些 pending
+     * 永远等不到 file-end——一直挂着转圈,点开是别的项目的代码。
+     */
+    applyStreamEvent(event: ChatStreamEvent, ownerProjectId?: string): void {
+      if (!ownerProjectId || ownerProjectId !== this.projectId) return
       switch (event.type) {
         case 'file-start': {
           const existing = this.pending.find((f) => f.path === event.path)
@@ -178,8 +212,23 @@ export const useArtifactStore = defineStore('artifact', {
       this.pendingDeletes = []
     },
 
+    /**
+     * 新版本落库后刷新版本列表并切过去。
+     *
+     * 那句 `select(artifactId)` 以前是照单全收的:一旦有跨项目的 done 事件漏
+     * 进来,整个代码视图和预览都会变成**别的项目**,而且 currentId 还不在
+     * artifacts 里,这个状态会一直留到下次进出项目。所以这里是最后一道闸——
+     * 不在本项目版本列表里的 id 绝不 select。
+     */
     async afterNewVersion(artifactId: string): Promise<void> {
-      this.artifacts = await window.api.artifact.list(this.projectId)
+      const projectId = this.projectId
+      const artifacts = await window.api.artifact.list(projectId)
+      if (projectId !== this.projectId) return
+      this.artifacts = artifacts
+      if (!artifacts.some((a) => a.id === artifactId)) {
+        this.resetPending()
+        return
+      }
       await this.select(artifactId)
       this.resetPending()
     },
