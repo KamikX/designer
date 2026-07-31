@@ -1,10 +1,18 @@
 {
   "name": "designer",
   "version": "1.0.0",
-  "description": "An Electron application with Vue and TypeScript",
+  "description": "Antdv Next Designer — 用自然语言对话生成多文件设计稿（HTML / Vue 3 / React），实时预览、版本管理、可导出的 AI 设计工作台",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "Antdv Next",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/antdv-next/designer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antdv-next/designer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/antdv-next/designer/issues"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
