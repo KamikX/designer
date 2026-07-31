@@ -1,4 +1,4 @@
-import { APICallError, RetryError } from 'ai'
+import { APICallError, RetryError, streamText } from 'ai'
 import { describe, expect, it } from 'vitest'
 // 经 registry 再导出引入:顺带钉住"搬家后老引用方不用改"这件事
 import { errorMessage, isTransientAiError } from './registry'
@@ -132,6 +132,69 @@ describe('isTransientAiError:重试与否的分界线', () => {
   it('网络类 Error 按特征词识别', () => {
     expect(isTransientAiError(new Error('fetch failed'))).toBe(true)
     expect(isTransientAiError(new TypeError('terminated'))).toBe(true)
+  })
+})
+
+/**
+ * 真实案例:view_image 的图片结果没经 toModelOutput,被 SDK 包成 json 后消息
+ * 非法,用户只看到 "Invalid prompt: The messages do not match the ModelMessage[]
+ * schema." ——完全看不出这是本地拼装错误,一路去查网关和 Base URL。
+ *
+ * 用真的 streamText 造这个错误(而不是手搓一个 InvalidPromptError):要钉住的
+ * 正是 SDK 那条 cause 链的实际形状,手搓等于把被测的东西替换成假设。
+ */
+describe('消息形态非法', () => {
+  async function invalidPromptError(): Promise<unknown> {
+    const model = {
+      specificationVersion: 'v3',
+      provider: 'p',
+      modelId: 'm',
+      supportedUrls: {},
+      doStream: async () => {
+        throw new Error('不该走到这里:消息校验在发请求之前')
+      }
+    }
+    const result = streamText({
+      model: model as never,
+      messages: [
+        { role: 'user', content: 'hi' },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'c',
+              toolName: 'view_image',
+              // SDK 在工具没声明 toModelOutput 时就是这样包的:Buffer 进了 json。
+              // 这份 output 本来就不是合法 JSONValue——要复现的正是这个,所以
+              // 只能断言绕过类型检查,不能改成合法值
+              output: {
+                type: 'json',
+                value: { value: [{ type: 'file', data: { data: Buffer.from([1]) } }] } as never
+              }
+            }
+          ]
+        }
+      ]
+    })
+    for await (const part of result.fullStream) if (part.type === 'error') return part.error
+    throw new Error('没等到 error 分片')
+  }
+
+  it('定性成本地拼装错误,并明说重试无效', async () => {
+    const out = errorMessage(await invalidPromptError())
+    expect(out).toContain('本地拼装消息的错误')
+    expect(out).toContain('重试无效')
+  })
+
+  it('从 cause 链里挖出可疑位置,而不是只透传那句 schema 文案', async () => {
+    const out = errorMessage(await invalidPromptError())
+    expect(out).toContain('可疑位置')
+    expect(out).toContain('output')
+  })
+
+  it('判为永久错误:重试只会重复计费', async () => {
+    expect(isTransientAiError(await invalidPromptError())).toBe(false)
   })
 })
 

@@ -100,6 +100,47 @@ export function classifyError(err: unknown): ToolResult {
   return toolError('TOOL_EXECUTION_FAILED', '工具执行失败,请换一种方式重试。')
 }
 
+/**
+ * 携带图片的工具结果:文字 + 图片块混排。
+ *
+ * 形状和 SDK 的 `ToolResultOutput` 一致,但**只能经 toModelOutput 交出去**,
+ * 见 `contentAwareModelOutput`。
+ */
+export interface ContentToolOutput {
+  type: 'content'
+  value: (
+    | { type: 'text'; text: string }
+    | { type: 'file'; data: { type: 'data'; data: Buffer }; mediaType: string }
+  )[]
+}
+
+/**
+ * 会返回图片的工具**必须**挂这个 toModelOutput。
+ *
+ * SDK 从不去猜 `execute` 的返回值是不是 `ToolResultOutput`:没声明
+ * toModelOutput 时,非字符串返回值一律被原样包成 `{type:'json', value: 原样}`
+ * (见 ai 的 createToolModelOutput),里面的 Buffer 不是合法 JSON 值,于是
+ * 消息过不了 `ModelMessage` 校验。
+ *
+ * 而这个校验**每个 step 都跑一次**(standardizePrompt 在 streamLanguageModelCall
+ * 里,不是只在开头),所以症状是:模型正常说话、正常调工具、工具正常返回,
+ * **下一个 step 一开口就炸**——「Invalid prompt: The messages do not match the
+ * ModelMessage[] schema.」,看起来和图片毫无关系,极难定位。
+ *
+ * 入参写成 `unknown` 是为了不去和 `tool()` 的 OUTPUT 推断打架:标成具体联合类型
+ * 时,execute 推出来的那个结构(带 `data?: undefined` 之类的可选补位)和它对不上,
+ * 整个 tool() 调用会掉到"execute 必须是 undefined"那条重载上。
+ */
+export function contentAwareModelOutput({
+  output
+}: {
+  output: unknown
+}): { type: 'text'; value: string } | ContentToolOutput {
+  return typeof output === 'string'
+    ? { type: 'text', value: output }
+    : (output as ContentToolOutput)
+}
+
 /** 结构化结果 → 给模型的文本。失败保持「错误:」前缀 */
 export function renderToolResult(result: ToolResult): string {
   if (result.ok) return result.message

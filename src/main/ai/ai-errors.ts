@@ -1,4 +1,4 @@
-import { APICallError, RetryError } from 'ai'
+import { APICallError, InvalidPromptError, RetryError } from 'ai'
 
 /**
  * AI 请求错误的统一解读,所有链路(设计/纯聊天/群组/辅助模型)共用:
@@ -41,6 +41,8 @@ function describe(err: unknown): string {
     const hint = status ? STATUS_HINTS[status] : undefined
     return hint ? `${hint}(HTTP ${status}:${detail})` : `HTTP ${status ?? '?'}:${detail}`
   }
+  // 消息形态非法:message 只说"不符合 ModelMessage schema",位置全在 cause 里
+  if (InvalidPromptError.isInstance(err)) return describeInvalidPrompt(err)
   if (err instanceof Error) {
     if (err.name === 'TimeoutError' || err.name === 'AbortError') return '请求超时'
     return err.message
@@ -60,6 +62,53 @@ function describe(err: unknown): string {
     }
   }
   return String(err)
+}
+
+/**
+ * InvalidPromptError:发出去的消息本身形态非法。
+ *
+ * 这类错误的定性很重要——它**不是网关、不是配置、不是上游抽风,重试也没用**,
+ * 是我们自己拼错了消息。原来只透传 `err.message`("...do not match the
+ * ModelMessage[] schema."),用户只能猜 Base URL 写错了。
+ *
+ * 真正的位置在 cause 链里:InvalidPromptError → TypeValidationError → ZodError。
+ * 但那是个几十 KB 的嵌套 union(每条消息都要和 system/user/assistant/tool 四种
+ * 形态各比一遍),整份贴出来等于没说。所以只挑**路径最深**的几条:union 里越深
+ * 的分支就是越接近"本来想匹配的那一种",那才是线索。
+ */
+function describeInvalidPrompt(err: Error): string {
+  const zod = (err.cause as { cause?: { issues?: ZodIssueLike[] } } | undefined)?.cause
+  const leaves = Array.isArray(zod?.issues) ? collectLeaves(zod.issues) : []
+  const deepest = Math.max(0, ...leaves.map((path) => path.length))
+  const clues = [
+    ...new Set(leaves.filter((path) => path.length === deepest).map((path) => path.join('.')))
+  ]
+  const tail = clues.length ? `,可疑位置:${clues.slice(0, 3).join('、')}` : ''
+  return `请求消息形态非法(${err.message})。这是本地拼装消息的错误,与供应商配置和网络无关,重试无效${tail}`
+}
+
+interface ZodIssueLike {
+  path?: (string | number)[]
+  message?: string
+  /** union 的每个候选分支各自一组 issue,path 是相对本层的 */
+  errors?: ZodIssueLike[][]
+}
+
+/** 把嵌套 union 摊平成叶子,顺路把各层相对 path 拼成完整路径 */
+function collectLeaves(
+  issues: ZodIssueLike[],
+  prefix: (string | number)[] = [],
+  out: (string | number)[][] = []
+): (string | number)[][] {
+  for (const issue of issues) {
+    const path = [...prefix, ...(issue.path ?? [])]
+    if (issue.errors) {
+      for (const branch of issue.errors) collectLeaves(branch, path, out)
+    } else if (path.length > 0) {
+      out.push(path)
+    }
+  }
+  return out
 }
 
 /**

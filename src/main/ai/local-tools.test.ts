@@ -104,6 +104,16 @@ describe('抽不出文字的文档,按模型能力分流', () => {
     const tools = buildLocalTools(roots, { canSeeImages: true })
     expect(tools.read_document_images).toBeDefined()
   })
+
+  /*
+   * 两个可能返图的工具都必须挂 toModelOutput,否则那份图会被 SDK 包成 json,
+   * 下一个 step 直接 Invalid prompt(契约本身钉在 tool-result.test.ts)。
+   */
+  it('可能返图的工具都声明了 toModelOutput', () => {
+    const tools = buildLocalTools(roots, { canSeeImages: true })
+    expect(typeof tools.read_local_document.toModelOutput).toBe('function')
+    expect(typeof tools.read_document_images.toModelOutput).toBe('function')
+  })
 })
 
 describe('没有授权时整组工具不注册', () => {

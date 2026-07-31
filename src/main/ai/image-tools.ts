@@ -2,6 +2,7 @@ import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
 import { resolveAsset } from '../storage/service'
+import { contentAwareModelOutput } from './tool-result'
 import { VfsError } from './vfs-error'
 
 /**
@@ -70,7 +71,7 @@ export function buildImageTools(context: ImageToolContext): ToolSet {
           return `错误:参考图 ${hit.name} 的文件已经取不到了(可能是存储配置变了)。`
         }
 
-        // 工具结果可以直接携带图片:AI SDK 会把它转成对应供应商的图片块
+        // 工具结果可以直接携带图片,但要经 toModelOutput 才作数(见下)
         return {
           type: 'content' as const,
           value: [
@@ -82,7 +83,8 @@ export function buildImageTools(context: ImageToolContext): ToolSet {
             }
           ]
         }
-      }
+      },
+      toModelOutput: contentAwareModelOutput
     }),
 
     note_image: tool({

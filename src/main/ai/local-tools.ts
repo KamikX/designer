@@ -14,6 +14,8 @@ import {
 } from '../workspace/doc-images'
 import type { DocImage } from '../workspace/doc-images'
 import { condenseIfLong } from './assistant'
+import { contentAwareModelOutput } from './tool-result'
+import type { ContentToolOutput } from './tool-result'
 import {
   grep,
   isBinaryPath,
@@ -317,7 +319,9 @@ export function buildLocalTools(
           ? `${show(file)}(${notes})\n**以下是提炼稿,不是原文**;需要某处的原文再单独问用户。\n\n`
           : `${show(file)}(${notes})\n\n`
         return capText(`${banner}${condensed.text}${imageHint}`)
-      }
+      },
+      // 上面"抽不出文字改用页面图"那条分支会返回图片
+      toModelOutput: contentAwareModelOutput
     }),
 
     ...(options.canSeeImages
@@ -354,7 +358,8 @@ export function buildLocalTools(
               } catch (err) {
                 return `错误:取图失败——${err instanceof Error ? err.message : String(err)}`
               }
-            }
+            },
+            toModelOutput: contentAwareModelOutput
           })
         }
       : {})
@@ -377,17 +382,8 @@ async function imagesOf(
   return { images: out.images, total: out.total, unit: '张图' }
 }
 
-/** 组装成能直接携带图片的工具结果 */
-function asContent(
-  text: string,
-  images: DocImage[]
-): {
-  type: 'content'
-  value: (
-    | { type: 'text'; text: string }
-    | { type: 'file'; data: { type: 'data'; data: Buffer }; mediaType: string }
-  )[]
-} {
+/** 组装成能直接携带图片的工具结果。交给模型要经 toModelOutput,见 tool-result.ts */
+function asContent(text: string, images: DocImage[]): ContentToolOutput {
   return {
     type: 'content' as const,
     value: [

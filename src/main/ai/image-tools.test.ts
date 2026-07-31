@@ -47,6 +47,16 @@ describe('view_image', () => {
     expect(out.value[1]).toMatchObject({ type: 'file', mediaType: 'image/png' })
   })
 
+  /*
+   * 光有上面那条不够:SDK 不会去认 execute 的返回形状,少了 toModelOutput
+   * 这份图就被包成 json,下一个 step 直接 Invalid prompt。契约的另一半在
+   * tool-result.test.ts,这里只钉"接线没掉"。
+   */
+  it('声明了 toModelOutput,否则带图的结果交不出去', () => {
+    const tools = buildImageTools({ assets: [], onNote: () => {} })
+    expect(typeof tools.view_image.toModelOutput).toBe('function')
+  })
+
   it('白名单之外的 id 一律拒绝,并列出可用的', async () => {
     const out = await harness().call('view_image', { asset_id: '别人的图' })
     expect(String(out)).toContain('没有这张参考图')
