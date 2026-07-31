@@ -31,10 +31,14 @@ const value = computed<string>({
       ? `${config.assistantModel.providerId}:${config.assistantModel.modelId}`
       : '',
   set: (next) => {
-    config.assistantModel = next
+    // 先摊平再分两路用:从 reactive 里读回来的是响应式代理,structured clone
+    // 过不去(报「An object could not be cloned」)。原始对象只能在进 reactive
+    // 之前留一份,不能读 config.assistantModel
+    const assistantModel = next
       ? { providerId: next.split(':')[0], modelId: next.split(':')[1] }
       : null
-    void window.api.config.patch({ assistantModel: config.assistantModel })
+    config.assistantModel = assistantModel
+    void window.api.config.patch({ assistantModel })
   }
 })
 </script>
