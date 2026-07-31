@@ -14,6 +14,11 @@ Antdv Next Designer 是一个 Electron 桌面应用。和"丢给你一坨 HTML"�
 多文件目录树、贯穿全项目的视觉方向、可点击标注的编译级预览、每一轮对话一个版本、可导出的源码树。
 界面基于 [antdv-next](https://github.com/antdv-next/antdv-next) 构建。
 
+![Antdv Next Designer——左侧对话直接写文件，右侧跑的是编译后的预览](./images/preview1.png)
+
+_一个 Vue 3 项目迭代中的样子：模型说明白屏的根因并重写 `App.vue`，右侧面板跑的就是编译后的结果。
+切到**代码**页签即可读它刚写的文件。_
+
 ---
 
 ## 目录

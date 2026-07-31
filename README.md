@@ -15,6 +15,11 @@ maintains a real project: a multi-file tree, a persistent visual direction, a co
 click on and annotate, a version per conversation round, and an exportable source tree. The UI is built with
 [antdv-next](https://github.com/antdv-next/antdv-next).
 
+![Antdv Next Designer — the conversation writes real files on the left, the compiled preview runs on the right](./images/preview1.png)
+
+_A Vue 3 project mid-iteration: the model reports a white-screen fix and rewrites `App.vue`, while the right
+pane runs the compiled result. Switch to **代码 / Code** to read the file it just wrote._
+
 ---
 
 ## Table of contents
