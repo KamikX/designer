@@ -93,6 +93,22 @@ describe('内置设计技能的 StyleBrief 契约', () => {
     expect(antdv).not.toMatch(/默认选项/)
   })
 
+  /*
+   * DESIGN.md 移植的边界:结构契约(组件语义、层级模型、控件对齐)可以进技能,
+   * 具体默认色值只能以"偏离它"的基线认知出现——照搬 token 表会让所有
+   * antdv-next 项目回到出厂蓝,和 StyleBrief 至上直接冲突。
+   */
+  it('antdv-theme 带 antd 组件语言的结构契约,默认值只作偏离基线', () => {
+    const antdv = readSkill('antdv-theme')
+
+    expect(antdv).toMatch(/同屏只有一个 primary 按钮/)
+    expect(antdv).toMatch(/三层模型/)
+    expect(antdv).toMatch(/与主题无关/)
+    expect(antdv).toMatch(/偏离它/)
+    // 不整表照搬默认主题的具体色值(基线认知里点到的出厂主色除外)
+    expect(antdv).not.toMatch(/#E6F4FF|#4096FF|#0958D9/)
+  })
+
   it('target-mobile 由 StyleBrief 和目标平台决定设备呈现，未知平台使用中性视口', () => {
     const mobile = readSkill('target-mobile')
 
