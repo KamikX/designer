@@ -6,7 +6,10 @@ import type {
   ModelSelection,
   ModelType
 } from '../../../shared/types'
-import { inferModelMeta } from '../../../shared/model-caps'
+import { inferContextWindow, inferModelMeta } from '../../../shared/model-caps'
+
+/** 老的一刀切窗口默认值。等于它的行视为"从未确认过",可按家族推断升级 */
+const LEGACY_DEFAULT_WINDOW = 64000
 import { getDb } from '../index'
 import { models } from '../schema'
 import type { ModelRow } from '../schema'
@@ -58,12 +61,25 @@ export function setModelSelection(providerId: string, selections: ModelSelection
 
   for (const m of existing) {
     const sel = wanted.get(m.modelId)
+    /*
+     * 存量修复:窗口还停在老的一刀切默认值时,按家族推断顺手升级。
+     * 窗口记小了不是无害的——token 熔断按 5× 窗口触发,64k 记账的
+     * 400k 模型会动不动就"累计输入超预算"提前停轮。
+     */
+    const upgraded =
+      !sel?.contextWindow && m.contextWindow === LEGACY_DEFAULT_WINDOW
+        ? (inferContextWindow(m.modelId) ?? LEGACY_DEFAULT_WINDOW)
+        : LEGACY_DEFAULT_WINDOW
     db.update(models)
       .set({
         enabled: sel != null,
         ...(sel?.type ? { type: sel.type } : {}),
         ...(sel?.abilities ? { capabilities: JSON.stringify(sel.abilities) } : {}),
-        ...(sel?.contextWindow ? { contextWindow: sel.contextWindow } : {}),
+        ...(sel?.contextWindow
+          ? { contextWindow: sel.contextWindow }
+          : upgraded > LEGACY_DEFAULT_WINDOW
+            ? { contextWindow: upgraded }
+            : {}),
         ...(sel?.displayName ? { displayName: sel.displayName } : {}),
         updatedAt: sql`(datetime('now'))`
       })
@@ -82,7 +98,7 @@ export function setModelSelection(providerId: string, selections: ModelSelection
         displayName: sel.displayName ?? sel.modelId,
         type: sel.type ?? inferred.type,
         capabilities: JSON.stringify(sel.abilities ?? inferred.abilities),
-        contextWindow: sel.contextWindow ?? 64000,
+        contextWindow: sel.contextWindow ?? inferContextWindow(sel.modelId) ?? 64000,
         isBuiltin: false,
         sortOrder: order++
       })
@@ -124,7 +140,7 @@ export function createModel(input: CreateModelInput): Model {
         displayName: input.displayName ?? input.modelId,
         type: input.type ?? inferred.type,
         capabilities: JSON.stringify(input.abilities ?? inferred.abilities),
-        contextWindow: input.contextWindow ?? 64000,
+        contextWindow: input.contextWindow ?? inferContextWindow(input.modelId) ?? 64000,
         isBuiltin: false
       })
       .returning()

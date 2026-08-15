@@ -30,6 +30,8 @@ const UNLIMITED_SOFT = 20
 const UNLIMITED_NO_REREAD = 30
 const COMPACT_WINDOW_MULTIPLIER = 3
 const STOP_WINDOW_MULTIPLIER = 5
+/** cache read 的计费权重(约全价 1 折),熔断按成本口径累计 */
+const CACHE_READ_WEIGHT = 0.1
 
 export interface ToolLimits {
   /** 硬上限。Infinity 表示不限次数 */
@@ -169,11 +171,19 @@ export class ContextGovernor {
     this.limits = options.limits ?? resolveToolLimits(DEFAULT_TOOL_CALL_LIMIT)
   }
 
-  /** 累计输入:已上报优先;完全没报过才用估算,并如实标记 */
+  /**
+   * 累计输入:已上报优先;完全没报过才用估算,并如实标记。
+   *
+   * 缓存命中按 1 折计入:这条熔断守的是**花费**,而 cache read 的计费约为
+   * 全价的 10%。每步重发全量历史时,前缀缓存命中的部分若按全价累计,
+   * 大窗口模型开着缓存也会在几十步后被判"超预算"——账面超了,钱包没超。
+   */
   cumulativeInputTokens(): { value: number; reported: boolean } {
-    const reported = this.ledger.cumulativeUsage.inputTokens
-    if (this.ledger.cumulativeUsage.reported.inputTokens && reported != null) {
-      return { value: reported, reported: true }
+    const usage = this.ledger.cumulativeUsage
+    if (usage.reported.inputTokens && usage.inputTokens != null) {
+      const cacheRead = usage.reported.cacheReadTokens ? (usage.cacheReadTokens ?? 0) : 0
+      const discounted = usage.inputTokens - cacheRead * (1 - CACHE_READ_WEIGHT)
+      return { value: Math.max(0, Math.round(discounted)), reported: true }
     }
     return { value: this.estimatedInputTokens, reported: false }
   }

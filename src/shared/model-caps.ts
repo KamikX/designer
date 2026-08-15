@@ -58,3 +58,29 @@ export function inferModelMeta(modelId: string): { type: ModelType; abilities: M
 
   return { type: 'chat', abilities }
 }
+
+/**
+ * 按模型名推断上下文窗口。
+ *
+ * /models 列表没有窗口元数据,原来一刀切 64k——对 400k/1M 窗口的模型,
+ * token 熔断(5× 窗口)会提前一个数量级触发,表现为动不动就"累计输入超预算"。
+ * 只收录有把握的家族且宁可取家族下限:窗口虚标会让单步请求直接被 API 拒。
+ * 认不出返回 null,由调用方兜底;用户在配置抽屉里仍可逐个纠正。
+ */
+export function inferContextWindow(modelId: string): number | null {
+  const id = modelId.toLowerCase()
+  const rules: [RegExp, number][] = [
+    [/gemini-[23]/, 1_000_000],
+    [/gpt-4\.1/, 1_000_000],
+    [/gpt-5/, 400_000],
+    [/kimi|moonshot/, 256_000],
+    [/\bo[134](-|$)/, 200_000],
+    [/claude/, 200_000],
+    [/gpt-4o|gpt-4-turbo/, 128_000],
+    [/deepseek|glm-|qwen|grok|llama|mistral|doubao|hunyuan|minimax|step-|yi-/, 128_000]
+  ]
+  for (const [re, window] of rules) {
+    if (re.test(id)) return window
+  }
+  return null
+}

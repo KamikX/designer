@@ -119,6 +119,30 @@ describe('可配置的工具预算', () => {
     expect(governor.shouldStop()).toBe(true)
   })
 
+  /*
+   * 熔断守的是花费:cache read 计费约 1 折。全价累计的话,开着前缀缓存的
+   * 长轮次照样被判超预算——账面超了,钱包没超。
+   */
+  it('缓存命中按 1 折计入累计输入', () => {
+    const { governor, ledger } = governorWith(0, 1000)
+    // 全量 6000,其中 5000 是缓存命中:成本口径 = 1000 + 5000×0.1 = 1500 < 5000
+    ledger.addUsage(
+      normalizeStepUsage({
+        inputTokens: 6000,
+        inputTokenDetails: {
+          noCacheTokens: 1000,
+          cacheReadTokens: 5000,
+          cacheWriteTokens: undefined
+        },
+        outputTokens: 10,
+        outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        totalTokens: 6010
+      })
+    )
+    expect(governor.cumulativeInputTokens().value).toBe(1500)
+    expect(governor.shouldStop()).toBe(false)
+  })
+
   it('压缩提示与收尾文案说的是真实上限', () => {
     const compact = governorWith(100, 64_000, 200).governor.prepareStep({
       messages: MESSAGES,
