@@ -59,7 +59,7 @@ pnpm build:mac / build:win
 - MCP 按轮连接(勾了才连,流结束必须 close,不留孤儿子进程),用 `@modelcontextprotocol/sdk` 直连 + `dynamicTool` 包装(AI SDK v7 没有内置 MCP 客户端)。
 - system prompt(`prompts/index.ts`)按**稳定性分区**:项目稳定区在前吃前缀缓存(身份/宪章/端契约/技术栈/手艺底线/技能目录),逐轮可变区在后(当前文件树/预览报错/lint 结果/收尾自检钉最后吃 recency)。**不要把逐轮变化的内容插进稳定区**——端模板(按活动端路由)与本地授权范围(带本轮识别出的路径)看着像项目属性,其实每轮都可能变,所以排在稳定区**最后一格**:前缀缓存只认第一个不同的字节,夹在中段会把后面的一起带下水。
 - **Anthropic 的缓存是断点制**(`prompt-cache.ts`):请求里没有 `cache_control` 就一次都不缓存。断点标在消息上(provider 落到该消息最后一个 block,语义是"缓存到这里为止",含 tools 与 system)。一个断点**只向前回溯 20 个 block**,而一步工具调用就产生 tool-call + tool-result 两块——只标最后一条的话,几十次调用之后下一步根本够不着上一步的条目。所以从尾部往前每 15 块补一个,最多 4 个(Anthropic 上限,超了被静默忽略)。OpenAI 协议是服务端自动缓存,不认这个字段,函数对它原样返回。注入进消息的运行时提醒**不许带每步都变的计数**(那等于每步换一次前缀)。
-- 质量闭环:`slop-lint.ts` 反 AI 味检查 + 预览运行时报错,都按 artifactId 绑定、下一轮回流进 prompt。
+- 质量闭环分当轮和跨轮两层。**当轮**:写入类工具成功后 `compile-probe.ts` 真编译,错误附在工具结果里;多模态模型另有 `capture_preview`(`capture-tools.ts` + `preview/capture.ts` 离屏截图 + `preview/session-registry.ts` 会话 VFS 直出),模型看渲染结果自审。**跨轮**:`slop-lint.ts` 反 AI 味检查(审美规则按 StyleBrief 原文点名豁免)+ finalize 编译兜底 + 预览运行时报错,都按 artifactId 绑定、下一轮回流进 prompt;预览挂载成功(iframe ready)按版本清除旧报错。
 - **视觉方向机制**:项目 `styleBrief` 是整体视觉的唯一事实来源。冲突时按“用户本轮明确的全局风格 > 项目 StyleBrief > 当前产物连续性 > skills 质量护栏”处理;局部组件、单页例外不得更新 StyleBrief。空 brief 且无文件时必须先问,用户跳过后才按色彩/明暗/密度/几何/表面/导航六个独立维度生成兜底,兜底不持久化;空 brief 但已有文件时延续当前视觉。
 - `design-seed` 只提供生成方法、语义 token 契约、可访问性与一致性护栏,不提供可复制的具体主题;每个项目的 `theme.css` 从 StyleBrief 生成,已有稿无 brief 时延续当前产物,首次空项目经用户跳过后才使用不持久化的独立维度 fallback。`antdv-theme` 负责把同一项目方向映射到组件 token,不是预设配方库。
 - 设计体系设计与演进文档:`docs/prompt-skills-v2.md`(端模板/craft/提问机制及写作规范——规则二元化、可数化、现象化;一条规则只有一个家)。

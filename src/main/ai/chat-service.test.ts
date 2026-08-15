@@ -147,6 +147,11 @@ vi.mock('./ask-user', () => ({
   releaseQuestions: vi.fn()
 }))
 vi.mock('./image-tools', () => ({ buildImageTools: () => ({}) }))
+vi.mock('./capture-tools', () => ({ buildCaptureTools: () => ({}) }))
+vi.mock('../preview/session-registry', () => ({
+  registerSessionPreview: vi.fn(),
+  unregisterSessionPreview: vi.fn()
+}))
 vi.mock('./local-tools', () => ({ buildLocalTools: () => ({}), localScopePrompt: () => '' }))
 vi.mock('./time-tools', () => ({ buildTimeTools: () => ({}) }))
 vi.mock('./context', () => ({ buildHistory: () => [] }))

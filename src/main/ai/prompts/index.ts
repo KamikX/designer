@@ -55,6 +55,8 @@ export function buildSystemPrompt(
     targetContract?: string
     /** 勾选端的设计模板正文,组装期直接注入(不走 activate_skill) */
     targetTemplates?: string
+    /** 本轮是否有 capture_preview(多模态模型 + tools 模式才有) */
+    captureHint?: boolean
   } = {}
 ): string {
   const mode = options.mode ?? 'markers'
@@ -71,6 +73,7 @@ export function buildSystemPrompt(
     options.targetContract ?? '',
     project.description ? `项目背景:${project.description}` : '',
     mode === 'tools' ? TOOL_PROTOCOL : FILE_PROTOCOL,
+    mode === 'tools' && options.captureHint ? CAPTURE_PROTOCOL : '',
     stackPrompt(project.stack, project.libs ?? []),
     CRAFT_CORE,
     options.skillCatalog ?? '',
@@ -89,6 +92,15 @@ export function buildSystemPrompt(
 const CLOSING = `
 解说用中文,简短聚焦在设计决策本身(为什么是这个主色、这个层级怎么来的),
 不要复述你调了哪些工具——那些用户在界面上看得到。文件内容完整可运行。
+`.trim()
+
+const CAPTURE_PROTOCOL = `
+## 看过再交
+
+你有 capture_preview:把当前设计稿渲染成截图给你自己看。**完成一段成型的界面
+工作(首版落地、大改收尾)后,先截图自查再收尾**:对照手艺底线的五维给自己打分,
+层级失衡、间距混乱、模板脸这类只有看渲染结果才能发现的问题,当轮修掉,不要交给
+用户去发现。单点小修(改一句文案、调一个颜色)不必截图。
 `.trim()
 
 const TOOL_PROTOCOL = `

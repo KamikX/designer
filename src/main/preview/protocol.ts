@@ -8,12 +8,15 @@ import { buildBootstrapHtml, injectHtmlRuntime } from './bootstrap'
 import { compilePreviewFile, isCompilable } from './compile'
 import { resolveModuleFile } from './resolve'
 import { libSetupSource } from './lib-setup'
+import { getSessionPreview } from './session-registry'
 import type { Compiled } from './compile'
+import type { PreviewLib, Stack } from '../../shared/types'
 
 /**
  * preview:// 协议:iframe 预览的静态服务。
  *
  *   preview://artifact/<artifactId>/<path>   设计稿文件,直接查 DB
+ *   preview://session/<sessionId>/<path>     运行中会话的 VFS 快照(截图自审用)
  *   preview://vendor/<file>                  内置运行时脚本(resources/preview-vendor)
  *
  * 文件从 DB 直出而不是物化到磁盘:没有双写一致性问题,版本切换就是
@@ -87,6 +90,7 @@ export function registerPreviewHandler(): void {
       // 大小写敏感的 ULID 都在 pathname 里
       if (url.host === 'vendor') return serveVendor(url.pathname)
       if (url.host === 'artifact') return serveArtifact(url.pathname)
+      if (url.host === 'session') return serveSession(url.pathname)
       return new Response('Not Found', { status: 404 })
     } catch (err) {
       return new Response(`预览服务错误: ${err instanceof Error ? err.message : err}`, {
@@ -121,22 +125,57 @@ function serveArtifact(pathname: string): Response {
   const project = getProject(artifact.projectId)
   if (!project) return new Response('Project Not Found', { status: 404 })
 
-  const files = getArtifactFiles(artifact.id)
+  return serveFileSet({
+    files: getArtifactFiles(artifact.id),
+    stack: project.stack,
+    libs: project.libs ?? [],
+    filePath,
+    // 版本产物不可变,(artifactId, path) 是天然的永久缓存键
+    cacheScope: artifact.id
+  })
+}
+
+function serveSession(pathname: string): Response {
+  // pathname 形如 /<sessionId>/<filePath...>,内容来自运行中会话的 VFS
+  const [, sessionId, ...rest] = pathname.split('/')
+  const source = sessionId ? getSessionPreview(sessionId) : null
+  if (!source) return new Response('Session Not Found', { status: 404 })
+
+  return serveFileSet({
+    files: source.files(),
+    stack: source.stack,
+    libs: source.libs,
+    filePath: decodeURIComponent(rest.join('/')),
+    // 会话内容在模型的连续编辑下随时在变,不能缓存
+    cacheScope: null
+  })
+}
+
+interface FileSetRequest {
+  files: { path: string; content: string }[]
+  stack: Stack
+  libs: PreviewLib[]
+  filePath: string
+  /** 非空时按 (scope, path) 缓存编译产物;null 表示内容可变,每次现编 */
+  cacheScope: string | null
+}
+
+function serveFileSet({ files, stack, libs, filePath, cacheScope }: FileSetRequest): Response {
   const isEntry = filePath === '' || filePath === 'index.html'
   // 设计 token:三种栈共用同一个约定文件,由运行时统一注入,
   // 页面里不需要 link 或 import
   const theme = files.find((f) => f.path === 'theme.css')?.content
 
   // vue3 / react:入口出引导页,其余文件按名直出(引导页里 fetch 用)
-  if (isEntry && project.stack !== 'html') {
-    return html(buildBootstrapHtml(project.stack, theme, project.libs ?? []))
+  if (isEntry && stack !== 'html') {
+    return html(buildBootstrapHtml(stack, theme, libs))
   }
 
   const requested = filePath === '' ? 'index.html' : filePath
 
   // 依赖包的 setup 虚拟模块:不在产物文件树里,按项目勾选直出;没勾就 404,守边界
   if (requested.startsWith('__setup__/')) {
-    const code = libSetupSource(requested.slice('__setup__/'.length), project.libs ?? [])
+    const code = libSetupSource(requested.slice('__setup__/'.length), libs)
     if (!code) return new Response('Not Found', { status: 404 })
     return new Response(code, {
       headers: { 'content-type': JS_MIME, 'cache-control': 'no-cache' }
@@ -150,7 +189,7 @@ function serveArtifact(pathname: string): Response {
   const entryName = file.path
 
   // html 栈的 html 文件注入 Tailwind 运行时与错误上抛
-  if (project.stack === 'html' && entryName.endsWith('.html')) {
+  if (stack === 'html' && entryName.endsWith('.html')) {
     return html(injectHtmlRuntime(file.content, theme))
   }
 
@@ -158,7 +197,9 @@ function serveArtifact(pathname: string): Response {
   // 时会自己发请求过来,再走一遍这里——不需要我们爬依赖
   if (isCompilable(entryName)) {
     try {
-      const { code, mime } = compileCached(artifact.id, entryName, file.content)
+      const { code, mime } = cacheScope
+        ? compileCached(cacheScope, entryName, file.content)
+        : compilePreviewFile(entryName, file.content)
       return new Response(code, {
         headers: { 'content-type': mime, 'cache-control': 'no-cache' }
       })

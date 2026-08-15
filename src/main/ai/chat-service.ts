@@ -67,6 +67,8 @@ import { withCacheBreakpoints } from './prompt-cache'
 import { buildFileTools } from './tools'
 import { askUser, buildAskUserTool, releaseQuestions } from './ask-user'
 import { buildImageTools } from './image-tools'
+import { buildCaptureTools } from './capture-tools'
+import { registerSessionPreview, unregisterSessionPreview } from '../preview/session-registry'
 import { buildLocalTools, localScopePrompt } from './local-tools'
 import { addRoot, listRoots } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
@@ -235,6 +237,18 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const useTools = model.abilities.includes('tools')
   const canSeeImages = model.abilities.includes('vision')
   const vfs = new SessionVfs(currentFiles)
+  /**
+   * 截图自审的预览源:多模态模型 + 设计会话才注册。files 是活引用——
+   * 截图发生在模型连续编辑之间,必须看到 VFS 的最新状态而不是开流快照
+   */
+  const captureSessionId = project && useTools && canSeeImages ? randomUUID() : null
+  if (captureSessionId && project) {
+    registerSessionPreview(captureSessionId, {
+      stack: project.stack,
+      libs: project.libs ?? [],
+      files: () => vfs.list().map((path) => vfs.raw(path))
+    })
+  }
   /** 回合账本:锚点、指纹、失败熔断都以它为准,跟这一轮同生共死 */
   const runLedger = new RunContextLedger()
   /**
@@ -444,6 +458,13 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               onNote: (assetId, description) =>
                 noteImage(input.conversationId, assetId, description)
             }),
+            // 截图自审:多模态模型才给——拍了看不见等于白拍
+            ...(captureSessionId
+              ? buildCaptureTools({
+                  sessionId: captureSessionId,
+                  hasFiles: () => vfs.list().length > 0
+                })
+              : {}),
             // MCP 排最后:名字带服务前缀,不会和内置工具撞
             ...(mcp ? mcp.tools : {})
           }
@@ -485,7 +506,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             ]
               .filter(Boolean)
               .join('\n\n'),
-            targetTemplates: renderTargetTemplates(targetTemplates)
+            targetTemplates: renderTargetTemplates(targetTemplates),
+            captureHint: !!captureSessionId
           })
         : buildChatPrompt({
             localScope: localScopePrompt(userRoots, detected.missing),
@@ -787,6 +809,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     } finally {
       // 还挂着的提问一律按跳过放掉,否则那个 Promise 永远不 resolve
       releaseQuestions(streamId)
+      // 截图预览源随流注销,不然协议层会一直握着这轮 VFS 的引用
+      if (captureSessionId) unregisterSessionPreview(captureSessionId)
       // 无头窗口不会自己消失,漏一次就常驻一个隐藏的渲染进程——
       // 用户只会看到内存莫名其妙涨上去
       closeBrowserSession(streamId)
