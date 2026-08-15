@@ -148,35 +148,46 @@ describe('StyleBrief 不被通用审美护栏覆盖', () => {
     expect(antdv).not.toMatch(/readProjectThemeTokens/)
   })
 
-  it('通用 craft 技能把具体视觉规则降为 StyleBrief 可覆盖的建议', () => {
-    const admin = readSkill('target-admin')
+  /*
+   * craft 技能是硬规则 + 豁免制,不是建议制。
+   *
+   * 历史教训:2026-07 曾把 MUST/NEVER 整体软化成"提问清单",与
+   * docs/prompt-skills-v2.md 的"规则二元化"方法论直接冲突,模板味产出随即无人
+   * 拦截。豁免的判据必须可核对——能从 StyleBrief 引用出原文才豁免对应那一条。
+   */
+  it('craft 技能保留二元硬规则,豁免只认 StyleBrief 原文点名', () => {
     const typography = readSkill('craft-typography')
     const color = readSkill('craft-color')
 
-    expect(admin).not.toMatch(/12px|小圆点|≥10 行|有就删/)
     expect(typography).toMatch(/StyleBrief/)
-    expect(typography).not.toMatch(/标题字体\s*≠\s*正文字体/)
-    expect(color).toMatch(/StyleBrief/)
-    expect(color).not.toMatch(
-      /一屏最多出现 2 处|抬起来的表面和文字走暖|凹下去的填充和所有描边走冷|没有纯黑纯白/
-    )
+    expect(typography).toMatch(/0\.06em.*必须|必须.*0\.06em/)
+    expect(typography).toMatch(/标题字体\s*≠\s*正文字体/)
+    expect(typography).toMatch(/永不豁免|无豁免/)
+    expect(color).toMatch(/豁免制,不是建议制/)
+    expect(color).toMatch(/一屏最多出现 2 处/)
+    expect(color).toMatch(/没有纯黑纯白/)
+    expect(color).toMatch(/引用出[\s\S]{0,10}原文/)
   })
 
-  it('anti-slop 只在 StyleBrief 缺省时用模板化特征做 fallback 检查', () => {
+  it('anti-slop 保留七宗罪硬清单,内容诚信条目永不豁免', () => {
     const antiSlop = readSkill('craft-anti-slop')
 
     expect(antiSlop).toMatch(/StyleBrief/)
-    expect(antiSlop).toMatch(/fallback/)
-    expect(antiSlop).not.toMatch(/七宗罪\(出现任何一条都要重做\)/)
-    expect(antiSlop).not.toMatch(/一个平面加上有意图的字排,任何时候都赢它/)
+    expect(antiSlop).toMatch(/七宗罪/)
+    expect(antiSlop).toMatch(/豁免制,不是建议制/)
+    expect(antiSlop).toMatch(/引用出那句原文/)
+    expect(antiSlop).toMatch(/永不豁免/)
+    expect(antiSlop).toMatch(/一个平面加上有意图的字排,任何时候都赢它/)
   })
 
-  it('motion 由 StyleBrief 决定手感，固定数值只可作为范围示意', () => {
+  it('motion 保留具体时长与曲线纪律,StyleBrief 只能整体调档', () => {
     const motion = readSkill('craft-motion')
 
     expect(motion).toMatch(/StyleBrief/)
     expect(motion).toMatch(/prefers-reduced-motion/)
-    expect(motion).not.toMatch(/\*\*120ms\*\*|\*\*200ms\*\*|\*\*140ms\*\*/)
-    expect(motion).not.toMatch(/scale\(0\.97\)|translateY\(-1px\)|\* 80ms/)
+    expect(motion).toMatch(/\*\*120ms\*\*/)
+    expect(motion).toMatch(/scale\(0\.97\)/)
+    expect(motion).toMatch(/ease-in.*禁用/)
+    expect(motion).toMatch(/30%/)
   })
 })

@@ -22,6 +22,79 @@ describe('抓得住的', () => {
       lintArtifact('a.html', '<img src="https://images.unsplash.com/x">').map((x) => x.rule)
     ).toContain('remote-placeholder')
   })
+
+  it('无豁免原文时,靛蓝要抓', () => {
+    expect(lintArtifact('app.css', '.brand { color: #6366f1; }').map((x) => x.rule)).toContain(
+      'ai-indigo'
+    )
+  })
+
+  it('无豁免原文时,双色渐变要抓', () => {
+    expect(
+      lintArtifact('app.css', '.hero { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }').map(
+        (x) => x.rule
+      )
+    ).toContain('trust-gradient')
+  })
+
+  it.each([
+    ['标题', '<h2>🚀 极速部署</h2>'],
+    ['按钮', '<button>✨ 创建项目</button>']
+  ])('无豁免原文时,%s里的 emoji 图标要抓', (_label, source) => {
+    expect(lintArtifact('a.html', source).map((x) => x.rule)).toContain('emoji-icon')
+  })
+
+  it('全大写没加字距要抓', () => {
+    expect(
+      lintArtifact('app.css', '.k { text-transform: uppercase; letter-spacing: 0; }').map(
+        (x) => x.rule
+      )
+    ).toContain('caps-no-tracking')
+  })
+})
+
+/**
+ * 豁免的判据是 StyleBrief 原文点名,不是"看起来像有意的"。
+ * 后一种判据曾把整批视觉规则废掉——检查器判不了意图,只判得了文本。
+ */
+describe('StyleBrief 点名的元素豁免对应规则', () => {
+  it('brief 点名靛蓝时不报 ai-indigo', () => {
+    const findings = lintArtifact('app.css', '.brand { color: #6366f1; }', '品牌色是靛蓝系')
+    expect(findings.map((x) => x.rule)).not.toContain('ai-indigo')
+  })
+
+  it('brief 写了色值本身也算点名', () => {
+    const findings = lintArtifact('app.css', '.brand { color: #6366f1; }', '主色 #6366f1')
+    expect(findings.map((x) => x.rule)).not.toContain('ai-indigo')
+  })
+
+  it('brief 点名渐变时不报 trust-gradient', () => {
+    const findings = lintArtifact(
+      'app.css',
+      '.hero { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }',
+      '主视觉是紫蓝渐变'
+    )
+    expect(findings.map((x) => x.rule)).not.toContain('trust-gradient')
+  })
+
+  it('brief 点名 emoji 时不报 emoji-icon', () => {
+    const findings = lintArtifact('a.html', '<h2>🚀 极速部署</h2>', '品牌语言使用 emoji 图标')
+    expect(findings.map((x) => x.rule)).not.toContain('emoji-icon')
+  })
+
+  it('豁免是逐条的:点名渐变不连带豁免靛蓝', () => {
+    const findings = lintArtifact('app.css', '.brand { color: #6366f1; }', '主视觉用渐变')
+    expect(findings.map((x) => x.rule)).toContain('ai-indigo')
+  })
+
+  it('全大写字距是可读性规则,brief 不能豁免', () => {
+    const findings = lintArtifact(
+      'app.css',
+      '.k { text-transform: uppercase; letter-spacing: 0; }',
+      '标题全大写紧排'
+    )
+    expect(findings.map((x) => x.rule)).toContain('caps-no-tracking')
+  })
 })
 
 describe('不该报的', () => {
@@ -40,19 +113,8 @@ describe('不该报的', () => {
     expect(lintArtifact('theme.css', theme)).toEqual([])
   })
 
-  it.each([
-    ['用户明确的靛蓝', '.brand { color: #6366f1; }'],
-    ['用户明确的双色渐变', '.hero { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }'],
-    ['紧排全大写', '.k { text-transform: uppercase; letter-spacing: 0; }']
-  ])('%s 不因纯审美特征告警', (_label, source) => {
-    expect(lintArtifact('app.css', source)).toEqual([])
-  })
-
-  it.each([
-    ['标题', '<h2>🚀 极速部署</h2>'],
-    ['按钮', '<button>✨ 创建项目</button>']
-  ])('%s 使用确认过的 emoji 品牌语言不告警', (_label, source) => {
-    expect(lintArtifact('a.html', source)).toEqual([])
+  it('正文里的 emoji 不算图标', () => {
+    expect(lintArtifact('a.html', '<p>今天心情不错 🎉</p>')).toEqual([])
   })
 
   it('非前端文件不查', () => {

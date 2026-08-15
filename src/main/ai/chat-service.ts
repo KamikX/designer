@@ -877,7 +877,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
        * 提示词里写"不要用靛蓝"只是倾向,模型仍然会用;而"你第 12 行有 #6366f1"
        * 是事实,绕不过去。这条回流是我们相对纯提示词方案唯一的结构性优势。
        */
-      const findings = [...writes].flatMap(([path, content]) => lintArtifact(path, content))
+      // StyleBrief 从库里重取:本轮 set_style_brief 更新过的话,内存里的 project 是旧的
+      const freshBrief = getProject(project!.id)?.styleBrief ?? project!.styleBrief ?? ''
+      const findings = [...writes].flatMap(([path, content]) =>
+        lintArtifact(path, content, freshBrief)
+      )
       if (findings.length) recordLint(project!.id, result.artifactId, findings)
     }
 
