@@ -39,9 +39,19 @@ export function reportPreviewError(projectId: string, artifactId: string, messag
   })
 }
 
-/** 预览恢复正常(重新加载后没再报错)时清掉 */
-export function clearPreviewError(projectId: string): void {
-  lastError.delete(projectId)
+/**
+ * 预览恢复正常(挂载完成且没再报错)时清掉。
+ *
+ * 带 artifactId 时只清**同版本**的错误:用户切回某个能跑的旧版本看一眼,
+ * 不该把最新版本"跑不起来"这个事实从下一轮 prompt 里抹掉。
+ */
+export function clearPreviewError(projectId: string, artifactId?: string): void {
+  if (artifactId === undefined) {
+    lastError.delete(projectId)
+    return
+  }
+  const hit = lastError.get(projectId)
+  if (hit && hit.artifactId === artifactId) lastError.delete(projectId)
 }
 
 /**

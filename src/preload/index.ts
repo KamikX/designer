@@ -97,7 +97,9 @@ const api: DesignerApi = {
   },
   preview: {
     reportError: (projectId, artifactId, message) =>
-      ipcRenderer.invoke('preview:report-error', projectId, artifactId, message)
+      ipcRenderer.invoke('preview:report-error', projectId, artifactId, message),
+    clearError: (projectId, artifactId) =>
+      ipcRenderer.invoke('preview:clear-error', projectId, artifactId)
   },
   workspace: {
     list: (scope) => ipcRenderer.invoke('workspace:list', scope),

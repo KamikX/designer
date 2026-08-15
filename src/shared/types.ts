@@ -1091,6 +1091,8 @@ export interface DesignerApi {
   preview: {
     /** 预览 iframe 里出的运行时错误,上报给主进程,下一轮带给模型 */
     reportError: (projectId: string, artifactId: string, message: string) => Promise<void>
+    /** 该版本挂载成功,清掉它之前的报错——预览恢复了就别再让模型去修 */
+    clearError: (projectId: string, artifactId: string) => Promise<void>
   }
   workspace: {
     list: (scope: RootScope) => Promise<WorkspaceRoot[]>

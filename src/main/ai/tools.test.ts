@@ -288,7 +288,8 @@ describe('check_syntax', () => {
     const h = harness()
     await h.call('write_file', {
       path: 'App.vue',
-      content: '<script setup lang="ts">\nconst = broken\n</script>\n<template><div>x</div></template>\n'
+      content:
+        '<script setup lang="ts">\nconst = broken\n</script>\n<template><div>x</div></template>\n'
     })
     expect(await h.call('check_syntax', { path: 'App.vue' })).toContain('真编译失败')
   })

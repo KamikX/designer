@@ -1,85 +1,50 @@
 ---
 name: baseline-ui
-description: Quickly deslop UI code by fixing spacing, hierarchy, typography, and small layout issues. Use when the interface needs a fast cleanup or polish pass.
+description: 快速给界面做一遍去 AI 味的基线清理:间距、层级、排版、动效与小布局问题。Use when 界面需要快速打磨、或对现有设计稿做基线体检的时候。
 ---
 
 # Baseline UI
 
-Enforces an opinionated UI baseline to prevent AI-generated interface slop.
+一份可核对的界面基线。逐条过当前设计稿,violations 引用原文片段、一句话说明为什么、
+给出代码级修复。
 
-## How to use
+**运行时前提**:设计稿在无 npm 依赖的预览环境里运行——没有 motion/react、没有
+Radix/Base UI、没有 cn()。动效手写 CSS transition/animation,键盘与焦点语义用原生
+HTML(button/dialog/details)加必要的 aria 手写。不要建议安装任何包。
 
-- `/baseline-ui`
-  Apply these constraints to any UI work in this conversation.
+## 交互
 
-- `/baseline-ui <file>`
-  Review the file against all constraints below and output:
-  - violations (quote the exact line/snippet)
-  - why it matters (1 short sentence)
-  - a concrete fix (code-level suggestion)
+- MUST 破坏性/不可逆操作先确认(原生 dialog 或项目的确认弹层)
+- SHOULD 加载态用结构化骨架,不用转圈占满屏
+- NEVER 用 `h-screen`,用 `h-dvh`
+- MUST 固定定位元素尊重 `safe-area-inset`
+- MUST 错误提示出现在动作发生的位置旁边
+- NEVER 阻止 input / textarea 的粘贴
+- MUST 纯图标按钮带 `aria-label`
+- MUST 可操作元素可键盘到达,焦点可见
 
-## Stack
+## 动效
 
-- MUST use Tailwind CSS defaults unless custom values already exist or are explicitly requested
-- MUST use `motion/react` (formerly `framer-motion`) when JavaScript animation is required
-- SHOULD use `tw-animate-css` for entrance and micro-animations in Tailwind CSS
-- MUST use `cn` utility (`clsx` + `tailwind-merge`) for class logic
+- NEVER 主动加动画,除非它服务空间/状态重定向
+- MUST 只动合成器属性(`transform`、`opacity`)
+- NEVER 动布局属性(`width`、`height`、`top`、`left`、`margin`、`padding`)
+- SHOULD 进场用 ease-out;交互反馈不超过 200ms
+- MUST 循环动画离屏时暂停;尊重 `prefers-reduced-motion`
+- NEVER 对大图或全屏表面做动画;NEVER 动大面积 `blur()`/`backdrop-filter`
 
-## Components
+## 排版
 
-- MUST use accessible component primitives for anything with keyboard or focus behavior (`Base UI`, `React Aria`, `Radix`)
-- MUST use the project’s existing component primitives first
-- NEVER mix primitive systems within the same interaction surface
-- SHOULD prefer [`Base UI`](https://base-ui.com/react/components) for new primitives if compatible with the stack
-- MUST add an `aria-label` to icon-only buttons
-- NEVER rebuild keyboard or focus behavior by hand unless explicitly requested
+- MUST 标题用 `text-balance`,段落用 `text-pretty`
+- MUST 数据用 `tabular-nums`
+- SHOULD 密集界面用 `truncate` / `line-clamp`
+- 字距遵守 craft-typography(全大写 ≥0.06em、大标题收负字距)
 
-## Interaction
+## 布局与视觉
 
-- MUST use an `AlertDialog` for destructive or irreversible actions
-- SHOULD use structural skeletons for loading states
-- NEVER use `h-screen`, use `h-dvh`
-- MUST respect `safe-area-inset` for fixed elements
-- MUST show errors next to where the action happens
-- NEVER block paste in `input` or `textarea` elements
-
-## Animation
-
-- NEVER add animation unless it is explicitly requested
-- MUST animate only compositor props (`transform`, `opacity`)
-- NEVER animate layout properties (`width`, `height`, `top`, `left`, `margin`, `padding`)
-- SHOULD avoid animating paint properties (`background`, `color`) except for small, local UI (text, icons)
-- SHOULD use `ease-out` on entrance
-- NEVER exceed `200ms` for interaction feedback
-- MUST pause looping animations when off-screen
-- SHOULD respect `prefers-reduced-motion`
-- NEVER introduce custom easing curves unless explicitly requested
-- SHOULD avoid animating large images or full-screen surfaces
-
-## Typography
-
-- MUST use `text-balance` for headings and `text-pretty` for body/paragraphs
-- MUST use `tabular-nums` for data
-- SHOULD use `truncate` or `line-clamp` for dense UI
-- NEVER modify `letter-spacing` (`tracking-*`) unless explicitly requested
-
-## Layout
-
-- MUST use a fixed `z-index` scale (no arbitrary `z-*`)
-- SHOULD use `size-*` for square elements instead of `w-*` + `h-*`
-
-## Performance
-
-- NEVER animate large `blur()` or `backdrop-filter` surfaces
-- NEVER apply `will-change` outside an active animation
-- NEVER use `useEffect` for anything that can be expressed as render logic
-
-## Design
-
-- NEVER use gradients unless explicitly requested
-- NEVER use purple or multicolor gradients
-- NEVER use glow effects as primary affordances
-- SHOULD use Tailwind CSS default shadow scale unless explicitly requested
-- MUST give empty states one clear next action
-- SHOULD limit accent color usage to one per view
-- SHOULD use existing theme or Tailwind CSS color tokens before introducing new ones
+- MUST 用固定的 z-index 刻度,不写随意的 `z-*`
+- SHOULD 正方形元素用 `size-*`,不拆 `w-*` + `h-*`
+- NEVER 用渐变,除非 StyleBrief 原文点名;NEVER 紫色/多色渐变
+- NEVER 把辉光当主要供能提示(affordance)
+- MUST 空态给一个明确的下一步动作
+- SHOULD 一个视图只用一处强调色
+- SHOULD 颜色消费 theme.css 已有 token,不新造

@@ -31,9 +31,10 @@ describe('抓得住的', () => {
 
   it('无豁免原文时,双色渐变要抓', () => {
     expect(
-      lintArtifact('app.css', '.hero { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }').map(
-        (x) => x.rule
-      )
+      lintArtifact(
+        'app.css',
+        '.hero { background: linear-gradient(90deg, #8b5cf6, #06b6d4); }'
+      ).map((x) => x.rule)
     ).toContain('trust-gradient')
   })
 

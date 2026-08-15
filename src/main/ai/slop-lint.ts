@@ -47,7 +47,8 @@ const TRUST_GRADIENT =
   /linear-gradient\([^)]*(?:#(?:6366f1|8b5cf6|a855f7|7c3aed)|purple|violet|indigo)[^)]*(?:blue|cyan|pink|#3b82f6|#06b6d4|#ec4899)/i
 
 /** StyleBrief 点名靛蓝/紫系(词或色值)才豁免 ai-indigo */
-const BRIEF_INDIGO = /靛|紫|indigo|violet|purple|#(6366f1|4f46e5|4338ca|3730a3|8b5cf6|7c3aed|a855f7|818cf8|c084fc)/i
+const BRIEF_INDIGO =
+  /靛|紫|indigo|violet|purple|#(6366f1|4f46e5|4338ca|3730a3|8b5cf6|7c3aed|a855f7|818cf8|c084fc)/i
 
 /** StyleBrief 点名渐变才豁免 trust-gradient */
 const BRIEF_GRADIENT = /渐变|gradient/i

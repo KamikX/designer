@@ -130,6 +130,11 @@ function onMessage(e: MessageEvent): void {
     if (fromFrame) {
       post({ __previewCmd: 'annotate', on: annotation.enabled })
       syncMarks()
+      // 挂载成功 = 这个版本恢复了,把它之前的报错从下一轮 prompt 里撤掉。
+      // 挂载后才发生的异步错误会重新上报,清早了也不会丢
+      if (store.projectId && store.currentId) {
+        void window.api.preview.clearError(store.projectId, store.currentId)
+      }
     }
     return
   }

@@ -73,7 +73,7 @@ import { catalog, marketStatus } from '../market'
 import { scanSkills } from '../skills/scan'
 import { addRoot, grantPaths, listRoots, removeRoot } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
-import { reportPreviewError } from '../preview/errors'
+import { clearPreviewError, reportPreviewError } from '../preview/errors'
 import { getArtifactFiles, listArtifacts } from '../db/repo/artifact'
 import { exportArtifact } from '../artifact-export'
 import { importAsset, importImage, testStorage } from '../storage/service'
@@ -252,6 +252,10 @@ export function registerIpc(): void {
       reportPreviewError(projectId, artifactId, message)
     }
   )
+
+  ipcMain.handle('preview:clear-error', (_e, projectId: string, artifactId: string) => {
+    clearPreviewError(projectId, artifactId)
+  })
 
   ipcMain.handle('workspace:list', (_e, scope: RootScope) => listRoots(scope))
   ipcMain.handle('workspace:grant', async (_e, scope: RootScope) => {
