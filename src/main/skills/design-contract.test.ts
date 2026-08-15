@@ -105,9 +105,20 @@ describe('内置设计技能的 StyleBrief 契约', () => {
 })
 
 describe('StyleBrief 不被通用审美护栏覆盖', () => {
-  it('常驻 craft prompt 只保留可访问性与诚信底线，不固定颜色、字体或强调色额度', () => {
+  /*
+   * 常驻区必须带压缩硬规则:渐进披露对审美护栏不成立——模型套模板的时候
+   * 恰恰不会想起去 activate_skill。细节表格仍在技能里,常驻的是精华。
+   */
+  it('常驻 craft prompt 带压缩硬规则与豁免制,细节仍指向技能', () => {
     expect(CRAFT_CORE).toMatch(/StyleBrief/)
-    expect(CRAFT_CORE).not.toMatch(/强调色一屏最多两处|不要纯黑纯白|标题字体\s*≠\s*正文字体/)
+    expect(CRAFT_CORE).toMatch(/0\.06em/)
+    expect(CRAFT_CORE).toMatch(/一屏最多 2 处/)
+    expect(CRAFT_CORE).toMatch(/靛蓝/)
+    expect(CRAFT_CORE).toMatch(/永不豁免/)
+    expect(CRAFT_CORE).toMatch(/引用出那句原文/)
+    expect(CRAFT_CORE).toMatch(/craft-typography/)
+    // 常驻区吃前缀缓存,失控膨胀会让每轮都变贵:封顶约 3KB
+    expect(CRAFT_CORE.length).toBeLessThan(3072)
   })
 
   it('中后台角色保留效率取向，不把无趣作为审美结论', () => {

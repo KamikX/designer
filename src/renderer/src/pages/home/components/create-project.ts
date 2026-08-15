@@ -17,7 +17,9 @@ export function createDefaultProjectForm(): CreateProjectForm {
     name: '',
     stack: 'html',
     designMode: 'design',
-    targets: [],
+    // 默认勾 web:targets 为空时端契约与端模板一个字都不注入,模型拿到的
+    // 设计指导骤降。用户建移动端/落地页项目时自己改勾选即可
+    targets: ['web'],
     libs: [],
     description: '',
     styleBrief: ''

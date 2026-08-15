@@ -63,7 +63,8 @@ describe('resetProjectForm', () => {
       name: '',
       stack: 'html',
       designMode: 'design',
-      targets: [],
+      // 默认勾 web:targets 为空时端契约与端模板零注入,见 create-project.ts
+      targets: ['web'],
       libs: [],
       description: '',
       styleBrief: ''
