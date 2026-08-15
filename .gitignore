@@ -5,3 +5,6 @@ out
 .eslintcache
 *.log*
 .idea
+
+# 截图冒烟的临时 bundle
+.capture-smoke*.cjs

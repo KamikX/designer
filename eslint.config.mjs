@@ -25,6 +25,9 @@ export default defineConfig(
       'resources/**',
       // 合成基准 fixture:刻意保留超长行与压缩写法,lint 会把压力场景"修好"
       'src/main/ai/fixtures/**',
+      // 截图冒烟的临时 bundle(scripts/capture-smoke-build.mjs 生成,入口必须
+      // 落在项目根,见该脚本注释)
+      '.capture-smoke*.cjs',
       'src/renderer/types/auto-imports.d.ts',
       'src/renderer/types/components.d.ts'
     ]
