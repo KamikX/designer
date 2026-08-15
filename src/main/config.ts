@@ -26,7 +26,9 @@ const DEFAULT_CONFIG: AppConfig = {
   marketUrl: '',
   toolCallLimit: DEFAULT_TOOL_CALL_LIMIT,
   // 最保守的组合:不依赖服务端持久化,也不用任何非标准选项
-  openaiCompat: { store: false, encryptedReasoning: false }
+  openaiCompat: { store: false, encryptedReasoning: false },
+  // off = 不发送任何推理参数,保持旧行为;档位由用户在设置里自己开
+  reasoningEffort: 'off'
 }
 
 let cache: AppConfig | null = null

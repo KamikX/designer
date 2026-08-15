@@ -3,6 +3,7 @@ import { App } from 'antdv-next'
 import { useAppConfig } from '@renderer/components/config/config'
 import { DEFAULT_TOOL_CALL_LIMIT } from '@shared/limits'
 import AssistantModelField from './AssistantModelField.vue'
+import type { ReasoningEffort } from '@shared/types'
 
 const { lang, dark, primaryColor, langOptions, colorPresets, resetTheme } = useAppConfig()
 const { message } = App.useApp()
@@ -24,12 +25,32 @@ const marketUrl = ref(window.api.initialConfig.marketUrl ?? '')
  */
 const toolCallLimit = ref<number>(window.api.initialConfig.toolCallLimit ?? DEFAULT_TOOL_CALL_LIMIT)
 
+/**
+ * 推理档位。离散选择,选完即存(没有"敲一半"的中间态)。
+ * off = 不发送任何推理参数,与旧版本行为一致。
+ */
+const reasoningEffort = ref<ReasoningEffort>(window.api.initialConfig.reasoningEffort ?? 'off')
+const reasoningOptions = [
+  { label: '关', value: 'off' },
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' }
+]
+
 onMounted(async () => {
   // initialConfig 是 preload 启动时取的快照,别的窗口可能改过,进面板时读一次新的
   const config = await window.api.config.read()
   marketUrl.value = config.marketUrl
   toolCallLimit.value = config.toolCallLimit ?? DEFAULT_TOOL_CALL_LIMIT
+  reasoningEffort.value = config.reasoningEffort ?? 'off'
 })
+
+async function saveReasoningEffort(): Promise<void> {
+  await window.api.config.patch({ reasoningEffort: reasoningEffort.value })
+  message.success(
+    reasoningEffort.value === 'off' ? '已关闭推理,下一轮对话生效' : '已保存,下一轮对话生效'
+  )
+}
 
 async function saveToolCallLimit(): Promise<void> {
   const value = Math.max(0, Math.floor(Number(toolCallLimit.value) || 0))
@@ -101,6 +122,20 @@ async function saveMarketUrl(): Promise<void> {
           AI 在一轮里最多调用多少次工具(读写文件、搜索等)。改动越复杂需要的次数越多;
           <strong>0 = 不限</strong>,这时只剩"累计输入超上下文预算"这一条熔断,单轮会更慢更贵。
           单个项目可以在工作台里另设。
+        </div>
+      </a-form-item>
+
+      <a-divider />
+      <a-form-item label="推理档位">
+        <a-segmented
+          v-model:value="reasoningEffort"
+          :options="reasoningOptions"
+          @change="saveReasoningEffort"
+        />
+        <div style="font-size: 12px; margin-top: 6px; opacity: 0.55">
+          让模型在动手前先思考。开启后设计与排版决策明显更稳,但每轮更慢、更贵。
+          按供应商自动映射(Anthropic thinking / OpenAI reasoning / Google thinking); DeepSeek
+          与自定义中转不受影响。<strong>关 = 与旧版本行为完全一致。</strong>
         </div>
       </a-form-item>
 

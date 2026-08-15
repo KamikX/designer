@@ -16,7 +16,7 @@ import { readConfig } from '../config'
 import { getModel } from '../db/repo/model'
 import { getProviderRowById } from '../db/repo/provider'
 import { createMessage, listMessages, updateMessage } from '../db/repo/message'
-import { openaiCompatOptions } from './provider-options'
+import { openaiCompatOptions, reasoningRequestOptions } from './provider-options'
 import { autoTitle, getConversation, touchConversation } from '../db/repo/conversation'
 import { getProject, setProjectStyleBrief, touchProject } from '../db/repo/project'
 import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/repo/artifact'
@@ -518,6 +518,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       // 图片字节到这里才读:sendChat 本身是同步的,不能 await
       const pixels = await loadAttachmentBytes(attachments)
 
+      const reasoning = reasoningRequestOptions(provider?.adapter)
       const result = streamText({
         model: getLanguageModel(input.providerId, model!.modelId),
         /*
@@ -526,9 +527,16 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
          * 而且只说那件事。空着就整个不传 system,和网页版聊天一样。
          */
         ...(system ? { system } : {}),
-        // OpenAI 协议的兼容开关,见 config.ts。默认最保守:不依赖服务端
-        // 持久化,也不用任何非标准选项
-        providerOptions: { openai: openaiCompatOptions() },
+        // OpenAI 协议的兼容开关 + 用户配置的推理档位(默认 off,一个字段都
+        // 不多发),见 config.ts 与 provider-options.ts
+        providerOptions: {
+          ...reasoning.providerOptions,
+          openai: {
+            ...openaiCompatOptions(),
+            ...(reasoning.providerOptions.openai ?? {})
+          }
+        },
+        ...(reasoning.maxOutputTokens ? { maxOutputTokens: reasoning.maxOutputTokens } : {}),
         messages: [
           ...history,
           {

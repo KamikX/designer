@@ -19,3 +19,50 @@ export function openaiCompatOptions(): Record<string, string[] | boolean> {
     ...(encryptedReasoning ? { include: ['reasoning.encrypted_content'] } : {})
   }
 }
+
+/**
+ * 推理档位 → 各家 thinking 预算(tokens)。数值取"能明显改善设计决策、
+ * 又不至于把单步拖到分钟级"的区间,和各家文档的推荐范围一致。
+ */
+const THINKING_BUDGET = { low: 2048, medium: 8192, high: 16384 } as const
+
+type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
+
+export interface ReasoningRequestOptions {
+  providerOptions: Record<string, Record<string, Json>>
+  /** anthropic 开 thinking 时 max_tokens 必须大于预算,这里连带给出输出上限 */
+  maxOutputTokens?: number
+}
+
+/**
+ * 按供应商 adapter 映射推理档位。off(默认)返回空——一个字段都不多发,
+ * 行为与没有这个功能时完全一致。
+ *
+ * 不覆盖 deepseek 和 openai-compatible:deepseek-chat 不认这些参数
+ * (deepseek-reasoner 则总是推理),中转站对非标字段常回 500 而不是 400,
+ * 宁可不发。
+ */
+export function reasoningRequestOptions(
+  adapter: string | null | undefined
+): ReasoningRequestOptions {
+  const effort = readConfig().reasoningEffort ?? 'off'
+  if (effort === 'off') return { providerOptions: {} }
+
+  if (adapter === 'anthropic') {
+    const budgetTokens = THINKING_BUDGET[effort]
+    return {
+      providerOptions: { anthropic: { thinking: { type: 'enabled', budgetTokens } } },
+      // thinking 计入 max_tokens,预算之外还要给正文留足空间
+      maxOutputTokens: budgetTokens + 16384
+    }
+  }
+  if (adapter === 'openai') {
+    return { providerOptions: { openai: { reasoningEffort: effort } } }
+  }
+  if (adapter === 'google') {
+    return {
+      providerOptions: { google: { thinkingConfig: { thinkingBudget: THINKING_BUDGET[effort] } } }
+    }
+  }
+  return { providerOptions: {} }
+}

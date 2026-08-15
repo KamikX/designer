@@ -75,7 +75,21 @@ export interface AppConfig {
      */
     encryptedReasoning: boolean
   }
+  /**
+   * 设计/对话主链路的推理档位。
+   *
+   * **默认 off:不发送任何推理相关参数,行为与从前完全一致。** 开启后按供应商
+   * 映射——anthropic → thinking 预算(同时抬高输出上限,max_tokens 必须大于
+   * 预算),openai → reasoningEffort,google → thinkingConfig;deepseek 与
+   * openai-compatible 中转能力未知,不发非标字段。
+   *
+   * 开推理能显著提升设计与排版决策质量,也显著增加延迟和费用,所以档位
+   * 交给用户,不做默认开。
+   */
+  reasoningEffort: ReasoningEffort
 }
+
+export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high'
 
 /** 设计稿产物技术栈，项目创建时三选一，之后不可改 */
 export type Stack = 'html' | 'vue3' | 'react'
