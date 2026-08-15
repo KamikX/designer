@@ -226,7 +226,7 @@ export function renderLint(findings: Finding[]): string {
 ## 上一版产物的检查结果
 
 ${p0.length} 条必须修,${findings.length - p0.length} 条应该修。这些是**确定的退步**,
-不是风格意见——每一条都对应一个一眼可辨的"AI 生成"特征。
+不是风格意见——每一条都是机械核对出的事实,绕不过去。
 
 ${body}
 

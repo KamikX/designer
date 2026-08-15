@@ -23,6 +23,7 @@ import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/r
 import { buildHistory } from './context'
 import { buildSystemPrompt } from './prompts'
 import { lintArtifact } from './slop-lint'
+import { compileProbe } from './compile-probe'
 import { pendingLint, recordLint } from './lint-store'
 import { buildChatPrompt } from './prompts/chat'
 import { buildTimeTools } from './time-tools'
@@ -882,6 +883,19 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       const findings = [...writes].flatMap(([path, content]) =>
         lintArtifact(path, content, freshBrief)
       )
+      // 编译错误也走 lint 回流。tools 模式写入时已经当轮提醒过,这里是最后防线;
+      // markers 模式(单发无工具)则只有这一条路能在下一轮把"预览白屏"讲给模型听
+      for (const [path, content] of writes) {
+        const error = compileProbe(path, content)
+        if (error) {
+          findings.unshift({
+            rule: 'compile-error',
+            severity: 'P0',
+            message: `${path} 编译失败,预览白屏:${error}`,
+            fix: '先修编译错误再谈其他改动;跑不起来的设计稿用户什么都看不到。'
+          })
+        }
+      }
       if (findings.length) recordLint(project!.id, result.artifactId, findings)
     }
 

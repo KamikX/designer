@@ -262,7 +262,7 @@ describe('check_syntax', () => {
       old_string: '.hero { color: red; }',
       new_string: '.hero { color: blue; }'
     })
-    expect(await h.call('check_syntax', {})).toContain('没发现结构问题')
+    expect(await h.call('check_syntax', {})).toContain('结构与编译都没发现问题')
   })
 
   it('少一个右花括号会被指出来', async () => {
@@ -279,7 +279,47 @@ describe('check_syntax', () => {
   })
 
   it('可以指定单个文件', async () => {
-    expect(await harness().call('check_syntax', { path: 'index.html' })).toContain('没发现结构问题')
+    expect(await harness().call('check_syntax', { path: 'index.html' })).toContain(
+      '结构与编译都没发现问题'
+    )
+  })
+
+  it('vue 文件走真编译器,语法错误当场报', async () => {
+    const h = harness()
+    await h.call('write_file', {
+      path: 'App.vue',
+      content: '<script setup lang="ts">\nconst = broken\n</script>\n<template><div>x</div></template>\n'
+    })
+    expect(await h.call('check_syntax', { path: 'App.vue' })).toContain('真编译失败')
+  })
+})
+
+describe('写入后的编译探针', () => {
+  it('写入编译不过的文件时,工具结果当轮带上编译错误', async () => {
+    const h = harness()
+    const out = await h.call('write_file', {
+      path: 'Widget.tsx',
+      content: 'export const = () => <div/>\n'
+    })
+    expect(out).toContain('真编译不通过')
+    expect(out).toContain('Widget.tsx')
+    // 改动保留:以坏版本为基线修,好过让已完成的工作蒸发
+    expect(h.vfs.has('Widget.tsx')).toBe(true)
+  })
+
+  it('写入健康文件时不带编译告警', async () => {
+    const h = harness()
+    const out = await h.call('write_file', {
+      path: 'Widget.tsx',
+      content: 'export const W = () => <div>ok</div>\n'
+    })
+    expect(out).not.toContain('真编译不通过')
+  })
+
+  it('html 文件不走编译器', async () => {
+    const h = harness()
+    const out = await h.call('write_file', { path: 'x.html', content: '<div class="unclosed' })
+    expect(out).not.toContain('真编译不通过')
   })
 })
 

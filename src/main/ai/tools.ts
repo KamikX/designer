@@ -19,6 +19,7 @@ import { VfsError } from './vfs-error'
 import { parsePatch } from './patch-format'
 import { unifiedDiff } from './text-diff'
 import { checkSyntax } from './text-syntax'
+import { compileProbe } from './compile-probe'
 
 /**
  * 给模型的文件工具集,分工照 VS Code agent 那套(readFile / textSearch /
@@ -165,6 +166,26 @@ export function buildFileTools(
       if (kind === 'read' || kind === 'locate') {
         ledger.noteLocate()
         if (path !== null) ledger.noteRead(path, revision)
+      }
+      // 写入成功后立刻真编译:错误随工具结果当轮回喂,而不是等预览白屏、
+      // 下一个用户回合才知道。改动保留——以坏版本为基线修,好过让十步工作蒸发
+      if (result.ok && (kind === 'write' || kind === 'textPatch')) {
+        const touched = result.affectedFiles ?? (path !== null ? [path] : [])
+        const failures = touched.flatMap((p) => {
+          let content: string
+          try {
+            content = vfs.raw(p).content
+          } catch {
+            return [] // 删除/移动后原路径已不存在,没有可编译的内容
+          }
+          const error = compileProbe(p, content)
+          return error ? [`- ${p}:${error}`] : []
+        })
+        if (failures.length) {
+          result.message +=
+            `\n\n⚠ 改动已保存,但以下文件真编译不通过,预览会白屏——交付前必须修复:\n` +
+            failures.join('\n')
+        }
       }
       return capped(renderToolResult(result))
     } catch (err) {
@@ -615,9 +636,8 @@ export function buildFileTools(
 
     check_syntax: tool({
       description:
-        '结构自检:括号 / 标签是否配对、JSON 能不能解析。改完收尾前跑一遍,' +
-        '别把括号少一个的版本交出去。不传 path 就检查本回合动过的所有文件。' +
-        '注意这**不是**完整的语法校验,只报有把握的硬错误。',
+        '语法自检:括号 / 标签配对,且 vue/tsx/ts/css 走与预览完全相同的真编译器。' +
+        '改完收尾前跑一遍,别把编译不过的版本交出去。不传 path 就检查本回合动过的所有文件。',
       inputSchema: z.object({
         path: z.string().optional().describe('缺省时检查本回合改动过的全部文件')
       }),
@@ -635,8 +655,12 @@ export function buildFileTools(
           const report = targets.map((file) => {
             const problems = checkSyntax(file.path, file.content)
             const parts: string[] = []
-            if (problems.length === 0) parts.push(`${file.path}:没发现结构问题`)
-            else {
+            // 真编译走在结构检查前面:编译器的报错比括号计数具体得多
+            const compileError = compileProbe(file.path, file.content)
+            if (compileError) parts.push(`${file.path}:真编译失败\n  ${compileError}`)
+            if (problems.length === 0) {
+              if (!compileError) parts.push(`${file.path}:结构与编译都没发现问题`)
+            } else {
               const lines = problems.map((p) => `  ${p.line}:${p.column} ${p.message}`)
               parts.push(`${file.path}:${problems.length} 个问题\n${lines.join('\n')}`)
             }
