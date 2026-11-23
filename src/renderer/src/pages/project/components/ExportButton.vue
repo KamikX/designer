@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { App } from 'antdv-next'
 import { ExportOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
@@ -19,7 +20,7 @@ const store = useArtifactStore()
 
 async function doExport(): Promise<void> {
   const dir = await store.exportCurrent()
-  if (dir) message.success(`已导出到 ${dir}`)
+  if (dir) message.success(t('已导出到 {0}', dir))
 }
 </script>
 
@@ -31,6 +32,6 @@ async function doExport(): Promise<void> {
     @click="doExport"
   >
     <template #icon><ExportOutlined /></template>
-    导出
+    {{ t('导出') }}
   </a-button>
 </template>

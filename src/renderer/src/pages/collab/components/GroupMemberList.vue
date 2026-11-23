@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, EditOutlined } from '@antdv-next/icons'
 import RoleAvatar from './RoleAvatar.vue'
@@ -28,9 +29,9 @@ const { token } = theme.useToken()
     >
       <RoleAvatar :role="{ ...member, id: member.tempKey }" :size="28" />
       <div class="member-card-copy">
-        <div class="member-card-name">{{ member.name || '未命名成员' }}</div>
+        <div class="member-card-name">{{ member.name || t('未命名成员') }}</div>
         <div class="member-card-duty" :style="{ color: token.colorTextTertiary }">
-          {{ member.duty || '尚未填写职责' }}
+          {{ member.duty || t('尚未填写职责') }}
         </div>
       </div>
       <div class="member-card-actions">
@@ -38,7 +39,7 @@ const { token } = theme.useToken()
           :data-testid="`edit-${member.tempKey}`"
           type="text"
           size="small"
-          aria-label="编辑成员"
+          :aria-label="t('编辑成员')"
           @click.stop="emit('edit', member.tempKey)"
         >
           <template #icon><EditOutlined /></template>
@@ -47,7 +48,7 @@ const { token } = theme.useToken()
           :data-testid="`move-up-${member.tempKey}`"
           type="text"
           size="small"
-          aria-label="上移成员"
+          :aria-label="t('上移成员')"
           :disabled="index === 0"
           @click.stop="emit('move', member.tempKey, 'up')"
         >
@@ -57,7 +58,7 @@ const { token } = theme.useToken()
           :data-testid="`move-down-${member.tempKey}`"
           type="text"
           size="small"
-          aria-label="下移成员"
+          :aria-label="t('下移成员')"
           :disabled="index === props.members.length - 1"
           @click.stop="emit('move', member.tempKey, 'down')"
         >
@@ -70,7 +71,7 @@ const { token } = theme.useToken()
           type="text"
           size="small"
           danger
-          aria-label="删除成员"
+          :aria-label="t('删除成员')"
           @click.stop="emit('remove', member.tempKey)"
         >
           <template #icon><DeleteOutlined /></template>
@@ -78,7 +79,11 @@ const { token } = theme.useToken()
       </div>
     </div>
   </div>
-  <a-empty v-else :image-style="{ height: '36px' }" description="从模板添加，或创建空白成员" />
+  <a-empty
+    v-else
+    :image-style="{ height: '36px' }"
+    :description="t('从模板添加，或创建空白成员')"
+  />
 </template>
 
 <style scoped>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App } from 'antdv-next'
 import type { StorageConfigInput } from '@shared/types'
 
@@ -62,7 +63,7 @@ const testResult = ref('')
 
 async function save(): Promise<void> {
   if (mode.value === 's3' && (!form.endpoint.trim() || !form.bucket.trim())) {
-    message.warning('Endpoint 和 Bucket 必填')
+    message.warning(t('Endpoint 和 Bucket 必填'))
     return
   }
   saving.value = true
@@ -70,7 +71,7 @@ async function save(): Promise<void> {
     const next = await window.api.storage.setConfig(buildInput())
     hasSecret.value = next.s3?.hasSecret ?? false
     form.secretKey = ''
-    message.success('已保存')
+    message.success(t('已保存'))
   } finally {
     saving.value = false
   }
@@ -81,7 +82,7 @@ async function runTest(): Promise<void> {
   testResult.value = ''
   try {
     const r = await window.api.storage.test(buildInput())
-    testResult.value = r.ok ? `✓ 连通,${r.latencyMs ?? 0}ms` : `✗ ${r.error}`
+    testResult.value = r.ok ? t('✓ 连通,{0}ms', r.latencyMs ?? 0) : `✗ ${uiMessage(r.error)}`
   } finally {
     testing.value = false
   }
@@ -91,12 +92,22 @@ async function runTest(): Promise<void> {
 <template>
   <div style="max-width: 560px">
     <a-form layout="vertical">
-      <a-form-item label="存储位置">
+      <a-form-item :label="t('存储位置')">
         <a-segmented
           v-model:value="mode"
           :options="[
-            { label: '本地目录(默认)', value: 'local' },
-            { label: 'S3 兼容服务', value: 's3' }
+            {
+              get label() {
+                return t('本地目录(默认)')
+              },
+              value: 'local'
+            },
+            {
+              get label() {
+                return t('S3 兼容服务')
+              },
+              value: 's3'
+            }
           ]"
         />
       </a-form-item>
@@ -105,7 +116,7 @@ async function runTest(): Promise<void> {
         <a-form-item label="Endpoint" required>
           <a-input
             v-model:value="form.endpoint"
-            placeholder="https://minio.example.com 或 R2/OSS/COS 端点"
+            :placeholder="t('https://minio.example.com 或 R2/OSS/COS 端点')"
           />
         </a-form-item>
         <a-flex :gap="12">
@@ -113,29 +124,31 @@ async function runTest(): Promise<void> {
             <a-input v-model:value="form.bucket" />
           </a-form-item>
           <a-form-item label="Region" style="flex: 1">
-            <a-input v-model:value="form.region" placeholder="留空为 auto" />
+            <a-input v-model:value="form.region" :placeholder="t('留空为 auto')" />
           </a-form-item>
         </a-flex>
         <a-form-item label="Access Key">
           <a-input v-model:value="form.accessKey" autocomplete="off" />
         </a-form-item>
-        <a-form-item :label="hasSecret ? 'Secret Key(已保存,留空沿用)' : 'Secret Key'">
+        <a-form-item :label="hasSecret ? t('Secret Key(已保存,留空沿用)') : 'Secret Key'">
           <a-input-password v-model:value="form.secretKey" autocomplete="off" />
         </a-form-item>
-        <a-form-item label="自定义访问域名(CDN,可选)">
+        <a-form-item :label="t('自定义访问域名(CDN,可选)')">
           <a-input v-model:value="form.publicBaseUrl" placeholder="https://cdn.example.com" />
         </a-form-item>
         <a-form-item>
           <a-space>
             <a-switch v-model:checked="form.forcePathStyle" size="small" />
-            <span>Path-style 访问(MinIO 等自建服务需要开启)</span>
+            <span>{{ t('Path-style 访问(MinIO 等自建服务需要开启)') }}</span>
           </a-space>
         </a-form-item>
       </template>
 
       <a-space>
-        <a-button type="primary" :loading="saving" @click="save">保存</a-button>
-        <a-button v-if="mode === 's3'" :loading="testing" @click="runTest">测试连接</a-button>
+        <a-button type="primary" :loading="saving" @click="save">{{ t('保存') }}</a-button>
+        <a-button v-if="mode === 's3'" :loading="testing" @click="runTest">{{
+          t('测试连接')
+        }}</a-button>
         <span v-if="testResult">{{ testResult }}</span>
       </a-space>
     </a-form>

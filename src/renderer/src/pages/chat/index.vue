@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import {
   DeleteOutlined,
@@ -42,35 +43,36 @@ const listEl = ref<HTMLElement | null>(null)
 const composerRef = ref<{ setDraft: (text: string) => void } | null>(null)
 
 /** 起始页快捷入口。挑的是这个聊天**区别于浏览器里那个标签页**的能力 */
-const STARTERS = [
+const STARTERS = computed(() => [
   {
     icon: FolderOpenOutlined,
-    title: '分析本地项目',
-    hint: '授权一个目录,让我摸清它的技术栈和结构',
-    draft:
+    title: t('分析本地项目'),
+    hint: t('授权一个目录,让我摸清它的技术栈和结构'),
+    draft: t(
       '我想让你了解一下我的项目。我待会授权一个目录给你,你先浏览一遍结构,再告诉我它用了什么技术栈、代码组织方式是怎样的。'
+    )
   },
   {
     icon: FileTextOutlined,
-    title: '读一份文档',
-    hint: 'pdf / docx / xlsx 拖进来就行',
-    draft: '我会附上一份文档,帮我读完之后提炼要点。'
+    title: t('读一份文档'),
+    hint: t('pdf / docx / xlsx 拖进来就行'),
+    draft: t('我会附上一份文档,帮我读完之后提炼要点。')
   },
   {
     icon: GlobalOutlined,
-    title: '联网查资料',
-    hint: '搜索 + 打开页面读正文',
-    draft: '帮我查一下 ',
+    title: t('联网查资料'),
+    hint: t('搜索 + 打开页面读正文'),
+    draft: t('帮我查一下 '),
     web: true
   },
   {
     icon: SelectOutlined,
-    title: '操作网页',
-    hint: '打开页面、点击、填表单',
-    draft: '帮我打开这个页面并操作:',
+    title: t('操作网页'),
+    hint: t('打开页面、点击、填表单'),
+    draft: t('帮我打开这个页面并操作:'),
     web: true
   }
-] as const
+])
 
 async function reload(): Promise<void> {
   chats.value = await window.api.chatSession.list()
@@ -94,7 +96,7 @@ function startNew(): void {
   chatStore.closeConversation()
 }
 
-function useStarter(starter: (typeof STARTERS)[number]): void {
+function useStarter(starter: (typeof STARTERS.value)[number]): void {
   if ('web' in starter && starter.web) chatStore.webSearch = true
   composerRef.value?.setDraft(starter.draft)
 }
@@ -113,8 +115,8 @@ async function send(text: string, attachments: ChatAttachment[]): Promise<void> 
 
 function remove(chat: Conversation): void {
   modal.confirm({
-    title: `删除「${chat.title || '新对话'}」?`,
-    content: '这条对话的消息和它授权过的本地目录都会一起删除。',
+    title: t('删除「{0}」?', chat.title || t('新对话')),
+    content: t('这条对话的消息和它授权过的本地目录都会一起删除。'),
     okType: 'danger',
     onOk: async () => {
       await window.api.chatSession.remove(chat.id)
@@ -167,7 +169,7 @@ function scrollToBottom(smooth: boolean): void {
     <div class="chat-sider" :style="{ borderColor: token.colorBorderSecondary }">
       <a-button block size="small" style="margin-bottom: 10px" @click="startNew">
         <template #icon><PlusOutlined /></template>
-        新对话
+        {{ t('新对话') }}
       </a-button>
 
       <div
@@ -175,7 +177,7 @@ function scrollToBottom(smooth: boolean): void {
         class="chat-sider-empty"
         :style="{ color: token.colorTextQuaternary }"
       >
-        还没有历史对话
+        {{ t('还没有历史对话') }}
       </div>
 
       <div
@@ -196,7 +198,7 @@ function scrollToBottom(smooth: boolean): void {
           :style="{ color: token.colorPrimary }"
         />
         <MessageOutlined v-else />
-        <span class="chat-item-title">{{ chat.title || '新对话' }}</span>
+        <span class="chat-item-title">{{ chat.title || t('新对话') }}</span>
         <button class="chat-item-remove" type="button" @click.stop="remove(chat)">
           <DeleteOutlined />
         </button>
@@ -206,9 +208,9 @@ function scrollToBottom(smooth: boolean): void {
     <!-- 起始页:输入框在正中间 -->
     <div v-if="!activeId" class="chat-start">
       <div class="chat-start-inner">
-        <h1 class="chat-start-title">有什么可以帮你的?</h1>
+        <h1 class="chat-start-title">{{ t('有什么可以帮你的?') }}</h1>
         <div class="chat-start-sub" :style="{ color: token.colorTextTertiary }">
-          这是一个干净的对话,没有任何预设。
+          {{ t('这是一个干净的对话,没有任何预设。') }}
         </div>
 
         <Composer ref="composerRef" class="chat-start-composer" @send="send" />
@@ -239,7 +241,7 @@ function scrollToBottom(smooth: boolean): void {
         <a-alert
           v-if="chatStore.error"
           type="error"
-          :message="chatStore.error"
+          :message="uiMessage(chatStore.error)"
           show-icon
           closable
         />

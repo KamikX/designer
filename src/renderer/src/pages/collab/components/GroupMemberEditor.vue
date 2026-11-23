@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import type { InstalledSkill, Model, Provider } from '@shared/types'
 import type { MemberDraft } from '../member-drafts'
@@ -29,22 +30,22 @@ const modelOptions = computed(() =>
     .filter((group) => group.options.length > 0)
 )
 
-const SOURCE_LABELS: Record<InstalledSkill['source'], string> = {
+const SOURCE_LABELS = computed<Record<InstalledSkill['source'], string>>(() => ({
   // 内置领域技能包排最前:这是群组场景的主打能力,用户自己的技能其次
-  'builtin-pm': '项目管理(内置)',
-  'builtin-ui': 'UI 设计(内置)',
-  'builtin-fullstack': '全栈工程(内置)',
-  'builtin-agent': '工程方法(内置)',
+  'builtin-pm': t('项目管理(内置)'),
+  'builtin-ui': t('UI 设计(内置)'),
+  'builtin-fullstack': t('全栈工程(内置)'),
+  'builtin-agent': t('工程方法(内置)'),
   // 设计会话里自动启用的 builtin 设计技能,群组里不自动、但可以手动勾
-  builtin: '设计生成(内置)',
-  app: '我的技能',
-  agents: 'Agents 共享技能',
-  claude: 'Claude 技能'
-}
+  builtin: t('设计生成(内置)'),
+  app: t('我的技能'),
+  agents: t('Agents 共享技能'),
+  claude: t('Claude 技能')
+}))
 
 const skillOptions = computed(() => {
   const selectable = props.skills
-  const groups = (Object.keys(SOURCE_LABELS) as (keyof typeof SOURCE_LABELS)[]).flatMap(
+  const groups = (Object.keys(SOURCE_LABELS.value) as (keyof typeof SOURCE_LABELS.value)[]).flatMap(
     (source) => {
       const options = selectable
         .filter((skill) => skill.source === source)
@@ -53,7 +54,7 @@ const skillOptions = computed(() => {
           value: skill.name,
           title: skill.description
         }))
-      return options.length > 0 ? [{ label: SOURCE_LABELS[source], options }] : []
+      return options.length > 0 ? [{ label: SOURCE_LABELS.value[source], options }] : []
     }
   )
 
@@ -61,8 +62,23 @@ const skillOptions = computed(() => {
   const installedNames = new Set(selectable.map((skill) => skill.name))
   const missing = member.value.skillIds
     .filter((name) => !installedNames.has(name))
-    .map((name) => ({ label: `${name}（已卸载）`, value: name }))
-  return missing.length > 0 ? [...groups, { label: '已失效', options: missing }] : groups
+    .map((name) => ({
+      get label() {
+        return t('{0}（已卸载）', name)
+      },
+      value: name
+    }))
+  return missing.length > 0
+    ? [
+        ...groups,
+        {
+          get label() {
+            return t('已失效')
+          },
+          options: missing
+        }
+      ]
+    : groups
 })
 
 /**
@@ -72,7 +88,9 @@ const skillOptions = computed(() => {
  */
 const COLOR_PRESETS = [
   {
-    label: '推荐',
+    get label() {
+      return t('推荐')
+    },
     colors: ['#e8662c', '#722ed1', '#2f7fd6', '#31a06e', '#b23a48', '#1677ff', '#d4a017', '#13a8a8']
   }
 ]
@@ -105,25 +123,25 @@ function updateSkills(value: unknown): void {
 
 <template>
   <div class="member-editor" :style="{ borderColor: token.colorBorderSecondary }">
-    <div class="member-editor-title">编辑成员</div>
+    <div class="member-editor-title">{{ t('编辑成员') }}</div>
     <a-form layout="vertical" size="small">
       <div class="member-editor-grid">
-        <a-form-item label="名称" html-for="member-name" required>
+        <a-form-item :label="t('名称')" html-for="member-name" required>
           <a-input
             id="member-name"
-            aria-label="成员名称"
+            :aria-label="t('成员名称')"
             data-testid="member-name"
             :value="member.name"
             :maxlength="24"
-            placeholder="如 需求策划"
+            :placeholder="t('如 需求策划')"
             @update:value="updateText('name', $event)"
           />
         </a-form-item>
-        <a-form-item label="头像颜色" html-for="member-color">
+        <a-form-item :label="t('头像颜色')" html-for="member-color">
           <!-- valueFormat="hex":update:value 直接回 hex 字符串,存储形状不变 -->
           <a-color-picker
             id="member-color"
-            aria-label="成员头像颜色"
+            :aria-label="t('成员头像颜色')"
             data-testid="member-color"
             :value="member.color"
             value-format="hex"
@@ -135,65 +153,65 @@ function updateSkills(value: unknown): void {
         </a-form-item>
       </div>
 
-      <a-form-item label="职责" html-for="member-duty">
+      <a-form-item :label="t('职责')" html-for="member-duty">
         <a-input
           id="member-duty"
-          aria-label="成员职责"
+          :aria-label="t('成员职责')"
           data-testid="member-duty"
           :value="member.duty"
-          placeholder="一句话说明负责什么"
+          :placeholder="t('一句话说明负责什么')"
           @update:value="updateText('duty', $event)"
         />
       </a-form-item>
-      <a-form-item label="产出物" html-for="member-deliverable">
+      <a-form-item :label="t('产出物')" html-for="member-deliverable">
         <a-input
           id="member-deliverable"
-          aria-label="成员产出物"
+          :aria-label="t('成员产出物')"
           data-testid="member-deliverable"
           :value="member.deliverable"
-          placeholder="如 需求文档"
+          :placeholder="t('如 需求文档')"
           @update:value="updateText('deliverable', $event)"
         />
       </a-form-item>
-      <a-form-item label="人设" html-for="member-persona" required>
+      <a-form-item :label="t('人设')" html-for="member-persona" required>
         <a-textarea
           id="member-persona"
-          aria-label="成员人设"
+          :aria-label="t('成员人设')"
           data-testid="member-persona"
           :value="member.persona"
           :auto-size="{ minRows: 4, maxRows: 8 }"
-          placeholder="说明成员的专业背景、工作方式与交付要求"
+          :placeholder="t('说明成员的专业背景、工作方式与交付要求')"
           @update:value="updateText('persona', $event)"
         />
       </a-form-item>
-      <a-form-item label="模型" html-for="member-model" required>
+      <a-form-item :label="t('模型')" html-for="member-model" required>
         <a-select
           id="member-model"
-          aria-label="成员模型"
+          :aria-label="t('成员模型')"
           data-testid="member-model"
           :value="member.modelRowId || undefined"
           :options="modelOptions"
           show-search
           option-filter-prop="label"
-          placeholder="选择支持工具调用的模型"
+          :placeholder="t('选择支持工具调用的模型')"
           @update:value="updateModel"
         />
       </a-form-item>
       <a-form-item
-        label="技能"
+        :label="t('技能')"
         html-for="member-skills"
-        extra="群组不会自动启用任何技能，内置技能也只在勾选后生效。"
+        :extra="t('群组不会自动启用任何技能，内置技能也只在勾选后生效。')"
       >
         <a-select
           id="member-skills"
-          aria-label="成员技能"
+          :aria-label="t('成员技能')"
           data-testid="member-skills"
           :value="member.skillIds"
           :options="skillOptions"
           mode="multiple"
           show-search
           option-filter-prop="label"
-          placeholder="搜索并选择技能"
+          :placeholder="t('搜索并选择技能')"
           @update:value="updateSkills"
         />
       </a-form-item>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, activityLabel } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { CheckOutlined, CloseOutlined, LoadingOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
@@ -52,8 +53,10 @@ const drawerSpeaking = computed(
 const activeStates = new Set(['preparing', 'executing'])
 
 const statusText = computed(() => {
-  if (!drawerSpeaking.value) return '空闲'
-  return drawerActivities.value.some((a) => activeStates.has(a.state)) ? '正在调用工具' : '正在输出'
+  if (!drawerSpeaking.value) return t('空闲')
+  return drawerActivities.value.some((a) => activeStates.has(a.state))
+    ? t('正在调用工具')
+    : t('正在输出')
 })
 </script>
 
@@ -88,12 +91,14 @@ const statusText = computed(() => {
           <div class="role-head-text">
             <div class="role-duty">{{ drawerRole.duty }}</div>
             <div class="role-deliverable" :style="{ color: token.colorTextTertiary }">
-              产出物:{{ drawerRole.deliverable }}
+              {{ t('产出物:') }}{{ drawerRole.deliverable }}
             </div>
           </div>
         </div>
 
-        <div class="role-section-title" :style="{ color: token.colorTextTertiary }">当前状态</div>
+        <div class="role-section-title" :style="{ color: token.colorTextTertiary }">
+          {{ t('当前状态') }}
+        </div>
         <div class="role-status">
           <LoadingOutlined v-if="drawerSpeaking" spin :style="{ color: token.colorPrimary }" />
           <span>{{ statusText }}</span>
@@ -113,7 +118,7 @@ const statusText = computed(() => {
                 }"
               />
             </span>
-            <span class="role-activity-label">{{ item.label }}</span>
+            <span class="role-activity-label">{{ activityLabel(item.label) }}</span>
             <span
               v-if="item.summary"
               class="role-activity-summary"
@@ -121,13 +126,13 @@ const statusText = computed(() => {
                 color: item.state === 'fatal_error' ? token.colorError : token.colorTextTertiary
               }"
             >
-              {{ item.summary }}
+              {{ activityLabel(item.summary) }}
             </span>
           </div>
         </div>
 
         <div class="role-section-title" :style="{ color: token.colorTextTertiary }">
-          本轮注入的提示词
+          {{ t('本轮注入的提示词') }}
         </div>
         <!-- pre 自己封顶滚动:注入提示词动辄几千字,不封顶抽屉整个被它撑走 -->
         <pre
@@ -139,7 +144,7 @@ const statusText = computed(() => {
           }"
           >{{ drawerSystem }}</pre>
         <div v-else class="role-system-empty" :style="{ color: token.colorTextQuaternary }">
-          这个角色本轮还没有发言。它被 @ 到时,这里会显示注入给它的完整提示词。
+          {{ t('这个角色本轮还没有发言。它被 @ 到时,这里会显示注入给它的完整提示词。') }}
         </div>
       </div>
     </a-drawer>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import type { RunDiagnostics } from '@shared/types'
 
@@ -43,12 +44,42 @@ const runStats = computed(() => {
   const run = data.value?.run
   if (!run) return []
   return [
-    { label: '总耗时', value: fmtMs(ms(run.startedAt, run.endedAt)) },
-    { label: '首个输出', value: fmtMs(ms(run.startedAt, run.firstOutputAt)) },
-    { label: '首个文件变化', value: fmtMs(ms(run.startedAt, run.firstFileChangeAt)) },
-    { label: '模型请求', value: `${run.modelCallCount} 次` },
-    { label: '工具调用', value: `${run.toolCallCount} 次` },
-    { label: '工具失败', value: `${run.toolFailureCount} 次` }
+    {
+      get label() {
+        return t('总耗时')
+      },
+      value: fmtMs(ms(run.startedAt, run.endedAt))
+    },
+    {
+      get label() {
+        return t('首个输出')
+      },
+      value: fmtMs(ms(run.startedAt, run.firstOutputAt))
+    },
+    {
+      get label() {
+        return t('首个文件变化')
+      },
+      value: fmtMs(ms(run.startedAt, run.firstFileChangeAt))
+    },
+    {
+      get label() {
+        return t('模型请求')
+      },
+      value: t('{0} 次', run.modelCallCount)
+    },
+    {
+      get label() {
+        return t('工具调用')
+      },
+      value: t('{0} 次', run.toolCallCount)
+    },
+    {
+      get label() {
+        return t('工具失败')
+      },
+      value: t('{0} 次', run.toolFailureCount)
+    }
   ]
 })
 
@@ -68,19 +99,37 @@ function fmtMs(value: number | null): string {
 
 /** 未报告的 token 字段显示"未报告",绝不显示 0 */
 function fmtTokens(value: number | null): string {
-  return value == null ? '未报告' : value.toLocaleString()
+  return value == null ? t('未报告') : value.toLocaleString()
 }
 
 const STATUS_TEXT: Record<string, string> = {
-  running: '进行中',
-  complete: '完成',
-  error: '出错',
-  aborted: '已停止',
-  interrupted: '被应用重启打断',
-  pending: '未返回',
-  success: '成功',
-  recoverable_error: '可恢复失败',
-  fatal_error: '失败'
+  get running() {
+    return t('进行中')
+  },
+  get complete() {
+    return t('完成')
+  },
+  get error() {
+    return t('出错')
+  },
+  get aborted() {
+    return t('已停止')
+  },
+  get interrupted() {
+    return t('被应用重启打断')
+  },
+  get pending() {
+    return t('未返回')
+  },
+  get success() {
+    return t('成功')
+  },
+  get recoverable_error() {
+    return t('可恢复失败')
+  },
+  get fatal_error() {
+    return t('失败')
+  }
 }
 
 function toolDuration(tool: RunDiagnostics['tools'][number]): string {
@@ -89,9 +138,9 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
 </script>
 
 <template>
-  <a-drawer :open="open" title="运行诊断" size="large" @close="emit('close')">
+  <a-drawer :open="open" :title="t('运行诊断')" size="large" @close="emit('close')">
     <a-spin v-if="loading" />
-    <a-empty v-else-if="!data" description="没有诊断数据(明细只保留 7 天)" />
+    <a-empty v-else-if="!data" :description="t('没有诊断数据(明细只保留 7 天)')" />
     <div v-else class="diag">
       <div class="diag-grid">
         <div v-for="item in runStats" :key="item.label" class="diag-stat">
@@ -103,13 +152,13 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
       </div>
 
       <div v-if="data.run.toolBreaker || data.run.tokenBreaker || data.run.errorBreaker">
-        <a-tag v-if="data.run.toolBreaker" color="warning">触发工具次数熔断</a-tag>
-        <a-tag v-if="data.run.tokenBreaker" color="warning">触发 token 熔断</a-tag>
-        <a-tag v-if="data.run.errorBreaker" color="warning">触发错误熔断</a-tag>
+        <a-tag v-if="data.run.toolBreaker" color="warning">{{ t('触发工具次数熔断') }}</a-tag>
+        <a-tag v-if="data.run.tokenBreaker" color="warning">{{ t('触发 token 熔断') }}</a-tag>
+        <a-tag v-if="data.run.errorBreaker" color="warning">{{ t('触发错误熔断') }}</a-tag>
       </div>
 
       <div class="diag-section-title" :style="{ color: token.colorTextTertiary }">
-        模型请求({{ data.steps.length }} 步)
+        {{ t('模型请求(') }}{{ data.steps.length }} {{ t('步)') }}
       </div>
       <div class="diag-list">
         <div
@@ -119,20 +168,22 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
           :style="{ borderColor: token.colorBorderSecondary }"
         >
           <div class="diag-row-head">
-            <span>第 {{ step.stepNumber + 1 }} 步 · {{ step.modelId }}</span>
+            <span>{{ t('第') }} {{ step.stepNumber + 1 }} {{ t('步 ·') }} {{ step.modelId }}</span>
             <span :style="{ color: token.colorTextTertiary }">
               {{ fmtMs(step.stepTimeMs) }}
               <template
                 v-if="slowestStep && step.callId === slowestStep.callId && data.steps.length > 1"
               >
-                · 最慢
+                {{ t('· 最慢') }}
               </template>
             </span>
           </div>
           <div class="diag-row-detail" :style="{ color: token.colorTextTertiary }">
-            首包 {{ fmtMs(step.timeToFirstOutputMs) }} · 输入 {{ fmtTokens(step.inputTokens) }} ·
-            缓存读 {{ fmtTokens(step.cacheReadTokens) }} · 缓存写
-            {{ fmtTokens(step.cacheWriteTokens) }} · 输出 {{ fmtTokens(step.outputTokens) }} · 思考
+            {{ t('首包') }} {{ fmtMs(step.timeToFirstOutputMs) }} {{ t('· 输入') }}
+            {{ fmtTokens(step.inputTokens) }} {{ t('· 缓存读') }}
+            {{ fmtTokens(step.cacheReadTokens) }} {{ t('· 缓存写') }}
+            {{ fmtTokens(step.cacheWriteTokens) }} {{ t('· 输出') }}
+            {{ fmtTokens(step.outputTokens) }} {{ t('· 思考') }}
             {{ fmtTokens(step.reasoningTokens) }}
           </div>
           <div v-if="step.errorCode" class="diag-row-detail" :style="{ color: token.colorError }">
@@ -142,7 +193,7 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
       </div>
 
       <div class="diag-section-title" :style="{ color: token.colorTextTertiary }">
-        工具时间线({{ data.tools.length }} 次)
+        {{ t('工具时间线(') }}{{ data.tools.length }} {{ t('次)') }}
       </div>
       <div class="diag-list">
         <div
@@ -166,7 +217,8 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
                       : token.colorTextTertiary
               }"
             >
-              {{ STATUS_TEXT[tool.status] ?? tool.status }} · 执行 {{ toolDuration(tool) }}
+              {{ STATUS_TEXT[tool.status] ?? tool.status }} {{ t('· 执行') }}
+              {{ toolDuration(tool) }}
             </span>
           </div>
           <div
@@ -176,8 +228,8 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
               color: tool.status === 'fatal_error' ? token.colorError : token.colorWarning
             }"
           >
-            {{ tool.errorCode }} {{ tool.errorSummary }}
-            <template v-if="tool.recovered">(已恢复)</template>
+            {{ tool.errorCode }} {{ uiMessage(tool.errorSummary) }}
+            <template v-if="tool.recovered">{{ t('(已恢复)') }}</template>
           </div>
         </div>
       </div>

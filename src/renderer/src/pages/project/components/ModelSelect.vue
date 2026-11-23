@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { useProviderStore } from '@renderer/stores/provider'
 import { useChatStore } from '@renderer/stores/chat'
 import { isChoiceAlive } from '@renderer/stores/selection'
@@ -60,7 +61,7 @@ watchEffect(() => {
     size="small"
     class="model-select"
     style="min-width: 128px; max-width: 200px"
-    placeholder="选择模型"
+    :placeholder="t('选择模型')"
     variant="borderless"
     :popup-match-select-width="false"
   />

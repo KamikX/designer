@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import {
   DeleteOutlined,
@@ -53,8 +54,10 @@ async function open(id: string): Promise<void> {
 
 function remove(group: Conversation): void {
   modal.confirm({
-    title: `删除「${group.title}」?`,
-    content: '群里的全部消息和授权过的本地目录都会一起删除。',
+    get title() {
+      return t('删除「{0}」?', group.title)
+    },
+    content: t('群里的全部消息和授权过的本地目录都会一起删除。'),
     okType: 'danger',
     onOk: async () => {
       await collab.removeGroup(group.id)
@@ -70,7 +73,7 @@ async function resumeChain(): Promise<void> {
   try {
     await collab.resumeChain()
   } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   }
 }
 
@@ -91,7 +94,7 @@ function scrollToBottom(smooth: boolean): void {
     <div class="collab-sider" :style="{ borderColor: token.colorBorderSecondary }">
       <a-button block size="small" style="margin-bottom: 10px" @click="openCreate">
         <template #icon><PlusOutlined /></template>
-        新建群组
+        {{ t('新建群组') }}
       </a-button>
 
       <div
@@ -99,7 +102,7 @@ function scrollToBottom(smooth: boolean): void {
         class="collab-sider-empty"
         :style="{ color: token.colorTextQuaternary }"
       >
-        还没有群组
+        {{ t('还没有群组') }}
       </div>
 
       <div
@@ -131,7 +134,7 @@ function scrollToBottom(smooth: boolean): void {
         <button
           class="collab-item-action"
           type="button"
-          :aria-label="`群组设置 ${group.title}`"
+          :aria-label="t('群组设置 {0}', group.title)"
           :disabled="collab.chaining[group.id]"
           @click="openEdit(group)"
         >
@@ -140,7 +143,7 @@ function scrollToBottom(smooth: boolean): void {
         <button
           class="collab-item-action"
           type="button"
-          :aria-label="`删除群组 ${group.title}`"
+          :aria-label="t('删除群组 {0}', group.title)"
           @click="remove(group)"
         >
           <DeleteOutlined />
@@ -153,15 +156,15 @@ function scrollToBottom(smooth: boolean): void {
       <div class="collab-empty-inner">
         <!-- 装饰性图标不上品牌色:颜色留给状态和行动,这里只是个标记 -->
         <TeamOutlined class="collab-empty-icon" :style="{ color: token.colorTextQuaternary }" />
-        <h2 class="collab-empty-title">让一组 AI 角色接力干活</h2>
+        <h2 class="collab-empty-title">{{ t('让一组 AI 角色接力干活') }}</h2>
         <div class="collab-empty-steps" :style="{ color: token.colorTextTertiary }">
-          1. 新建一个群组,勾选需要的角色<br />
-          2. (可选)授权本地目录,让它们参考你的真实项目<br />
-          3. @产品经理 说你要做什么——它产出文档后会 @下一位,链条自动接力
+          {{ t('1. 新建一个群组,勾选需要的角色') }}<br />
+          {{ t('2. (可选)授权本地目录,让它们参考你的真实项目') }}<br />
+          {{ t('3. @产品经理 说你要做什么——它产出文档后会 @下一位,链条自动接力') }}
         </div>
         <a-button type="primary" @click="openCreate">
           <template #icon><PlusOutlined /></template>
-          新建群组
+          {{ t('新建群组') }}
         </a-button>
       </div>
     </div>
@@ -175,7 +178,7 @@ function scrollToBottom(smooth: boolean): void {
         <a-alert
           v-if="collab.error"
           :type="collab.resumeMember ? 'warning' : 'error'"
-          :message="collab.error"
+          :message="uiMessage(collab.error)"
           show-icon
           closable
           @close="collab.error = ''"
@@ -183,7 +186,7 @@ function scrollToBottom(smooth: boolean): void {
           <template v-if="collab.resumeMember" #action>
             <!-- 拦停是有界循环的检查点:一键续棒 = 发一条 @成员 的新消息开新链 -->
             <a-button size="small" :loading="collab.chainingHere" @click="resumeChain">
-              让「{{ collab.resumeMember.name }}」继续接力
+              {{ t('让「') }}{{ collab.resumeMember.name }}{{ t('」继续接力') }}
             </a-button>
           </template>
         </a-alert>

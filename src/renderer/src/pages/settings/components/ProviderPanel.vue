@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { DownOutlined, PlusOutlined, SyncOutlined } from '@antdv-next/icons'
 import { useProviderStore } from '@renderer/stores/provider'
@@ -32,34 +33,89 @@ const { token } = theme.useToken()
 const store = useProviderStore()
 
 const ADAPTER_LABEL: Record<string, string> = {
-  openai: 'OpenAI 接口',
-  anthropic: 'Anthropic 接口',
-  google: 'Gemini 接口',
-  deepseek: 'DeepSeek 接口',
-  'openai-compatible': 'OpenAI 兼容接口'
+  get openai() {
+    return t('OpenAI 接口')
+  },
+  get anthropic() {
+    return t('Anthropic 接口')
+  },
+  get google() {
+    return t('Gemini 接口')
+  },
+  get deepseek() {
+    return t('DeepSeek 接口')
+  },
+  get 'openai-compatible'() {
+    return t('OpenAI 兼容接口')
+  }
 }
 
 const TYPE_OPTIONS: { label: string; value: ModelType }[] = [
-  { label: '对话', value: 'chat' },
-  { label: '绘图', value: 'image' },
-  { label: '向量', value: 'embedding' },
-  { label: '重排', value: 'rerank' },
-  { label: '语音合成', value: 'tts' },
-  { label: '语音识别', value: 'stt' }
+  {
+    get label() {
+      return t('对话')
+    },
+    value: 'chat'
+  },
+  {
+    get label() {
+      return t('绘图')
+    },
+    value: 'image'
+  },
+  {
+    get label() {
+      return t('向量')
+    },
+    value: 'embedding'
+  },
+  {
+    get label() {
+      return t('重排')
+    },
+    value: 'rerank'
+  },
+  {
+    get label() {
+      return t('语音合成')
+    },
+    value: 'tts'
+  },
+  {
+    get label() {
+      return t('语音识别')
+    },
+    value: 'stt'
+  }
 ]
 
-const TYPE_LABEL: Record<string, string> = Object.fromEntries(
-  TYPE_OPTIONS.map((o) => [o.value, o.label])
+const TYPE_LABEL = computed<Record<string, string>>(() =>
+  Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o.label]))
 )
 
 const ABILITY_OPTIONS: { label: string; value: ModelAbility }[] = [
-  { label: '识图', value: 'vision' },
-  { label: '文件', value: 'files' },
-  { label: '工具', value: 'tools' }
+  {
+    get label() {
+      return t('识图')
+    },
+    value: 'vision'
+  },
+  {
+    get label() {
+      return t('文件')
+    },
+    value: 'files'
+  },
+  {
+    get label() {
+      return t('工具')
+    },
+    value: 'tools'
+  }
 ]
 
-const ABILITY_LABEL: Record<string, string> = Object.fromEntries(
-  ABILITY_OPTIONS.map((o) => [o.value, o.label])
+const ABILITY_LABEL = computed<Record<string, string>>(() =>
+  Object.fromEntries(ABILITY_OPTIONS.map((o) => [o.value, o.label]))
 )
 
 interface PresetModel {
@@ -205,7 +261,9 @@ const PRESETS: Preset[] = [
   },
   {
     key: 'zhipu',
-    label: '智谱 AI',
+    get label() {
+      return t('智谱 AI')
+    },
     adapter: 'openai-compatible',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     models: [
@@ -241,7 +299,9 @@ const PRESETS: Preset[] = [
   },
   {
     key: 'custom',
-    label: '其他(OpenAI 兼容)',
+    get label() {
+      return t('其他(OpenAI 兼容)')
+    },
     adapter: 'openai-compatible',
     baseUrl: '',
     models: []
@@ -350,7 +410,7 @@ watch(
 
 async function loadModels(): Promise<void> {
   if (!drawer.apiKey.trim() && !drawer.editing?.hasKey) {
-    message.warning('请先填写 API Key')
+    message.warning(t('请先填写 API Key'))
     return
   }
   drawer.loadingModels = true
@@ -367,9 +427,9 @@ async function loadModels(): Promise<void> {
       (m) => !seen.has(m.modelId) && drawer.checked.includes(m.modelId)
     )
     drawer.candidates = [...remote, ...kept]
-    message.success(`拉取到 ${remote.length} 个模型`)
+    message.success(t('拉取到 {0} 个模型', remote.length))
   } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   } finally {
     drawer.loadingModels = false
   }
@@ -391,7 +451,7 @@ function buildSelections(): ModelSelection[] {
 
 async function save(): Promise<void> {
   if (!drawer.name.trim()) {
-    message.warning('请填写供应商名称')
+    message.warning(t('请填写供应商名称'))
     return
   }
   drawer.saving = true
@@ -413,10 +473,10 @@ async function save(): Promise<void> {
       await store.setModelSelection(provider.id, buildSelections())
     }
     drawer.open = false
-    message.success('已保存')
+    message.success(t('已保存'))
   } catch (err) {
     // 任何一步失败都要让用户看见,不能静默吞掉
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   } finally {
     drawer.saving = false
   }
@@ -432,7 +492,7 @@ async function runTest(p: Provider): Promise<void> {
   testResult[p.id] = ''
   try {
     const r = await store.test(p.id)
-    testResult[p.id] = r.ok ? `✓ 连通,${r.latencyMs}ms` : `✗ ${r.error}`
+    testResult[p.id] = r.ok ? t('✓ 连通,{0}ms', r.latencyMs) : `✗ ${uiMessage(r.error)}`
   } finally {
     testing[p.id] = false
   }
@@ -440,8 +500,10 @@ async function runTest(p: Provider): Promise<void> {
 
 function confirmRemove(p: Provider): void {
   modal.confirm({
-    title: `删除供应商「${p.name}」?`,
-    content: '其下的模型配置会一并删除。',
+    get title() {
+      return t('删除供应商「{0}」?', p.name)
+    },
+    content: t('其下的模型配置会一并删除。'),
     okType: 'danger',
     onOk: () => store.removeProvider(p.id)
   })
@@ -460,9 +522,9 @@ function toggleExpand(id: string): void {
 
 /** 模型行右侧的说明:对话类显示能力,其余显示类型 */
 function modelMeta(m: Model): string {
-  if (m.type !== 'chat') return TYPE_LABEL[m.type] ?? m.type
-  const abilities = m.abilities.map((a) => ABILITY_LABEL[a] ?? a).join(' / ')
-  return abilities ? `对话 · ${abilities}` : '对话'
+  if (m.type !== 'chat') return TYPE_LABEL.value[m.type] ?? m.type
+  const abilities = m.abilities.map((a) => ABILITY_LABEL.value[a] ?? a).join(' / ')
+  return abilities ? t('对话 · {0}', abilities) : t('对话')
 }
 </script>
 
@@ -470,20 +532,20 @@ function modelMeta(m: Model): string {
   <div style="max-width: 800px">
     <a-flex justify="space-between" align="center" style="margin-bottom: 12px">
       <span style="font-size: 12px; opacity: 0.65">
-        密钥加密保存在本机,绝不上传;点击卡片可修改端点、密钥、模型与能力
+        {{ t('密钥加密保存在本机,绝不上传;点击卡片可修改端点、密钥、模型与能力') }}
       </span>
       <a-button type="primary" @click="openAdd">
         <template #icon><PlusOutlined /></template>
-        添加供应商
+        {{ t('添加供应商') }}
       </a-button>
     </a-flex>
 
     <a-empty
       v-if="store.loaded && store.providers.length === 0"
-      description="还没有配置任何供应商"
+      :description="t('还没有配置任何供应商')"
       style="margin-top: 80px"
     >
-      <a-button type="primary" @click="openAdd">添加供应商</a-button>
+      <a-button type="primary" @click="openAdd">{{ t('添加供应商') }}</a-button>
     </a-empty>
 
     <div v-else class="provider-cards">
@@ -511,18 +573,18 @@ function modelMeta(m: Model): string {
               {{ ADAPTER_LABEL[p.adapter] ?? p.adapter }}
             </a-tag>
             <a-tag v-if="p.hasKey && p.keyStorage === 'plain'" color="warning" style="margin: 0">
-              密钥明文
+              {{ t('密钥明文') }}
             </a-tag>
             <span class="provider-card-hint">
-              {{ p.hasKey ? `密钥 ${p.keyHint}` : '未配置密钥' }}
-              · {{ store.enabledModelsOf(p.id).length }} 个模型
+              {{ p.hasKey ? t('密钥 {0}', p.keyHint) : t('未配置密钥') }}
+              · {{ store.enabledModelsOf(p.id).length }} {{ t('个模型') }}
               <template v-if="testResult[p.id]"> · {{ testResult[p.id] }}</template>
             </span>
           </a-flex>
 
           <a-space :size="12" class="provider-card-actions" @click.stop>
             <a-button type="link" size="small" style="padding: 0" @click="openEdit(p)">
-              配置
+              {{ t('配置') }}
             </a-button>
             <a-button
               type="link"
@@ -532,10 +594,10 @@ function modelMeta(m: Model): string {
               :disabled="!p.hasKey"
               @click="runTest(p)"
             >
-              测试
+              {{ t('测试') }}
             </a-button>
             <a style="color: var(--ant-color-error); font-size: 13px" @click="confirmRemove(p)">
-              删除
+              {{ t('删除') }}
             </a>
             <a-switch
               :checked="p.enabled"
@@ -569,7 +631,7 @@ function modelMeta(m: Model): string {
             </a-flex>
           </template>
           <div v-else style="font-size: 12px; opacity: 0.45; padding: 8px 0">
-            未启用任何模型,点「配置」添加
+            {{ t('未启用任何模型,点「配置」添加') }}
           </div>
         </div>
       </div>
@@ -577,41 +639,41 @@ function modelMeta(m: Model): string {
 
     <a-drawer
       v-model:open="drawer.open"
-      :title="isEdit ? `配置 — ${drawer.editing?.name}` : '添加供应商'"
+      :title="isEdit ? t('配置 — {0}', drawer.editing?.name) : t('添加供应商')"
       size="large"
       destroy-on-close
     >
       <a-form layout="vertical">
-        <a-form-item v-if="!isEdit" label="选择供应商">
+        <a-form-item v-if="!isEdit" :label="t('选择供应商')">
           <a-select
             v-model:value="drawer.presetKey"
             :options="PRESETS.map((p) => ({ label: p.label, value: p.key }))"
           />
         </a-form-item>
 
-        <a-form-item label="名称" required>
-          <a-input v-model:value="drawer.name" placeholder="如 OpenAI / 某中转站" />
+        <a-form-item :label="t('名称')" required>
+          <a-input v-model:value="drawer.name" :placeholder="t('如 OpenAI / 某中转站')" />
         </a-form-item>
 
         <a-form-item label="Base URL">
-          <a-input v-model:value="drawer.baseUrl" placeholder="留空使用官方默认端点" />
+          <a-input v-model:value="drawer.baseUrl" :placeholder="t('留空使用官方默认端点')" />
         </a-form-item>
 
-        <a-form-item :label="drawer.editing?.hasKey ? 'API Key(已保存,留空沿用)' : 'API Key'">
+        <a-form-item :label="drawer.editing?.hasKey ? t('API Key(已保存,留空沿用)') : 'API Key'">
           <a-input-password
             v-model:value="drawer.apiKey"
             autocomplete="off"
-            placeholder="保存后只显示脱敏提示"
+            :placeholder="t('保存后只显示脱敏提示')"
           />
         </a-form-item>
 
-        <a-form-item label="模型">
+        <a-form-item :label="t('模型')">
           <a-flex :gap="8">
             <a-select
               v-model:value="drawer.checked"
               mode="tags"
               style="flex: 1; min-width: 0"
-              placeholder="预设已推荐常用模型;可拉取、搜索或手输模型 ID"
+              :placeholder="t('预设已推荐常用模型;可拉取、搜索或手输模型 ID')"
               :options="drawer.candidates.map((m) => ({ label: m.displayName, value: m.modelId }))"
               :max-tag-count="6"
               allow-clear
@@ -622,15 +684,18 @@ function modelMeta(m: Model): string {
               @click="loadModels"
             >
               <template #icon><SyncOutlined /></template>
-              加载模型
+              {{ t('加载模型') }}
             </a-button>
           </a-flex>
         </a-form-item>
 
-        <a-form-item v-if="drawer.checked.length" label="模型类型与能力">
+        <a-form-item v-if="drawer.checked.length" :label="t('模型类型与能力')">
           <div class="caps-hint">
-            类型决定模型用在哪个功能里;能力仅对话类模型可选——识图 = 图片输入,文件 = 文档输入,工具 =
-            function calling。默认按模型名推断,可手动纠正
+            {{
+              t(
+                '类型决定模型用在哪个功能里;能力仅对话类模型可选——识图 = 图片输入,文件 = 文档输入,工具 = function calling。默认按模型名推断,可手动纠正'
+              )
+            }}
           </div>
           <div class="caps-list" :style="{ borderColor: token.colorBorderSecondary }">
             <a-flex
@@ -659,8 +724,8 @@ function modelMeta(m: Model): string {
 
       <template #footer>
         <a-flex justify="flex-end" :gap="8">
-          <a-button @click="drawer.open = false">取消</a-button>
-          <a-button type="primary" :loading="drawer.saving" @click="save">保存</a-button>
+          <a-button @click="drawer.open = false">{{ t('取消') }}</a-button>
+          <a-button type="primary" :loading="drawer.saving" @click="save">{{ t('保存') }}</a-button>
         </a-flex>
       </template>
     </a-drawer>

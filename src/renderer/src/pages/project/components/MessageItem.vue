@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { CheckOutlined, DeleteOutlined, FileOutlined, LineChartOutlined } from '@antdv-next/icons'
 import { useChatStore } from '@renderer/stores/chat'
@@ -76,7 +77,7 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
   <div class="message" :class="{ 'message--user': isUser }">
     <!-- 用户气泡右对齐,复制按钮摆左边;AI 的在气泡内底部(见下) -->
     <span v-if="isUser" class="message-copy">
-      <CopyButton :text="textContent" label="复制这条消息" />
+      <CopyButton :text="textContent" :label="t('复制这条消息')" />
     </span>
 
     <!--
@@ -125,7 +126,7 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
           :style="{ color: token.colorTextTertiary }"
           @click="reasoningOpen = !reasoningOpen"
         >
-          {{ reasoningOpen ? '收起思考过程' : '查看思考过程' }}
+          {{ reasoningOpen ? t('收起思考过程') : t('查看思考过程') }}
         </button>
         <div
           v-if="reasoningOpen"
@@ -166,7 +167,7 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
 
       <!-- 等作答时不要跳打字点:那会让人以为 AI 还在写,其实是在等自己 -->
       <a-typography-text v-if="waitingOnUser" type="secondary" style="font-size: 12px">
-        等你的选择
+        {{ t('等你的选择') }}
       </a-typography-text>
       <div v-else-if="message.status === 'streaming'" class="message-typing">
         <span class="typing-dot" /><span class="typing-dot" /><span class="typing-dot" />
@@ -176,19 +177,19 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
         type="danger"
         style="font-size: 12px"
       >
-        生成失败
+        {{ t('生成失败') }}
       </a-typography-text>
       <a-typography-text
         v-else-if="message.status === 'aborted'"
         type="secondary"
         style="font-size: 12px"
       >
-        已停止
+        {{ t('已停止') }}
       </a-typography-text>
 
       <!-- AI 的解说复制:摆在气泡内底部,和诊断入口同一排 -->
       <span v-if="!isUser && textContent" class="message-copy message-copy--inline">
-        <CopyButton :text="textContent" label="复制这条回复" />
+        <CopyButton :text="textContent" :label="t('复制这条回复')" />
       </span>
 
       <!-- 运行诊断入口:阶段耗时、工具时间线、详细 token 都在抽屉里 -->
@@ -197,7 +198,7 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
         type="button"
         class="message-diag-btn"
         :style="{ color: token.colorTextQuaternary }"
-        title="运行诊断"
+        :title="t('运行诊断')"
         @click="diagnosticsOpen = true"
       >
         <LineChartOutlined />

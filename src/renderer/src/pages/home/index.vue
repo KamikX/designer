@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { AppstoreOutlined, DeleteOutlined, LoadingOutlined, PlusOutlined } from '@antdv-next/icons'
 import dayjs from 'dayjs'
@@ -29,7 +30,8 @@ const createOpen = ref(false)
  */
 const STACK_LABEL: Record<Stack, string> = { html: 'HTML', vue3: 'Vue 3', react: 'React' }
 
-const MODE_LABEL: Record<string, string> = { design: 'UI 设计', prototype: '原型' }
+const modeLabel = (mode: string): string =>
+  mode === 'design' ? t('UI 设计') : mode === 'prototype' ? t('原型') : mode
 
 /** 正在生成中的项目集合。流状态在 chat store 里全局存着,首页也看得见 */
 const chatStore = useChatStore()
@@ -45,8 +47,8 @@ function openProject(id: string): void {
 
 function confirmRemove(p: Project): void {
   modal.confirm({
-    title: `删除项目「${p.name}」?`,
-    content: '对话记录与设计稿会一并删除,不可恢复。',
+    title: t('删除项目「{0}」?', p.name),
+    content: t('对话记录与设计稿会一并删除,不可恢复。'),
     okType: 'danger',
     onOk: () => store.remove(p.id)
   })
@@ -68,15 +70,21 @@ function fromNow(time: string): string {
     <div v-if="store.loaded && store.projects.length === 0" class="home-empty">
       <div class="home-empty-inner">
         <AppstoreOutlined class="home-empty-icon" :style="{ color: token.colorTextQuaternary }" />
-        <h2 class="home-empty-title">新建第一个项目</h2>
+        <h2 class="home-empty-title">{{ t('新建第一个项目') }}</h2>
         <div class="home-empty-steps" :style="{ color: token.colorTextTertiary }">
-          <div>1. 选技术栈与要做的端,给一句项目背景</div>
-          <div>2. 用自然语言说要什么——AI 产出可运行的设计稿</div>
-          <div>3. 右侧实时预览,满意了导出</div>
+          <div>
+            {{ t('1. 选技术栈与要做的端,给一句项目背景') }}
+          </div>
+          <div>
+            {{ t('2. 用自然语言说要什么——AI 产出可运行的设计稿') }}
+          </div>
+          <div>
+            {{ t('3. 右侧实时预览,满意了导出') }}
+          </div>
         </div>
         <a-button type="primary" @click="createOpen = true">
           <template #icon><PlusOutlined /></template>
-          新建项目
+          {{ t('新建项目') }}
         </a-button>
       </div>
     </div>
@@ -84,9 +92,9 @@ function fromNow(time: string): string {
     <template v-else>
       <div class="home-head">
         <div>
-          <h1 class="home-title">项目</h1>
+          <h1 class="home-title">{{ t('项目') }}</h1>
           <div class="home-sub" :style="{ color: token.colorTextTertiary }">
-            从一句需求开始,让 AI 帮你产出可交付的设计稿
+            {{ t('从一句需求开始,让 AI 帮你产出可交付的设计稿') }}
           </div>
         </div>
       </div>
@@ -101,7 +109,7 @@ function fromNow(time: string): string {
           <span class="new-plus" :style="{ background: token.colorFillQuaternary }">
             <PlusOutlined />
           </span>
-          <span style="font-size: 13px">新建项目</span>
+          <span style="font-size: 13px">{{ t('新建项目') }}</span>
         </button>
 
         <!-- 项目卡片 -->
@@ -115,14 +123,14 @@ function fromNow(time: string): string {
           <div class="card-body">
             <div class="card-name">{{ p.name }}</div>
             <div class="card-desc" :style="{ color: token.colorTextTertiary }">
-              {{ p.description || '暂无描述' }}
+              {{ p.description || t('暂无描述') }}
             </div>
           </div>
 
           <div class="card-foot" :style="{ borderColor: token.colorBorderSecondary }">
             <!-- 技术栈与模式:定宽小字,中性色。它们是标注,不是强调 -->
             <span class="card-meta" :style="{ color: token.colorTextQuaternary }">
-              {{ STACK_LABEL[p.stack] }} · {{ MODE_LABEL[p.designMode] }} ·
+              {{ STACK_LABEL[p.stack] }} · {{ modeLabel(p.designMode) }} ·
               {{ fromNow(p.updatedAt) }}
             </span>
             <!-- 唯一上色的地方:真正的状态 -->
@@ -131,7 +139,7 @@ function fromNow(time: string): string {
               class="card-busy"
               :style="{ color: token.colorPrimary }"
             >
-              <LoadingOutlined spin /> 生成中
+              <LoadingOutlined spin /> {{ t('生成中') }}
             </span>
             <button
               v-else

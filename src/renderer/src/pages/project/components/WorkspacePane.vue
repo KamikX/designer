@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { AppstoreAddOutlined, FileTextOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
@@ -48,8 +49,20 @@ const projectStore = useProjectStore()
 
 /** 与 CreateProjectModal 同一份清单;目前只有 vue3 栈有可加载的依赖 */
 const LIB_OPTIONS: { value: PreviewLib; label: string; hint: string }[] = [
-  { value: 'antdv-next', label: 'antdv-next', hint: '组件库本体' },
-  { value: '@antdv-next/icons', label: '@antdv-next/icons', hint: '配套图标库' }
+  {
+    value: 'antdv-next',
+    label: 'antdv-next',
+    get hint() {
+      return t('组件库本体')
+    }
+  },
+  {
+    value: '@antdv-next/icons',
+    label: '@antdv-next/icons',
+    get hint() {
+      return t('配套图标库')
+    }
+  }
 ]
 
 /**
@@ -81,10 +94,10 @@ async function toggleLib(value: PreviewLib): Promise<void> {
     // 引导 HTML 按项目当前状态生成,不刷预览看不到变化;
     // 提示词的变化则在下一轮对话自然生效
     store.previewEpoch++
-    message.success('依赖包已更新,预览已刷新;AI 从下一轮开始按新依赖生成')
+    message.success(t('依赖包已更新,预览已刷新;AI 从下一轮开始按新依赖生成'))
   } catch (err) {
     libDraft.value = before
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   }
 }
 </script>
@@ -98,8 +111,18 @@ async function toggleLib(value: PreviewLib): Promise<void> {
         v-model:value="activeTab"
         size="small"
         :options="[
-          { label: '预览', value: 'preview' },
-          { label: '代码', value: 'code' }
+          {
+            get label() {
+              return t('预览')
+            },
+            value: 'preview'
+          },
+          {
+            get label() {
+              return t('代码')
+            },
+            value: 'code'
+          }
         ]"
       />
 
@@ -107,7 +130,7 @@ async function toggleLib(value: PreviewLib): Promise<void> {
       <a-popover v-if="project.stack === 'vue3'" trigger="click" placement="bottomRight">
         <template #content>
           <div class="libs-pop">
-            <div class="libs-pop-title">依赖包(预览环境自动加载)</div>
+            <div class="libs-pop-title">{{ t('依赖包(预览环境自动加载)') }}</div>
             <label v-for="opt in LIB_OPTIONS" :key="opt.value" class="libs-pop-row">
               <a-checkbox :checked="libDraft.includes(opt.value)" @change="toggleLib(opt.value)" />
               <span class="libs-pop-name">{{ opt.label }}</span>
@@ -117,7 +140,7 @@ async function toggleLib(value: PreviewLib): Promise<void> {
             </label>
           </div>
         </template>
-        <a-tooltip title="依赖包">
+        <a-tooltip :title="t('依赖包')">
           <button class="libs-btn" :style="{ color: token.colorTextSecondary }" type="button">
             <AppstoreAddOutlined />
             <span v-if="libDraft.length" class="libs-badge tabular">{{ libDraft.length }}</span>
@@ -135,9 +158,9 @@ async function toggleLib(value: PreviewLib): Promise<void> {
             class="workspace-empty-icon"
             :style="{ color: token.colorTextQuaternary }"
           />
-          <h3 class="workspace-empty-title">还没有设计稿</h3>
+          <h3 class="workspace-empty-title">{{ t('还没有设计稿') }}</h3>
           <div class="workspace-empty-sub" :style="{ color: token.colorTextTertiary }">
-            在左边描述你要的页面,生成后这里会出现文件树与实时预览
+            {{ t('在左边描述你要的页面,生成后这里会出现文件树与实时预览') }}
           </div>
         </div>
       </div>

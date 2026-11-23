@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import {
   ApiOutlined,
@@ -22,10 +23,38 @@ const store = useProviderStore()
 store.load()
 
 const SECTIONS = [
-  { key: 'general', label: '通用', icon: SettingOutlined, component: GeneralPanel },
-  { key: 'providers', label: 'AI 供应商', icon: ApiOutlined, component: ProviderPanel },
-  { key: 'data', label: '数据与同步', icon: CloudSyncOutlined, component: DataBackendPanel },
-  { key: 'storage', label: '对象存储', icon: DatabaseOutlined, component: StoragePanel }
+  {
+    key: 'general',
+    get label() {
+      return t('通用')
+    },
+    icon: SettingOutlined,
+    component: GeneralPanel
+  },
+  {
+    key: 'providers',
+    get label() {
+      return t('AI 供应商')
+    },
+    icon: ApiOutlined,
+    component: ProviderPanel
+  },
+  {
+    key: 'data',
+    get label() {
+      return t('数据与同步')
+    },
+    icon: CloudSyncOutlined,
+    component: DataBackendPanel
+  },
+  {
+    key: 'storage',
+    get label() {
+      return t('对象存储')
+    },
+    icon: DatabaseOutlined,
+    component: StoragePanel
+  }
 ] as const
 
 const active = ref<(typeof SECTIONS)[number]['key']>('general')

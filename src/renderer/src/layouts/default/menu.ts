@@ -1,3 +1,4 @@
+import { t } from '@renderer/i18n'
 import type { MenuItemType } from 'antdv-next'
 import {
   AppstoreOutlined,
@@ -17,16 +18,52 @@ import {
 
 /** 上半部分：主导航 */
 export const MENU_ITEMS: MenuItemType[] = [
-  { key: '/', icon: HomeOutlined, label: '首页' },
-  { key: '/chat', icon: MessageOutlined, label: '聊天' },
-  { key: '/collab', icon: TeamOutlined, label: '协作' },
+  {
+    key: '/',
+    icon: HomeOutlined,
+    get label() {
+      return t('首页')
+    }
+  },
+  {
+    key: '/chat',
+    icon: MessageOutlined,
+    get label() {
+      return t('聊天')
+    }
+  },
+  {
+    key: '/collab',
+    icon: TeamOutlined,
+    get label() {
+      return t('协作')
+    }
+  },
   // 技能和 MCP 合成一个入口的两个 tab:侧栏刚减掉一项,再加两项就白减了
-  { key: '/market', icon: AppstoreOutlined, label: '市场' }
+  {
+    key: '/market',
+    icon: AppstoreOutlined,
+    get label() {
+      return t('市场')
+    }
+  }
 ]
 
 /** 下半部分：贴底的工具入口 */
 export const FOOTER_MENU_ITEMS: MenuItemType[] = [
   // 用量是"回头看账"的工具属性入口,和设置一起贴底,不挤主导航
-  { key: '/usage', icon: LineChartOutlined, label: '用量' },
-  { key: '/settings', icon: SettingOutlined, label: '设置' }
+  {
+    key: '/usage',
+    icon: LineChartOutlined,
+    get label() {
+      return t('用量')
+    }
+  },
+  {
+    key: '/settings',
+    icon: SettingOutlined,
+    get label() {
+      return t('设置')
+    }
+  }
 ]

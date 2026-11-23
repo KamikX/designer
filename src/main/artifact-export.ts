@@ -1,3 +1,4 @@
+import { translate } from '../shared/i18n'
 import { mkdirSync, writeFileSync } from 'fs'
 import { dirname, join, normalize, sep } from 'path'
 import { dialog, shell } from 'electron'
@@ -15,7 +16,7 @@ export async function exportArtifact(artifactId: string): Promise<string | null>
   const project = getProject(artifact.projectId)
 
   const result = await dialog.showOpenDialog({
-    title: '选择导出目录',
+    title: translate((await import('./config')).readConfig().lang, '选择导出目录'),
     properties: ['openDirectory', 'createDirectory']
   })
   if (result.canceled || result.filePaths.length === 0) return null

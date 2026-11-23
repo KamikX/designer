@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '@renderer/stores/project'
 import { ArrowLeftOutlined } from '@antdv-next/icons'
@@ -32,9 +33,9 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
 </script>
 
 <template>
-  <a-result v-if="missing" status="404" title="项目不存在" sub-title="它可能已被删除">
+  <a-result v-if="missing" status="404" :title="t('项目不存在')" :sub-title="t('它可能已被删除')">
     <template #extra>
-      <a-button type="primary" @click="router.push('/')">回项目列表</a-button>
+      <a-button type="primary" @click="router.push('/')">{{ t('回项目列表') }}</a-button>
     </template>
   </a-result>
 

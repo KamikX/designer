@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { useProviderStore } from '@renderer/stores/provider'
 
@@ -18,7 +19,12 @@ providerStore.load()
 const config = reactive({ ...window.api.initialConfig })
 
 const options = computed(() => [
-  { label: '不使用(长文档直接给原文)', value: '' },
+  {
+    get label() {
+      return t('不使用(长文档直接给原文)')
+    },
+    value: ''
+  },
   ...providerStore.chatModels.map(({ provider, models }) => ({
     label: provider.name,
     options: models.map((m) => ({ label: m.displayName, value: `${provider.id}:${m.id}` }))
@@ -44,12 +50,14 @@ const value = computed<string>({
 </script>
 
 <template>
-  <a-form-item label="辅助模型">
+  <a-form-item :label="t('辅助模型')">
     <a-select v-model:value="value" :options="options" style="max-width: 320px" />
     <div class="hint" :style="{ color: token.colorTextTertiary }">
-      读取长文档(pdf / docx / xlsx)时先用它提炼成设计要点再交给主模型;
-      群组接力过长时的「前情纪要」也由它生成(没配则用发言成员自己的模型)。
-      挑个便宜的即可——它做的是信息抽取与压缩,不是设计。
+      {{
+        t(
+          '读取长文档(pdf / docx / xlsx)时先用它提炼成设计要点再交给主模型; 群组接力过长时的「前情纪要」也由它生成(没配则用发言成员自己的模型)。 挑个便宜的即可——它做的是信息抽取与压缩,不是设计。'
+        )
+      }}
     </div>
   </a-form-item>
 </template>

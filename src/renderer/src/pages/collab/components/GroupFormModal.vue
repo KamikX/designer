@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { PlusOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
@@ -73,12 +74,18 @@ async function loadOptions(): Promise<void> {
     ])
     skills.value = installed
   } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
+    message.error(uiMessage(error instanceof Error ? error.message : String(error)))
   }
 }
 
 function addTemplate(template: GroupMemberTemplate): void {
-  const draft = createMemberDraftFromTemplate(template)
+  const draft = createMemberDraftFromTemplate({
+    ...template,
+    name: t(template.name),
+    duty: t(template.duty),
+    deliverable: t(template.deliverable),
+    persona: t(template.persona)
+  })
   members.value = [...members.value, draft]
   editingKey.value = draft.tempKey
 }
@@ -115,7 +122,7 @@ async function submit(): Promise<void> {
 
   const groupName = name.value.trim()
   if (!groupName) {
-    message.warning('给群组起个名字')
+    message.warning(t('给群组起个名字'))
     return
   }
 
@@ -148,7 +155,7 @@ async function submit(): Promise<void> {
       emit('created', created)
     }
   } catch (error) {
-    message.error(error instanceof Error ? error.message : String(error))
+    message.error(uiMessage(error instanceof Error ? error.message : String(error)))
   } finally {
     creating.value = false
   }
@@ -158,32 +165,32 @@ async function submit(): Promise<void> {
 <template>
   <a-modal
     v-model:open="open"
-    :title="isEdit ? '群组设置' : '新建群组'"
+    :title="isEdit ? t('群组设置') : t('新建群组')"
     :confirm-loading="creating"
     :width="900"
     centered
-    :ok-text="isEdit ? '保存' : '建群'"
+    :ok-text="isEdit ? t('保存') : t('建群')"
     @ok="submit"
   >
     <div class="create-body">
       <a-form layout="vertical">
-        <a-form-item label="群组名称" html-for="group-name" required>
+        <a-form-item :label="t('群组名称')" html-for="group-name" required>
           <a-input
             id="group-name"
             v-model:value="name"
-            aria-label="群组名称"
+            :aria-label="t('群组名称')"
             data-testid="group-name"
             size="large"
-            placeholder="如 官网改版专项 / 管理后台需求评审"
+            :placeholder="t('如 官网改版专项 / 管理后台需求评审')"
             @press-enter="submit"
           />
         </a-form-item>
       </a-form>
 
       <div class="template-head">
-        <span class="section-title">快捷模板</span>
+        <span class="section-title">{{ t('快捷模板') }}</span>
         <span class="section-hint" :style="{ color: token.colorTextTertiary }">
-          模板只复制职责与人设，模型和技能由你配置
+          {{ t('模板只复制职责与人设，模型和技能由你配置') }}
         </span>
       </div>
       <div class="template-row">
@@ -195,19 +202,19 @@ async function submit(): Promise<void> {
           @click="addTemplate(role)"
         >
           <span class="template-dot" :style="{ background: role.color }" />
-          {{ role.name }}
+          {{ t(role.name) }}
         </a-button>
         <a-button data-testid="add-blank-member" size="small" type="dashed" @click="addBlank">
           <template #icon><PlusOutlined /></template>
-          空白成员
+          {{ t('空白成员') }}
         </a-button>
       </div>
 
       <div class="member-layout">
         <section class="member-column">
-          <div class="section-title">群组成员 · {{ members.length }}</div>
+          <div class="section-title">{{ t('群组成员 ·') }} {{ members.length }}</div>
           <div v-if="isEdit" class="section-hint" :style="{ color: token.colorTextTertiary }">
-            已有成员可修改配置但不能移除——TA 的历史发言还在群里
+            {{ t('已有成员可修改配置但不能移除——TA 的历史发言还在群里') }}
           </div>
           <GroupMemberList
             :members="members"
@@ -231,7 +238,7 @@ async function submit(): Promise<void> {
             class="editor-placeholder"
             :style="{ color: token.colorTextTertiary, borderColor: token.colorBorderSecondary }"
           >
-            添加或选择一位成员后，在这里配置它
+            {{ t('添加或选择一位成员后，在这里配置它') }}
           </div>
         </section>
       </div>

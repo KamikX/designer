@@ -27,7 +27,8 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "i18n:check": "node scripts/i18n/check.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.19",

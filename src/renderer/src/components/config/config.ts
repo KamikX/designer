@@ -1,3 +1,4 @@
+import { t, bindLanguage } from '@renderer/i18n'
 import type { ConfigProviderProps, ThemeConfig } from 'antdv-next'
 import type { ComputedRef, WritableComputedRef } from 'vue'
 import { theme } from 'antdv-next'
@@ -43,7 +44,9 @@ const DEFAULT_PRIMARY_COLOR = '#1677ff'
 /** 主题色预设，供 ColorPicker 的色板使用 */
 export const COLOR_PRESETS = [
   {
-    label: '推荐',
+    get label() {
+      return t('推荐')
+    },
     colors: ['#1677ff', '#5b8ff9', '#00b96b', '#13c2c2', '#722ed1', '#eb2f96', '#fa541c', '#faad14']
   }
 ]
@@ -61,6 +64,14 @@ export const PROVIDER_OPTIONS = {
  * 会在启动瞬间闪一下。初始值由 preload 同步取好，首帧即正确。
  */
 const state = reactive({ ...window.api.initialConfig })
+bindLanguage(computed(() => state.lang))
+watch(
+  () => state.lang,
+  (lang) => {
+    document.documentElement.lang = lang
+  },
+  { immediate: true }
+)
 
 /** 写回主进程。IPC 是异步的，本地状态先改，UI 不等落盘 */
 const persist = (): void => {

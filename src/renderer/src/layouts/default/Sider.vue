@@ -8,6 +8,26 @@ const route = useRoute()
 const router = useRouter()
 const { token } = theme.useToken()
 const { dark } = useAppConfig()
+const menuItems = computed(() =>
+  MENU_ITEMS.map((item) =>
+    item && 'label' in item
+      ? {
+          ...item,
+          label: item.label
+        }
+      : item
+  )
+)
+const footerMenuItems = computed(() =>
+  FOOTER_MENU_ITEMS.map((item) =>
+    item && 'label' in item
+      ? {
+          ...item,
+          label: item.label
+        }
+      : item
+  )
+)
 
 // 侧栏跟着整体明暗走。底色统一由 config.ts 算好写在 --app-rail-bg 上，
 // 开毛玻璃时它是半透明的，这里不能再写死不透明色
@@ -52,7 +72,7 @@ function onMenuClick({ key }: { key: string | number }): void {
           :theme="siderTheme"
           mode="inline"
           inline-collapsed
-          :items="MENU_ITEMS"
+          :items="menuItems"
           :selected-keys="selectedKeys"
           :style="menuStyle"
           @click="onMenuClick"
@@ -64,7 +84,7 @@ function onMenuClick({ key }: { key: string | number }): void {
           :theme="siderTheme"
           mode="inline"
           inline-collapsed
-          :items="FOOTER_MENU_ITEMS"
+          :items="footerMenuItems"
           :selected-keys="selectedKeys"
           :style="menuStyle"
           @click="onMenuClick"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { DeleteOutlined, FolderOpenOutlined, PlusOutlined } from '@antdv-next/icons'
 import { useChatStore } from '@renderer/stores/chat'
@@ -47,9 +48,9 @@ async function grant(): Promise<void> {
     const added = await window.api.workspace.grant(props.scope)
     if (!added) return
     if (!roots.value.some((r) => r.id === added.id)) roots.value.push(added)
-    message.success(`已授权 ${added.name}`)
+    message.success(t('已授权 {0}', added.name))
   } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   } finally {
     granting.value = false
   }
@@ -57,8 +58,10 @@ async function grant(): Promise<void> {
 
 function revoke(root: WorkspaceRoot): void {
   modal.confirm({
-    title: `取消授权「${root.name}」?`,
-    content: 'AI 将不再能读取该目录下的任何文件。',
+    get title() {
+      return t('取消授权「{0}」?', root.name)
+    },
+    content: t('AI 将不再能读取该目录下的任何文件。'),
     okType: 'danger',
     onOk: async () => {
       await window.api.workspace.revoke(root.id)
@@ -72,12 +75,15 @@ function revoke(root: WorkspaceRoot): void {
   <a-popover trigger="click" placement="topLeft">
     <template #content>
       <div class="roots-pop">
-        <div class="roots-title">让 AI 参考本地项目</div>
+        <div class="roots-title">{{ t('让 AI 参考本地项目') }}</div>
         <div class="roots-hint" :style="{ color: token.colorTextTertiary }">
-          授权后,AI 可以浏览、搜索、读取该范围内的文件与文档(pdf / docx / xlsx),
-          用来分析你的真实项目再定制设计稿。只在授权范围内,范围之外读不到,也不会执行任何命令。
+          {{
+            t(
+              '授权后,AI 可以浏览、搜索、读取该范围内的文件与文档(pdf / docx / xlsx), 用来分析你的真实项目再定制设计稿。只在授权范围内,范围之外读不到,也不会执行任何命令。'
+            )
+          }}
           <br />
-          在对话里直接写出路径也会自动授权,随时可以在这里撤销。
+          {{ t('在对话里直接写出路径也会自动授权,随时可以在这里撤销。') }}
         </div>
 
         <div
@@ -85,7 +91,7 @@ function revoke(root: WorkspaceRoot): void {
           class="roots-empty"
           :style="{ color: token.colorTextQuaternary }"
         >
-          还没有授权任何目录
+          {{ t('还没有授权任何目录') }}
         </div>
         <div
           v-for="root in roots"
@@ -106,14 +112,14 @@ function revoke(root: WorkspaceRoot): void {
 
         <a-button block size="small" :loading="granting" style="margin-top: 8px" @click="grant">
           <template #icon><PlusOutlined /></template>
-          选择目录
+          {{ t('选择目录') }}
         </a-button>
       </div>
     </template>
 
     <!-- 与输入框工具条上的 MCP / 技能同款,它们是同一类东西:
          "这次对话给 AI 看什么"。工具条只放图标,名字进 tooltip -->
-    <a-tooltip title="本地目录授权">
+    <a-tooltip :title="t('本地目录授权')">
       <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
         <FolderOpenOutlined />
         <span v-if="roots.length" class="toolbox-badge tabular">{{ roots.length }}</span>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { CheckCircleOutlined, ExportOutlined, FileTextOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
@@ -41,9 +42,9 @@ async function doExport(): Promise<void> {
   exporting.value = true
   try {
     const file = await collab.exportDeliverables()
-    if (file) message.success(`已导出到 ${file}`)
+    if (file) message.success(t('已导出到 {0}', file))
   } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   } finally {
     exporting.value = false
   }
@@ -51,7 +52,7 @@ async function doExport(): Promise<void> {
 </script>
 
 <template>
-  <a-tooltip :title="progress.total ? '本轮交付物' : '本轮还没有交付物'">
+  <a-tooltip :title="progress.total ? t('本轮交付物') : t('本轮还没有交付物')">
     <button
       class="dlv-btn"
       type="button"
@@ -64,11 +65,11 @@ async function doExport(): Promise<void> {
     </button>
   </a-tooltip>
 
-  <a-drawer v-model:open="open" title="本轮交付物" size="default">
+  <a-drawer v-model:open="open" :title="t('本轮交付物')" size="default">
     <template #extra>
       <a-button size="small" :loading="exporting" :disabled="!progress.delivered" @click="doExport">
         <template #icon><ExportOutlined /></template>
-        导出一份
+        {{ t('导出一份') }}
       </a-button>
     </template>
 
@@ -93,15 +94,18 @@ async function doExport(): Promise<void> {
           </span>
           <span class="dlv-meta" :style="{ color: token.colorTextTertiary }">
             {{ entry.memberName }}
-            <template v-if="entry.status !== 'delivered'"> · 未交付</template>
+            <template v-if="entry.status !== 'delivered'"> {{ t('· 未交付') }}</template>
           </span>
         </span>
       </button>
     </div>
 
     <div class="dlv-hint" :style="{ color: token.colorTextTertiary }">
-      清单按成员建群时定义的产出物生成;每人取最新一份以一级标题开头的文档,
-      返工版本自动覆盖旧版。导出会剥掉文档末尾的交接行。
+      {{
+        t(
+          '清单按成员建群时定义的产出物生成;每人取最新一份以一级标题开头的文档, 返工版本自动覆盖旧版。导出会剥掉文档末尾的交接行。'
+        )
+      }}
     </div>
   </a-drawer>
 </template>

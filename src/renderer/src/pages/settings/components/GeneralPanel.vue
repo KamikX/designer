@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { App } from 'antdv-next'
 import { useAppConfig } from '@renderer/components/config/config'
 import { DEFAULT_TOOL_CALL_LIMIT } from '@shared/limits'
@@ -30,12 +31,12 @@ const toolCallLimit = ref<number>(window.api.initialConfig.toolCallLimit ?? DEFA
  * off = 不发送任何推理参数,与旧版本行为一致。
  */
 const reasoningEffort = ref<ReasoningEffort>(window.api.initialConfig.reasoningEffort ?? 'off')
-const reasoningOptions = [
-  { label: '关', value: 'off' },
-  { label: '低', value: 'low' },
-  { label: '中', value: 'medium' },
-  { label: '高', value: 'high' }
-]
+const reasoningOptions = computed(() => [
+  { label: t('关'), value: 'off' },
+  { label: t('低'), value: 'low' },
+  { label: t('中'), value: 'medium' },
+  { label: t('高'), value: 'high' }
+])
 
 onMounted(async () => {
   // initialConfig 是 preload 启动时取的快照,别的窗口可能改过,进面板时读一次新的
@@ -48,7 +49,7 @@ onMounted(async () => {
 async function saveReasoningEffort(): Promise<void> {
   await window.api.config.patch({ reasoningEffort: reasoningEffort.value })
   message.success(
-    reasoningEffort.value === 'off' ? '已关闭推理,下一轮对话生效' : '已保存,下一轮对话生效'
+    reasoningEffort.value === 'off' ? t('已关闭推理,下一轮对话生效') : t('已保存,下一轮对话生效')
   )
 }
 
@@ -56,30 +57,34 @@ async function saveToolCallLimit(): Promise<void> {
   const value = Math.max(0, Math.floor(Number(toolCallLimit.value) || 0))
   toolCallLimit.value = value
   await window.api.config.patch({ toolCallLimit: value })
-  message.success(value === 0 ? '已设为不限次数,下一轮对话生效' : `已保存,上限 ${value} 次`)
+  message.success(value === 0 ? t('已设为不限次数,下一轮对话生效') : t('已保存,上限 {0} 次', value))
 }
 
 async function saveMarketUrl(): Promise<void> {
   const url = marketUrl.value.trim()
   if (url && !/^https?:\/\//.test(url)) {
-    message.warning('市场地址需要以 http:// 或 https:// 开头')
+    message.warning(t('市场地址需要以 http:// 或 https:// 开头'))
     return
   }
   await window.api.config.patch({ marketUrl: url })
-  message.success(url ? '已保存,市场页会自动加载远程清单' : '已清空,市场为空')
+  message.success(url ? t('已保存,市场页会自动加载远程清单') : t('已清空,市场为空'))
 }
 </script>
 
 <template>
   <div style="max-width: 560px">
     <a-form layout="vertical">
-      <a-form-item label="语言">
+      <a-form-item :label="t('语言')">
         <a-segmented v-model:value="lang" :options="langOptions" />
       </a-form-item>
-      <a-form-item label="外观">
-        <a-switch v-model:checked="dark" checked-children="暗" un-checked-children="亮" />
+      <a-form-item :label="t('外观')">
+        <a-switch
+          v-model:checked="dark"
+          :checked-children="t('暗')"
+          :un-checked-children="t('亮')"
+        />
       </a-form-item>
-      <a-form-item label="主题色">
+      <a-form-item :label="t('主题色')">
         <a-color-picker
           v-model:value="primaryColor"
           value-format="hex"
@@ -88,25 +93,26 @@ async function saveMarketUrl(): Promise<void> {
           show-text
         />
       </a-form-item>
-      <a-button @click="resetTheme">重置主题</a-button>
+      <a-button @click="resetTheme">{{ t('重置主题') }}</a-button>
 
       <a-divider />
-      <a-form-item label="应用市场地址">
+      <a-form-item :label="t('应用市场地址')">
         <a-space-compact block>
           <a-input
             v-model:value="marketUrl"
-            placeholder="https://example.com/market.json,留空则市场为空"
+            :placeholder="t('https://example.com/market.json,留空则市场为空')"
             @press-enter="saveMarketUrl"
           />
-          <a-button type="primary" @click="saveMarketUrl">保存</a-button>
+          <a-button type="primary" @click="saveMarketUrl">{{ t('保存') }}</a-button>
         </a-space-compact>
         <div style="font-size: 12px; margin-top: 6px; opacity: 0.55">
-          指向一个 JSON 端点:{ "skills": [...], "mcp": [...] }。配置后市场页自动加载远程清单。
+          {{ t('指向一个 JSON 端点，配置后市场页自动加载远程清单。') }}
+          <code>{ "skills": [...], "mcp": [...] }</code>
         </div>
       </a-form-item>
 
       <a-divider />
-      <a-form-item label="单轮工具调用上限">
+      <a-form-item :label="t('单轮工具调用上限')">
         <a-space-compact>
           <a-input-number
             v-model:value="toolCallLimit"
@@ -116,26 +122,30 @@ async function saveMarketUrl(): Promise<void> {
             style="width: 140px"
             @press-enter="saveToolCallLimit"
           />
-          <a-button type="primary" @click="saveToolCallLimit">保存</a-button>
+          <a-button type="primary" @click="saveToolCallLimit">{{ t('保存') }}</a-button>
         </a-space-compact>
         <div style="font-size: 12px; margin-top: 6px; opacity: 0.55">
-          AI 在一轮里最多调用多少次工具(读写文件、搜索等)。改动越复杂需要的次数越多;
-          <strong>0 = 不限</strong>,这时只剩"累计输入超上下文预算"这一条熔断,单轮会更慢更贵。
-          单个项目可以在工作台里另设。
+          {{
+            t(
+              'AI 在一轮里最多调用多少次工具。改动越复杂需要的次数越多；0 = 不限，单轮会更慢更贵。单个项目可以在工作台里另设。'
+            )
+          }}
         </div>
       </a-form-item>
 
       <a-divider />
-      <a-form-item label="推理档位">
+      <a-form-item :label="t('推理档位')">
         <a-segmented
           v-model:value="reasoningEffort"
           :options="reasoningOptions"
           @change="saveReasoningEffort"
         />
         <div style="font-size: 12px; margin-top: 6px; opacity: 0.55">
-          让模型在动手前先思考。开启后设计与排版决策明显更稳,但每轮更慢、更贵。
-          按供应商自动映射(Anthropic thinking / OpenAI reasoning / Google thinking); DeepSeek
-          与自定义中转不受影响。<strong>关 = 与旧版本行为完全一致。</strong>
+          {{
+            t(
+              '让模型在动手前先思考，每轮可能更慢、更贵。按供应商自动映射；DeepSeek 与自定义中转不受影响。'
+            )
+          }}
         </div>
       </a-form-item>
 

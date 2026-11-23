@@ -1,3 +1,4 @@
+import { t } from '@renderer/i18n'
 import type {
   GroupMember,
   GroupMemberDraft,
@@ -96,23 +97,23 @@ export function validateMemberDrafts(
   members: readonly MemberDraft[],
   validModelRowIds: ReadonlySet<string>
 ): string | null {
-  if (members.length === 0) return '至少添加一位成员'
+  if (members.length === 0) return t('至少添加一位成员')
 
   const names = new Set<string>()
   for (const member of members) {
     const name = member.name.trim()
     const length = [...name].length
-    if (length < 1 || length > 24) return '成员名称长度需为 1–24 个字符'
+    if (length < 1 || length > 24) return t('成员名称长度需为 1–24 个字符')
     if (INVALID_NAME_CHARACTERS.test(name)) {
-      return '成员名称不能包含 @、[、]、(、) 或换行'
+      return t('成员名称不能包含 @、[、]、(、) 或换行')
     }
-    if (name === '用户') return '成员名称不能使用“用户”'
-    if (names.has(name)) return '成员名称不能重复'
+    if (name === '用户') return t('成员名称不能使用“用户”')
+    if (names.has(name)) return t('成员名称不能重复')
     names.add(name)
 
-    if (!member.persona.trim()) return `请填写“${name}”的人设`
+    if (!member.persona.trim()) return t('请填写“{0}”的人设', name)
     if (!validModelRowIds.has(member.modelRowId)) {
-      return `请为“${name}”选择支持工具调用的模型`
+      return t('请为“{0}”选择支持工具调用的模型', name)
     }
   }
 

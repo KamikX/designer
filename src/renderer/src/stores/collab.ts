@@ -1,3 +1,4 @@
+import { t } from '@renderer/i18n'
 import { defineStore } from 'pinia'
 import type {
   Conversation,
@@ -253,7 +254,7 @@ export const useCollabStore = defineStore('collab', {
     async resumeChain(): Promise<void> {
       const target = this.resumeMember
       if (!target || this.chainingHere) return
-      await this.send(`${createGroupMention(target)} 请接着上一棒的交接继续`)
+      await this.send(t('{0} 请接着上一棒的交接继续', createGroupMention(target)))
       this.error = ''
     },
 
@@ -358,7 +359,9 @@ export const useCollabStore = defineStore('collab', {
           this.activities[event.messageId] = [
             {
               callId: `retry-${event.attempt}`,
-              label: `连接中断,已自动重试(第 ${event.attempt - 1} 次)`,
+              get label() {
+                return t('连接中断,已自动重试(第 {0} 次)', event.attempt - 1)
+              },
               state: 'success',
               summary: event.message
             }

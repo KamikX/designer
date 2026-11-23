@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { CheckOutlined, CopyOutlined } from '@antdv-next/icons'
 
@@ -25,11 +26,11 @@ const { copy, copied } = useClipboard({ legacy: true, copiedDuring: 1500 })
 </script>
 
 <template>
-  <a-tooltip :title="copied ? '已复制' : (props.label ?? '复制')">
+  <a-tooltip :title="copied ? t('已复制') : (props.label ?? t('复制'))">
     <button
       class="copy-btn"
       type="button"
-      :aria-label="props.label ?? '复制'"
+      :aria-label="props.label ?? t('复制')"
       :disabled="!props.text"
       @click="copy(props.text)"
     >

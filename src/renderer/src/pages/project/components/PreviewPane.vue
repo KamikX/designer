@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { EyeOutlined, HighlightOutlined, ReloadOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
@@ -176,7 +177,7 @@ onBeforeUnmount(() => {
       type="error"
       show-icon
       closable
-      message="预览运行出错"
+      :message="t('预览运行出错')"
       class="preview-error"
       @close="runtimeError = ''"
     >
@@ -198,9 +199,9 @@ onBeforeUnmount(() => {
       <div v-else class="preview-empty">
         <div class="preview-empty-inner">
           <EyeOutlined class="preview-empty-icon" :style="{ color: token.colorTextQuaternary }" />
-          <h3 class="preview-empty-title">暂无可预览的版本</h3>
+          <h3 class="preview-empty-title">{{ t('暂无可预览的版本') }}</h3>
           <div class="preview-empty-sub" :style="{ color: token.colorTextTertiary }">
-            每次生成都会存成一个版本,选中后在这里跑起来
+            {{ t('每次生成都会存成一个版本,选中后在这里跑起来') }}
           </div>
         </div>
       </div>
@@ -243,7 +244,7 @@ onBeforeUnmount(() => {
       -->
       <div v-if="src" class="preview-actions">
         <!-- 标注态是一种"模式",按钮要一直亮着提示它开着,不然用户会以为页面点不动了 -->
-        <a-tooltip :title="annotation.enabled ? '退出标注(或按 Esc)' : '标注要改的元素'">
+        <a-tooltip :title="annotation.enabled ? t('退出标注(或按 Esc)') : t('标注要改的元素')">
           <a-button
             size="small"
             shape="circle"
@@ -253,7 +254,7 @@ onBeforeUnmount(() => {
             <template #icon><HighlightOutlined /></template>
           </a-button>
         </a-tooltip>
-        <a-tooltip title="刷新预览">
+        <a-tooltip :title="t('刷新预览')">
           <a-button size="small" shape="circle" @click="refresh">
             <template #icon><ReloadOutlined /></template>
           </a-button>
@@ -264,15 +265,15 @@ onBeforeUnmount(() => {
            说明条只是一句话,再铺一整条品牌蓝就是拿颜色当装饰。
            这里改成抬起的暖面 + 冷描边 + shadow-md,靠材质浮在设计稿之上 -->
       <div v-if="annotation.enabled" class="preview-tip">
-        点页面上任意元素做标记,写一句想怎么改;标记会随下一条消息给 AI
+        {{ t('点页面上任意元素做标记,写一句想怎么改;标记会随下一条消息给 AI') }}
       </div>
     </div>
 
     <a-modal
       :open="!!picked"
-      title="标记这处元素"
-      ok-text="加入标记"
-      cancel-text="取消"
+      :title="t('标记这处元素')"
+      :ok-text="t('加入标记')"
+      :cancel-text="t('取消')"
       :width="440"
       @ok="confirmNote"
       @cancel="cancelNote"
@@ -287,7 +288,7 @@ onBeforeUnmount(() => {
         <a-textarea
           v-model:value="note"
           :auto-size="{ minRows: 3, maxRows: 6 }"
-          placeholder="这里想改成什么?例如:按钮太小了,改成主色大号"
+          :placeholder="t('这里想改成什么?例如:按钮太小了,改成主色大号')"
           @press-enter.meta="confirmNote"
         />
       </div>

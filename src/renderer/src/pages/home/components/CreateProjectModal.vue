@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { useProjectStore } from '@renderer/stores/project'
 import type { DesignTarget, PreviewLib, Stack } from '@shared/types'
 import {
   buildCreateProjectInput,
   createDefaultProjectForm,
-  resetProjectForm,
-  STYLE_BRIEF_FIELD_LABEL
+  resetProjectForm
 } from './create-project'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
@@ -26,10 +26,18 @@ const form = reactive(createDefaultProjectForm())
  * 组件库选择,目前只对 vue3 栈开放。勾了之后预览环境会通过 import map
  * 加载浏览器 ESM 构建,AI 的提示词里也会放开对应的 import 许可。
  */
-const LIB_OPTIONS: { value: PreviewLib; label: string; hint: string }[] = [
-  { value: 'antdv-next', label: 'antdv-next', hint: '组件库本体:按钮、表格、表单等' },
-  { value: '@antdv-next/icons', label: '@antdv-next/icons', hint: '配套图标库' }
-]
+const LIB_OPTIONS = computed<{ value: PreviewLib; label: string; hint: string }[]>(() => [
+  {
+    value: 'antdv-next',
+    label: 'antdv-next',
+    hint: t('组件库本体:按钮、表格、表单等')
+  },
+  {
+    value: '@antdv-next/icons',
+    label: '@antdv-next/icons',
+    hint: t('配套图标库')
+  }
+])
 
 function toggleLib(value: PreviewLib): void {
   const at = form.libs.indexOf(value)
@@ -47,12 +55,28 @@ function toggleLib(value: PreviewLib): void {
  * 端类型多选。勾了哪些端,AI 就只加载哪些端的设计模板与交付契约——
  * 不勾也能创建,那时所有端模板都留在技能目录里等模型按需激活。
  */
-const TARGET_OPTIONS: { value: DesignTarget; label: string; hint: string }[] = [
-  { value: 'landing', label: '落地页', hint: '营销页 / 官网首页,讲一个故事,一个主 CTA' },
-  { value: 'web', label: 'Web 应用', hint: 'PC 端产品界面,键盘与 hover 是一等公民' },
-  { value: 'mobile', label: '移动端 App', hint: '真机框呈现,一屏一事,44px 点击目标' },
-  { value: 'admin', label: '中后台', hint: '管理系统,信息密度优先,表格与筛选' }
-]
+const TARGET_OPTIONS = computed<{ value: DesignTarget; label: string; hint: string }[]>(() => [
+  {
+    value: 'landing',
+    label: t('落地页'),
+    hint: t('营销页 / 官网首页,讲一个故事,一个主 CTA')
+  },
+  {
+    value: 'web',
+    label: t('Web 应用'),
+    hint: t('PC 端产品界面,键盘与 hover 是一等公民')
+  },
+  {
+    value: 'mobile',
+    label: t('移动端 App'),
+    hint: t('真机框呈现,一屏一事,44px 点击目标')
+  },
+  {
+    value: 'admin',
+    label: t('中后台'),
+    hint: t('管理系统,信息密度优先,表格与筛选')
+  }
+])
 
 function toggleTarget(value: DesignTarget): void {
   const at = form.targets.indexOf(value)
@@ -60,26 +84,34 @@ function toggleTarget(value: DesignTarget): void {
   else form.targets.push(value)
 }
 
-const STACK_OPTIONS: { value: Stack; label: string; hint: string }[] = [
+const STACK_OPTIONS = computed<{ value: Stack; label: string; hint: string }[]>(() => [
   {
     value: 'html',
     label: 'HTML',
-    hint: '自包含页面,预览最稳,适合视觉稿与营销页'
+    hint: t('自包含页面,预览最稳,适合视觉稿与营销页')
   },
-  { value: 'vue3', label: 'Vue 3', hint: 'SFC 组件形态,适合落进 Vue 工程' },
-  { value: 'react', label: 'React', hint: 'JSX 组件形态,适合落进 React 工程' }
-]
+  {
+    value: 'vue3',
+    label: 'Vue 3',
+    hint: t('SFC 组件形态,适合落进 Vue 工程')
+  },
+  {
+    value: 'react',
+    label: 'React',
+    hint: t('JSX 组件形态,适合落进 React 工程')
+  }
+])
 
-const MODE_OPTIONS = [
-  { label: '高质量 UI 设计', value: 'design' },
-  { label: '快速原型', value: 'prototype' }
-]
+const MODE_OPTIONS = computed(() => [
+  { label: t('高质量 UI 设计'), value: 'design' },
+  { label: t('快速原型'), value: 'prototype' }
+])
 
 const creating = ref(false)
 
 async function submit(): Promise<void> {
   if (!form.name.trim()) {
-    message.warning('请输入项目名称')
+    message.warning(t('请输入项目名称'))
     return
   }
   creating.value = true
@@ -89,7 +121,7 @@ async function submit(): Promise<void> {
     resetProjectForm(form)
     emit('created', project.id)
   } catch (err) {
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   } finally {
     creating.value = false
   }
@@ -99,27 +131,27 @@ async function submit(): Promise<void> {
 <template>
   <a-modal
     v-model:open="open"
-    title="新建项目"
+    :title="t('新建项目')"
     :confirm-loading="creating"
     :width="520"
     centered
-    ok-text="创建项目"
+    :ok-text="t('创建项目')"
     @ok="submit"
   >
     <!-- 表单项加到六组之后整体高度可能超过视口:弹窗本体封顶 80vh,
          超出的部分在这层内部滚,不把外面的页面顶出滚动条 -->
     <div class="create-body">
       <a-form layout="vertical" style="margin-top: 8px">
-        <a-form-item label="项目名称" required>
+        <a-form-item :label="t('项目名称')" required>
           <a-input
             v-model:value="form.name"
             size="large"
-            placeholder="如 官网改版 / 管理后台"
+            :placeholder="t('如 官网改版 / 管理后台')"
             @press-enter="submit"
           />
         </a-form-item>
 
-        <a-form-item label="产物技术栈(创建后不可更改)">
+        <a-form-item :label="t('产物技术栈(创建后不可更改)')">
           <div class="stack-grid">
             <div
               v-for="opt in STACK_OPTIONS"
@@ -149,11 +181,11 @@ async function submit(): Promise<void> {
           </div>
         </a-form-item>
 
-        <a-form-item label="设计模式">
+        <a-form-item :label="t('设计模式')">
           <a-segmented v-model:value="form.designMode" :options="MODE_OPTIONS" block />
         </a-form-item>
 
-        <a-form-item v-if="form.stack === 'vue3'" label="可选依赖包(预览环境自动加载)">
+        <a-form-item v-if="form.stack === 'vue3'" :label="t('可选依赖包(预览环境自动加载)')">
           <div class="target-grid">
             <div
               v-for="opt in LIB_OPTIONS"
@@ -184,7 +216,7 @@ async function submit(): Promise<void> {
           </div>
         </a-form-item>
 
-        <a-form-item label="设计端类型(可多选,决定 AI 加载哪些端的设计规范)">
+        <a-form-item :label="t('设计端类型(可多选,决定 AI 加载哪些端的设计规范)')">
           <div class="target-grid">
             <div
               v-for="opt in TARGET_OPTIONS"
@@ -215,22 +247,24 @@ async function submit(): Promise<void> {
           </div>
         </a-form-item>
 
-        <a-form-item label="项目描述">
+        <a-form-item :label="t('项目描述')">
           <a-textarea
             v-model:value="form.description"
             :rows="3"
-            placeholder="一句话说明这个项目要做什么,会作为 AI 的背景信息"
+            :placeholder="t('一句话说明这个项目要做什么,会作为 AI 的背景信息')"
           />
         </a-form-item>
 
         <a-form-item
-          :label="STYLE_BRIEF_FIELD_LABEL"
-          extra="可描述色彩、明暗、信息密度、字体、圆角、动效等；留空时，AI 会在首次生成前询问。"
+          :label="t('视觉风格（可选）')"
+          :extra="
+            t('可描述色彩、明暗、信息密度、字体、圆角、动效等；留空时，AI 会在首次生成前询问。')
+          "
         >
           <a-textarea
             v-model:value="form.styleBrief"
             :rows="4"
-            placeholder="如：深色工业感，高信息密度，紧凑无衬线字体，卡片近直角，动效克制"
+            :placeholder="t('如：深色工业感，高信息密度，紧凑无衬线字体，卡片近直角，动效克制')"
           />
         </a-form-item>
       </a-form>

@@ -1,3 +1,4 @@
+import { translate } from '../shared/i18n'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { basename, dirname, join, normalize, sep } from 'path'
 import AdmZip from 'adm-zip'
@@ -19,8 +20,13 @@ export async function importSkillPackage(givenPath?: string): Promise<InstalledS
   let zipPath = givenPath
   if (!zipPath) {
     const res = await dialog.showOpenDialog({
-      title: '选择技能压缩包',
-      filters: [{ name: '技能包', extensions: ['zip'] }],
+      title: translate((await import('./config')).readConfig().lang, '选择技能压缩包'),
+      filters: [
+        {
+          name: translate((await import('./config')).readConfig().lang, '技能包'),
+          extensions: ['zip']
+        }
+      ],
       properties: ['openFile']
     })
     if (res.canceled || res.filePaths.length === 0) return null

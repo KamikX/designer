@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import {
   ApiOutlined,
@@ -100,7 +101,7 @@ async function addFiles(files: File[]): Promise<void> {
 
   if (!canSeeImages.value) {
     // 在贴图这一刻就拦住,而不是发出去才报错
-    message.warning('当前模型不支持识图,换一个带识图能力的模型才能发图片')
+    message.warning(t('当前模型不支持识图,换一个带识图能力的模型才能发图片'))
     return
   }
 
@@ -109,7 +110,7 @@ async function addFiles(files: File[]): Promise<void> {
       // 变量别叫 ref:自动导入会认为本文件已声明该名字,整份文件的
       // ref / computed 注入全被跳过,然后在别处炸成 "ref is not defined"
       const asset = await window.api.storage.importImage({
-        name: file.name || '截图.png',
+        name: file.name || t('截图.png'),
         mime: file.type,
         data: await file.arrayBuffer()
       })
@@ -117,14 +118,14 @@ async function addFiles(files: File[]): Promise<void> {
       if (attachments.value.some((a) => a.assetId === asset.id)) continue
       attachments.value.push({
         assetId: asset.id,
-        name: file.name || '截图.png',
+        name: file.name || t('截图.png'),
         mime: asset.mime,
         uri: asset.uri,
         width: asset.width,
         height: asset.height
       })
     } catch (err) {
-      message.error(err instanceof Error ? err.message : String(err))
+      message.error(uiMessage(err instanceof Error ? err.message : String(err)))
     }
   }
 }
@@ -144,7 +145,7 @@ async function attachLocalFiles(files: File[]): Promise<void> {
   // File 拿不到磁盘路径,只有 preload 里的 webUtils 能;拿不到就没法授权
   const paths = files.map((f) => window.api.workspace.pathOf(f)).filter(Boolean)
   if (paths.length === 0) {
-    message.warning('没能取到这些文件的本地路径,试试用「+ → 文件」选择')
+    message.warning(t('没能取到这些文件的本地路径,试试用「+ → 文件」选择'))
     return
   }
 
@@ -152,8 +153,10 @@ async function attachLocalFiles(files: File[]): Promise<void> {
   if (plan.overflow) {
     // 超过上限时给的不是"少传点",而是**换个更好的做法**
     message.warning(
-      `一次最多附 ${MAX_FILES_AT_ONCE} 个文件。文件多的话,直接用「目录」授权它们所在的文件夹,` +
-        `让 AI 自己检索需要的部分——比一个个附上更省 token,也更容易找全。`
+      t(
+        '一次最多附 {0} 个文件。文件多的话,直接用「目录」授权它们所在的文件夹,',
+        MAX_FILES_AT_ONCE
+      ) + t('让 AI 自己检索需要的部分——比一个个附上更省 token,也更容易找全。')
     )
   }
   if (plan.accept === 0) return
@@ -168,7 +171,7 @@ async function grantAndCollect(scope: RootScope, paths: string[]): Promise<void>
   }
   // 让"目录"面板同步显示这些新授权
   chatStore.lastGrantedRoots = granted
-  for (const bad of rejected) message.error(`${bad.path}:${bad.reason}`)
+  for (const bad of rejected) message.error(`${bad.path}: ${uiMessage(bad.reason)}`)
 }
 
 async function pickLocalFiles(): Promise<void> {
@@ -177,12 +180,12 @@ async function pickLocalFiles(): Promise<void> {
   if (!scope) return
   const { granted, rejected } = await window.api.workspace.pickFiles(scope)
   const plan = planAttachment(localFiles.value.length, granted.length)
-  if (plan.overflow) message.warning(`一次最多附 ${MAX_FILES_AT_ONCE} 个文件,多出的没有附上。`)
+  if (plan.overflow) message.warning(t('一次最多附 {0} 个文件,多出的没有附上。', MAX_FILES_AT_ONCE))
   for (const root of granted.slice(0, plan.accept)) {
     if (!localFiles.value.some((f) => f.id === root.id)) localFiles.value.push(root)
   }
   chatStore.lastGrantedRoots = granted
-  for (const bad of rejected) message.error(`${bad.path}:${bad.reason}`)
+  for (const bad of rejected) message.error(`${bad.path}: ${uiMessage(bad.reason)}`)
 }
 
 /**
@@ -414,7 +417,7 @@ function toggleId(list: string[] | null, id: string): string[] {
           v-if="mark.target.source"
           class="composer-mark-src"
           :style="{ color: token.colorSuccess }"
-          title="已定位到源码行"
+          :title="t('已定位到源码行')"
         >
           ●
         </span>
@@ -427,7 +430,7 @@ function toggleId(list: string[] | null, id: string): string[] {
     <a-textarea
       v-model:value="draft"
       class="composer-input"
-      placeholder="描述你的设计需求,例如:做一个深色风格的数据看板首页…"
+      :placeholder="t('描述你的设计需求,例如:做一个深色风格的数据看板首页…')"
       :auto-size="{ minRows: 2, maxRows: 8 }"
       :disabled="disabled"
       variant="borderless"
@@ -453,23 +456,23 @@ function toggleId(list: string[] | null, id: string): string[] {
                 @click="fileInput?.click()"
               >
                 <PictureOutlined />
-                <span class="add-pop-name">图片</span>
+                <span class="add-pop-name">{{ t('图片') }}</span>
                 <span class="add-pop-meta">
-                  {{ canSeeImages ? '作为参考图给模型看' : '当前模型不支持识图' }}
+                  {{ canSeeImages ? t('作为参考图给模型看') : t('当前模型不支持识图') }}
                 </span>
               </button>
               <button class="add-pop-row" type="button" @click="pickLocalFiles">
                 <FileTextOutlined />
-                <span class="add-pop-name">文件</span>
-                <span class="add-pop-meta">代码 / pdf / docx / xlsx,由 AI 按需读取</span>
+                <span class="add-pop-name">{{ t('文件') }}</span>
+                <span class="add-pop-meta">{{ t('代码 / pdf / docx / xlsx,由 AI 按需读取') }}</span>
               </button>
               <div class="add-pop-hint" :style="{ color: token.colorTextTertiary }">
-                也可以直接把文件拖进输入框。文件超过 {{ MAX_FILES_AT_ONCE }} 个时,
-                建议改用「目录」授权整个文件夹让 AI 自己检索。
+                {{ t('也可以直接把文件拖进输入框。文件超过') }} {{ MAX_FILES_AT_ONCE }}
+                {{ t('个时, 建议改用「目录」授权整个文件夹让 AI 自己检索。') }}
               </div>
             </div>
           </template>
-          <a-tooltip title="添加图片或文件">
+          <a-tooltip :title="t('添加图片或文件')">
             <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
               <PlusOutlined />
             </button>
@@ -489,7 +492,7 @@ function toggleId(list: string[] | null, id: string): string[] {
         <WorkspaceRoots v-if="chatStore.rootScope" :scope="chatStore.rootScope" />
 
         <!-- 联网开关。点亮才注册 web 工具,默认关 -->
-        <a-tooltip :title="chatStore.webSearch ? '联网已开启,点击关闭' : '开启联网搜索'">
+        <a-tooltip :title="chatStore.webSearch ? t('联网已开启,点击关闭') : t('开启联网搜索')">
           <button
             class="toolbox-btn"
             type="button"
@@ -508,7 +511,7 @@ function toggleId(list: string[] | null, id: string): string[] {
         <a-popover trigger="click" placement="topLeft">
           <template #content>
             <div class="toolbox-pop">
-              <div class="toolbox-pop-title">本会话使用的 MCP 服务(勾选才连接)</div>
+              <div class="toolbox-pop-title">{{ t('本会话使用的 MCP 服务(勾选才连接)') }}</div>
               <div
                 v-if="mcpProblem"
                 class="toolbox-pop-warn"
@@ -521,17 +524,17 @@ function toggleId(list: string[] | null, id: string): string[] {
                 v-model:value="mcpFilter"
                 size="small"
                 allow-clear
-                placeholder="搜索服务名"
+                :placeholder="t('搜索服务名')"
                 class="toolbox-pop-search"
               />
               <a-empty
                 v-if="mcpServers.length === 0"
-                description="还没有配置 MCP 服务"
+                :description="t('还没有配置 MCP 服务')"
                 :image-style="{ height: '48px' }"
               />
               <a-empty
                 v-else-if="filteredMcpServers.length === 0"
-                description="没有匹配的服务"
+                :description="t('没有匹配的服务')"
                 :image-style="{ height: '48px' }"
               />
               <label v-for="s in filteredMcpServers" :key="s.name" class="toolbox-pop-row">
@@ -543,18 +546,18 @@ function toggleId(list: string[] | null, id: string): string[] {
                 <span class="toolbox-pop-name">{{ s.name }}</span>
                 <span class="toolbox-pop-meta">
                   {{ s.transport
-                  }}{{ s.missingEnv?.length ? ` · 缺 ${s.missingEnv.join(', ')}` : ''
-                  }}{{ s.enabled ? '' : ' · 已停用' }}
+                  }}{{ s.missingEnv?.length ? t(' · 缺 {0}', s.missingEnv.join(', ')) : ''
+                  }}{{ s.enabled ? '' : t(' · 已停用') }}
                 </span>
               </label>
               <a class="toolbox-pop-manage" @click="router.push('/market')">
-                <SettingOutlined /> 管理 MCP 服务
+                <SettingOutlined /> {{ t('管理 MCP 服务') }}
               </a>
             </div>
           </template>
           <!-- 工具条只放图标,名字进 tooltip:tooltip 套在 popover 的触发器上,
                悬停出名字、点击出面板,两者不打架 -->
-          <a-tooltip title="MCP 服务">
+          <a-tooltip :title="t('MCP 服务')">
             <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
               <ApiOutlined />
               <span v-if="mcpCount" class="toolbox-badge tabular">{{ mcpCount }}</span>
@@ -566,14 +569,14 @@ function toggleId(list: string[] | null, id: string): string[] {
         <a-popover trigger="click" placement="topLeft">
           <template #content>
             <div class="toolbox-pop">
-              <div class="toolbox-pop-title">本会话使用的技能(勾选才可用)</div>
+              <div class="toolbox-pop-title">{{ t('本会话使用的技能(勾选才可用)') }}</div>
 
               <a-input
                 v-if="fileSkills.length > 5"
                 v-model:value="skillFilter"
                 size="small"
                 allow-clear
-                placeholder="搜索技能名或描述"
+                :placeholder="t('搜索技能名或描述')"
                 class="toolbox-pop-search"
               />
 
@@ -581,7 +584,7 @@ function toggleId(list: string[] | null, id: string): string[] {
                    把可勾的挤到折叠线以下 -->
               <template v-if="mySkills.length">
                 <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
-                  我的技能
+                  {{ t('我的技能') }}
                 </div>
                 <label v-for="s in mySkills" :key="s.name" class="toolbox-pop-row">
                   <a-checkbox
@@ -595,7 +598,7 @@ function toggleId(list: string[] | null, id: string): string[] {
 
               <template v-if="globalSkills.length">
                 <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
-                  全局技能
+                  {{ t('全局技能') }}
                 </div>
                 <label v-for="s in globalSkills" :key="s.name" class="toolbox-pop-row">
                   <a-checkbox
@@ -609,7 +612,7 @@ function toggleId(list: string[] | null, id: string): string[] {
 
               <template v-if="builtinSelectable.length">
                 <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
-                  内置技能
+                  {{ t('内置技能') }}
                 </div>
                 <label v-for="s in builtinSelectable" :key="s.name" class="toolbox-pop-row">
                   <a-checkbox
@@ -625,7 +628,7 @@ function toggleId(list: string[] | null, id: string): string[] {
                    ——否则模型行为里有一大块来源不明,他会以为是模型自己的脾气 -->
               <template v-if="builtinSkills.length">
                 <div class="toolbox-pop-group" :style="{ color: token.colorTextTertiary }">
-                  内置(设计会话自动生效)
+                  {{ t('内置(设计会话自动生效)') }}
                 </div>
                 <label
                   v-for="s in builtinSkills"
@@ -645,15 +648,15 @@ function toggleId(list: string[] | null, id: string): string[] {
                   !mySkills.length &&
                   !globalSkills.length
                 "
-                :description="fileSkills.length ? '没有匹配的技能' : '还没有任何技能'"
+                :description="fileSkills.length ? t('没有匹配的技能') : t('还没有任何技能')"
                 :image-style="{ height: '48px' }"
               />
               <a class="toolbox-pop-manage" @click="router.push('/market')">
-                <SettingOutlined /> 管理技能
+                <SettingOutlined /> {{ t('管理技能') }}
               </a>
             </div>
           </template>
-          <a-tooltip title="技能">
+          <a-tooltip :title="t('技能')">
             <button class="toolbox-btn" :style="{ color: token.colorTextSecondary }" type="button">
               <BulbOutlined />
               <span v-if="skillCount" class="toolbox-badge tabular">{{ skillCount }}</span>
@@ -663,7 +666,7 @@ function toggleId(list: string[] | null, id: string): string[] {
       </div>
 
       <!-- 发送 / 停止 -->
-      <a-tooltip :title="chatStore.streaming ? '停止生成' : 'Enter 发送,Shift+Enter 换行'">
+      <a-tooltip :title="chatStore.streaming ? t('停止生成') : t('Enter 发送,Shift+Enter 换行')">
         <!-- 流式中是"暂停"而不是红色警告:停止生成是常规操作,已产出的内容
              会照常保留成版本,不该用危险色吓用户 -->
         <a-button

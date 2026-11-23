@@ -1,6 +1,7 @@
 import { writeFileSync } from 'fs'
 import { dialog, shell } from 'electron'
-import type { Conversation, GroupMember, Message } from '../shared/types'
+import { translate } from '../shared/i18n'
+import type { Conversation, GroupMember, Message, Lang } from '../shared/types'
 import { groupDeliverables, stripHandoff } from '../shared/group-deliverables'
 import { mentionsToModelText } from '../shared/group-mentions'
 import { normalizeGroupMembers } from '../shared/group-members'
@@ -28,8 +29,10 @@ import { listMessages } from './db/repo/message'
 export function renderGroupDeliverables(
   conversation: Conversation,
   messages: Message[],
-  members: GroupMember[]
+  members: GroupMember[],
+  lang: Lang = 'zh-CN'
 ): string {
+  const t = (source: string, ...values: unknown[]): string => translate(lang, source, ...values)
   const entries = groupDeliverables(messages, members)
   const delivered = entries.filter((entry) => entry.status === 'delivered')
   const byId = new Map(messages.map((message) => [message.id, message]))
@@ -39,7 +42,7 @@ export function renderGroupDeliverables(
     const who = `@${entry.memberName}`
     return entry.status === 'delivered'
       ? `${index + 1}. ${entry.title} —— ${who}`
-      : `${index + 1}. (未交付)${entry.deliverable} —— ${who}`
+      : t('{0}. (未交付){1} —— {2}', index + 1, entry.deliverable, who)
   })
 
   const bodies = delivered.map((entry) => {
@@ -49,13 +52,15 @@ export function renderGroupDeliverables(
       .join('')
     const text = stripHandoff(mentionsToModelText(raw, mentionMembers)).trim()
     // 各文档自己是一级标题,整份导出的标题也是一级——降一级让层级不打架
-    return `${text.replace(/^#\s+/, '## ')}\n\n> 由 @${entry.memberName} 交付`
+    return t('{0}\n\n> 由 @{1} 交付', text.replace(/^#\s+/, '## '), entry.memberName)
   })
 
   const head = [
-    `# ${conversation.title || '协作交付'}`,
-    entries.length > 0 ? `本轮交付 ${delivered.length}/${entries.length} 项。` : '本轮没有交付物。',
-    toc.length > 0 ? `## 目录\n\n${toc.join('\n')}` : ''
+    `# ${conversation.title || t('协作交付')}`,
+    entries.length > 0
+      ? t('本轮交付 {0}/{1} 项。', delivered.length, entries.length)
+      : t('本轮没有交付物。'),
+    toc.length > 0 ? t('## 目录\n\n{0}', toc.join('\n')) : ''
   ].filter(Boolean)
 
   return [...head, ...bodies].join('\n\n---\n\n').replace(/\n{3,}/g, '\n\n') + '\n'
@@ -68,16 +73,18 @@ export function renderGroupDeliverables(
  * 摊成目录反而要用户自己去拼。
  */
 export async function exportGroupDeliverables(conversationId: string): Promise<string | null> {
+  const lang = (await import('./config')).readConfig().lang
+  const t = (source: string): string => translate(lang, source)
   const conversation = getConversation(conversationId)
   if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')
 
   const members = normalizeGroupMembers(conversation.settings?.members)
   const messages = listMessages(conversationId)
-  const content = renderGroupDeliverables(conversation, messages, members)
+  const content = renderGroupDeliverables(conversation, messages, members, lang)
 
   const result = await dialog.showSaveDialog({
-    title: '导出协作交付',
-    defaultPath: `${sanitizeName(conversation.title || '协作交付')}.md`,
+    title: t('导出协作交付'),
+    defaultPath: `${sanitizeName(conversation.title || t('协作交付'))}.md`,
     filters: [{ name: 'Markdown', extensions: ['md'] }]
   })
   if (result.canceled || !result.filePath) return null

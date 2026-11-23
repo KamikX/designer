@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { DeleteOutlined, ReloadOutlined } from '@antdv-next/icons'
 import { cacheHitRatio, formatMetric, useUsageStore } from '@renderer/stores/usage'
@@ -18,21 +19,76 @@ const usage = useUsageStore()
 
 /** 快捷时间窗。规格要的是日期筛选,快捷段比日期控件少两次点击 */
 const RANGES = [
-  { label: '近 7 天', value: 7 },
-  { label: '近 30 天', value: 30 },
-  { label: '全部', value: 0 }
+  {
+    get label() {
+      return t('近 7 天')
+    },
+    value: 7
+  },
+  {
+    get label() {
+      return t('近 30 天')
+    },
+    value: 30
+  },
+  {
+    get label() {
+      return t('全部')
+    },
+    value: 0
+  }
 ] as const
 const range = ref<number>(7)
 
 const SCENES: { label: string; value: UsageScene | '' }[] = [
-  { label: '全部场景', value: '' },
-  { label: '设计', value: 'design' },
-  { label: '聊天', value: 'chat' },
-  { label: '群组', value: 'group' },
-  { label: '群组纪要', value: 'group_digest' },
-  { label: '辅助模型', value: 'assistant' },
-  { label: '文档提炼', value: 'document_summary' },
-  { label: '连通性测试', value: 'provider_test' }
+  {
+    get label() {
+      return t('全部场景')
+    },
+    value: ''
+  },
+  {
+    get label() {
+      return t('设计')
+    },
+    value: 'design'
+  },
+  {
+    get label() {
+      return t('聊天')
+    },
+    value: 'chat'
+  },
+  {
+    get label() {
+      return t('群组')
+    },
+    value: 'group'
+  },
+  {
+    get label() {
+      return t('群组纪要')
+    },
+    value: 'group_digest'
+  },
+  {
+    get label() {
+      return t('辅助模型')
+    },
+    value: 'assistant'
+  },
+  {
+    get label() {
+      return t('文档提炼')
+    },
+    value: 'document_summary'
+  },
+  {
+    get label() {
+      return t('连通性测试')
+    },
+    value: 'provider_test'
+  }
 ]
 
 const providerKey = ref('')
@@ -55,10 +111,12 @@ function optionsOf(
 }
 
 const providerOptions = computed(() =>
-  optionsOf((r) => r.providerSlug || r.providerKey, providerKey.value, '全部供应商')
+  optionsOf((r) => r.providerSlug || r.providerKey, providerKey.value, t('全部供应商'))
 )
-const modelOptions = computed(() => optionsOf((r) => r.modelId, modelId.value, '全部模型'))
-const projectOptions = computed(() => optionsOf((r) => r.projectKey, projectKey.value, '全部项目'))
+const modelOptions = computed(() => optionsOf((r) => r.modelId, modelId.value, t('全部模型')))
+const projectOptions = computed(() =>
+  optionsOf((r) => r.projectKey, projectKey.value, t('全部项目'))
+)
 
 function fromDate(days: number): string | undefined {
   if (!days) return undefined
@@ -93,18 +151,20 @@ const visibleRows = computed(() =>
 
 function hitRatioText(row: UsageDailyRow): string {
   const ratio = cacheHitRatio(row)
-  return ratio == null ? '未报告' : `${Math.round(ratio * 100)}%`
+  return ratio == null ? t('未报告') : `${Math.round(ratio * 100)}%`
 }
 
 function confirmClear(): void {
   modal.confirm({
-    title: '清除全部模型用量?',
-    content: '长期日聚合与去重数据将一起删除,不影响消息、版本和七天诊断明细。',
-    okText: '清除',
+    get title() {
+      return t('清除全部模型用量?')
+    },
+    content: t('长期日聚合与去重数据将一起删除,不影响消息、版本和七天诊断明细。'),
+    okText: t('清除'),
     okType: 'danger',
     onOk: async () => {
       await usage.clear()
-      message.success('已清除')
+      message.success(t('已清除'))
     }
   })
 }
@@ -113,15 +173,15 @@ function confirmClear(): void {
 <template>
   <div class="usage-page">
     <div class="usage-head">
-      <h2 class="usage-title">模型用量</h2>
+      <h2 class="usage-title">{{ t('模型用量') }}</h2>
       <div class="usage-actions">
         <a-button size="small" @click="reload">
           <template #icon><ReloadOutlined /></template>
-          刷新
+          {{ t('刷新') }}
         </a-button>
         <a-button size="small" danger @click="confirmClear">
           <template #icon><DeleteOutlined /></template>
-          清除用量
+          {{ t('清除用量') }}
         </a-button>
       </div>
     </div>
@@ -151,30 +211,40 @@ function confirmClear(): void {
 
     <div class="usage-stats">
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
-        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">轮次</div>
+        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
+          {{ t('轮次') }}
+        </div>
         <div class="usage-stat-value">{{ usage.totals.runs.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
-        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">模型请求</div>
+        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
+          {{ t('模型请求') }}
+        </div>
         <div class="usage-stat-value">{{ usage.totals.steps.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
-        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">输入 token</div>
+        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
+          {{ t('输入 token') }}
+        </div>
         <div class="usage-stat-value">{{ usage.totals.inputTokens.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
-        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">输出 token</div>
+        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
+          {{ t('输出 token') }}
+        </div>
         <div class="usage-stat-value">{{ usage.totals.outputTokens.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
-        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">平均每轮输入</div>
+        <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
+          {{ t('平均每轮输入') }}
+        </div>
         <div class="usage-stat-value">
           {{ usage.totals.avgInputPerRun?.toLocaleString() ?? '—' }}
         </div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
-          平均每次请求输入
+          {{ t('平均每次请求输入') }}
         </div>
         <div class="usage-stat-value">
           {{ usage.totals.avgInputPerStep?.toLocaleString() ?? '—' }}
@@ -183,19 +253,19 @@ function confirmClear(): void {
     </div>
 
     <a-spin :spinning="usage.loading">
-      <a-empty v-if="!visibleRows.length" description="这个范围内没有用量记录" />
+      <a-empty v-if="!visibleRows.length" :description="t('这个范围内没有用量记录')" />
       <div v-else class="usage-table" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-row usage-row--head" :style="{ color: token.colorTextTertiary }">
-          <span>日期</span>
-          <span>供应商 / 模型</span>
-          <span>场景</span>
-          <span class="num">轮 / 请求</span>
-          <span class="num">输入</span>
-          <span class="num">缓存读</span>
-          <span class="num">缓存写</span>
-          <span class="num">命中率</span>
-          <span class="num">输出</span>
-          <span class="num">思考</span>
+          <span>{{ t('日期') }}</span>
+          <span>{{ t('供应商 / 模型') }}</span>
+          <span>{{ t('场景') }}</span>
+          <span class="num">{{ t('轮 / 请求') }}</span>
+          <span class="num">{{ t('输入') }}</span>
+          <span class="num">{{ t('缓存读') }}</span>
+          <span class="num">{{ t('缓存写') }}</span>
+          <span class="num">{{ t('命中率') }}</span>
+          <span class="num">{{ t('输出') }}</span>
+          <span class="num">{{ t('思考') }}</span>
         </div>
         <div
           v-for="row in visibleRows"

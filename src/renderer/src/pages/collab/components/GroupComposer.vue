@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { ArrowUpOutlined, PauseOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
@@ -49,7 +50,7 @@ async function send(): Promise<void> {
   } catch (err) {
     // 发送失败消息没落库(如上一条链还在跑),草稿还回去,别让用户重打一遍
     draft.value = text
-    message.error(err instanceof Error ? err.message : String(err))
+    message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   }
 }
 
@@ -96,10 +97,10 @@ function onKeydownCapture(e: KeyboardEvent): void {
     >
       <a-mentions
         v-model:value="draft"
-        aria-label="群组消息"
+        :aria-label="t('群组消息')"
         :options="mentionOptions"
         class="gcomposer-input"
-        placeholder="@产品经理 说说你要做什么;不 @ 任何人就只是留言"
+        :placeholder="t('@产品经理 说说你要做什么;不 @ 任何人就只是留言')"
         :auto-size="{ minRows: 2, maxRows: 8 }"
         variant="borderless"
         @keydown.enter="onEnter"
@@ -113,11 +114,11 @@ function onKeydownCapture(e: KeyboardEvent): void {
       </a-mentions>
 
       <div class="gcomposer-toolbar">
-        <a-tooltip :title="collab.chainingHere ? '停止接力' : 'Enter 发送,Shift+Enter 换行'">
+        <a-tooltip :title="collab.chainingHere ? t('停止接力') : t('Enter 发送,Shift+Enter 换行')">
           <a-button
             v-if="collab.chainingHere"
             class="gcomposer-send"
-            aria-label="暂停群组接力"
+            :aria-label="t('暂停群组接力')"
             type="primary"
             shape="circle"
             @click="collab.abort()"
@@ -127,7 +128,7 @@ function onKeydownCapture(e: KeyboardEvent): void {
           <a-button
             v-else
             class="gcomposer-send"
-            aria-label="发送群组消息"
+            :aria-label="t('发送群组消息')"
             type="primary"
             shape="circle"
             :disabled="!draft.trim()"

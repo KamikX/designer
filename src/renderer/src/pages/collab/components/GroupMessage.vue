@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import ToolActivityList from '../../project/components/ToolActivityList.vue'
 import RoleAvatar from './RoleAvatar.vue'
@@ -58,7 +59,7 @@ const segments = computed(() => splitMessageStream(textContent.value, activities
 <template>
   <!-- 用户发言:右对齐主色气泡,和聊天页同款 -->
   <div v-if="isUser" class="gmsg gmsg--user">
-    <span class="gmsg-copy"><CopyButton :text="copyText" label="复制这条消息" /></span>
+    <span class="gmsg-copy"><CopyButton :text="copyText" :label="t('复制这条消息')" /></span>
     <div class="gmsg-bubble" :style="{ background: token.colorPrimary, color: '#fff' }">
       <div class="gmsg-text">
         <GroupMentionText :content="textContent" :members="collab.mentionMembers" />
@@ -79,7 +80,7 @@ const segments = computed(() => splitMessageStream(textContent.value, activities
           {{ role?.name ?? message.author }}
         </span>
         <!-- 复制放在名字行:文档动辄几千字,按钮跟着正文走到底部就没人找得到 -->
-        <span class="gmsg-copy"><CopyButton :text="copyText" label="复制这份文档" /></span>
+        <span class="gmsg-copy"><CopyButton :text="copyText" :label="t('复制这份文档')" /></span>
       </div>
       <div class="gmsg-bubble" :style="{ background: token.colorFillQuaternary }">
         <!-- 解说与工具调用按发生顺序交替,读起来是一条链而不是一坨 -->
@@ -105,14 +106,14 @@ const segments = computed(() => splitMessageStream(textContent.value, activities
           type="danger"
           style="font-size: 12px"
         >
-          生成失败
+          {{ t('生成失败') }}
         </a-typography-text>
         <a-typography-text
           v-else-if="message.status === 'aborted'"
           type="secondary"
           style="font-size: 12px"
         >
-          已停止
+          {{ t('已停止') }}
         </a-typography-text>
       </div>
     </div>

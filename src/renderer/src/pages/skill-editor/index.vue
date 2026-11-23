@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { ArrowLeftOutlined } from '@antdv-next/icons'
 import type { SkillFileNode } from '@shared/types'
@@ -31,7 +32,7 @@ const isMac = navigator.userAgent.includes('Mac')
 const saveHint = isMac ? '⌘S' : 'Ctrl+S'
 
 function errText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return uiMessage(err instanceof Error ? err.message : String(err))
 }
 
 async function loadTree(): Promise<void> {
@@ -147,14 +148,14 @@ onBeforeUnmount(() => {
     <div class="skill-editor-bar" :style="{ borderColor: token.colorBorderSecondary }">
       <a-button size="small" type="text" @click="router.back()">
         <template #icon><ArrowLeftOutlined /></template>
-        返回
+        {{ t('返回') }}
       </a-button>
       <span class="skill-editor-name">{{ skillName }}</span>
       <span
         class="skill-editor-status"
         :style="{ color: dirty ? token.colorWarning : token.colorTextTertiary }"
       >
-        {{ dirty ? `未保存 · ${saveHint} 保存` : '已保存' }}
+        {{ dirty ? t('未保存 · {0} 保存', saveHint) : t('已保存') }}
       </span>
     </div>
 

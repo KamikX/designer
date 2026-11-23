@@ -1,3 +1,4 @@
+import { translate } from '../../shared/i18n'
 import { dialog, ipcMain, nativeTheme } from 'electron'
 import { ulid } from 'ulid'
 import type { AppConfig } from '../config'
@@ -260,8 +261,8 @@ export function registerIpc(): void {
   ipcMain.handle('workspace:list', (_e, scope: RootScope) => listRoots(scope))
   ipcMain.handle('workspace:grant', async (_e, scope: RootScope) => {
     const res = await dialog.showOpenDialog({
-      title: '选择要让 AI 参考的本地目录',
-      message: 'AI 将能读取该目录下的文件用于分析;范围之外一律不可见',
+      title: translate(readConfig().lang, '选择要让 AI 参考的本地目录'),
+      message: translate(readConfig().lang, 'AI 将能读取该目录下的文件用于分析;范围之外一律不可见'),
       properties: ['openDirectory']
     })
     if (res.canceled || res.filePaths.length === 0) return null
@@ -271,8 +272,8 @@ export function registerIpc(): void {
   // 走 grant-paths,点"+ 文件"的走这里
   ipcMain.handle('workspace:pick-files', async (_e, scope: RootScope) => {
     const res = await dialog.showOpenDialog({
-      title: '选择要让 AI 参考的文件',
-      message: 'AI 将能读取这些文件用于分析;其余文件一律不可见',
+      title: translate(readConfig().lang, '选择要让 AI 参考的文件'),
+      message: translate(readConfig().lang, 'AI 将能读取这些文件用于分析;其余文件一律不可见'),
       properties: ['openFile', 'multiSelections']
     })
     if (res.canceled || res.filePaths.length === 0) return { granted: [], rejected: [] }

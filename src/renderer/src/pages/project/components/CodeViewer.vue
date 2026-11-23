@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { setPatchListener, useArtifactStore } from '@renderer/stores/artifact'
 import { useAppConfig } from '@renderer/components/config/config'
@@ -153,7 +154,11 @@ function flash(startLine: number, endLine: number): void {
     :style="{ background: token.colorFillQuaternary, borderColor: token.colorBorderSecondary }"
   >
     <a-skeleton v-if="loading" active :paragraph="{ rows: 8 }" style="padding: 12px" />
-    <a-empty v-else-if="!hasContent" description="选择左侧文件查看内容" style="margin-top: 60px" />
+    <a-empty
+      v-else-if="!hasContent"
+      :description="t('选择左侧文件查看内容')"
+      style="margin-top: 60px"
+    />
     <div v-show="!loading && hasContent" ref="host" class="code-host" />
   </div>
 </template>

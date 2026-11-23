@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { App } from 'antdv-next'
 import {
   DeleteOutlined,
@@ -126,11 +127,13 @@ function submitCreate(): void {
 
 function confirmRemove(node: TreeNode): void {
   modal.confirm({
-    title: `删除「${node.title}」?`,
-    content: node.isLeaf ? '文件会被删除,不可恢复。' : '整个目录会被删除,不可恢复。',
-    okText: '删除',
+    get title() {
+      return t('删除「{0}」?', node.title)
+    },
+    content: node.isLeaf ? t('文件会被删除,不可恢复。') : t('整个目录会被删除,不可恢复。'),
+    okText: t('删除'),
     okButtonProps: { danger: true },
-    cancelText: '取消',
+    cancelText: t('取消'),
     onOk: () => emit('remove', node.key)
   })
 }
@@ -139,17 +142,17 @@ function confirmRemove(node: TreeNode): void {
 <template>
   <div class="skill-tree">
     <div class="skill-tree-bar">
-      <a-tooltip :title="createBase ? `在 ${createBase}/ 下新建文件` : '新建文件'">
+      <a-tooltip :title="createBase ? t('在 {0}/ 下新建文件', createBase) : t('新建文件')">
         <a-button size="small" type="text" @click="openCreate('file')">
           <template #icon><FileAddOutlined /></template>
         </a-button>
       </a-tooltip>
-      <a-tooltip :title="createBase ? `在 ${createBase}/ 下新建目录` : '新建目录'">
+      <a-tooltip :title="createBase ? t('在 {0}/ 下新建目录', createBase) : t('新建目录')">
         <a-button size="small" type="text" @click="openCreate('dir')">
           <template #icon><FolderAddOutlined /></template>
         </a-button>
       </a-tooltip>
-      <a-tooltip title="刷新">
+      <a-tooltip :title="t('刷新')">
         <a-button size="small" type="text" @click="emit('refresh')">
           <template #icon><ReloadOutlined /></template>
         </a-button>
@@ -158,7 +161,7 @@ function confirmRemove(node: TreeNode): void {
 
     <a-empty
       v-if="treeData.length === 0"
-      description="空技能,先新建一个文件"
+      :description="t('空技能,先新建一个文件')"
       style="margin-top: 40px"
     />
     <a-tree
@@ -188,15 +191,17 @@ function confirmRemove(node: TreeNode): void {
 
     <a-modal
       v-model:open="entryModal.open"
-      :title="entryModal.kind === 'file' ? '新建文件' : '新建目录'"
-      ok-text="创建"
+      :title="entryModal.kind === 'file' ? t('新建文件') : t('新建目录')"
+      :ok-text="t('创建')"
       @ok="submitCreate"
     >
       <a-form layout="vertical" style="margin-top: 8px">
-        <a-form-item :label="createBase ? `创建在 ${createBase}/ 下` : '创建在技能根目录'">
+        <a-form-item :label="createBase ? t('创建在 {0}/ 下', createBase) : t('创建在技能根目录')">
           <a-input
             v-model:value="entryModal.name"
-            :placeholder="entryModal.kind === 'file' ? '如 references/notes.md' : '如 references'"
+            :placeholder="
+              entryModal.kind === 'file' ? t('如 references/notes.md') : t('如 references')
+            "
             @press-enter="submitCreate"
           />
         </a-form-item>

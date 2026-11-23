@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { SettingOutlined } from '@antdv-next/icons'
 import { useProjectStore } from '@renderer/stores/project'
@@ -39,22 +40,24 @@ watch(open, async (isOpen) => {
 })
 
 const hint = computed(() => {
-  if (draft.value.trim() === '') return `跟随全局设置(${globalLimit.value || '不限'})`
+  if (draft.value.trim() === '') return t('跟随全局设置({0})', globalLimit.value || '不限')
   const value = Number(draft.value)
-  if (!Number.isFinite(value) || value < 0) return '请填 0 或正整数'
-  return value === 0 ? '不限次数,只剩上下文预算这一条熔断' : `本项目每轮最多 ${value} 次工具调用`
+  if (!Number.isFinite(value) || value < 0) return t('请填 0 或正整数')
+  return value === 0
+    ? t('不限次数,只剩上下文预算这一条熔断')
+    : t('本项目每轮最多 {0} 次工具调用', value)
 })
 
 async function save(): Promise<void> {
   const raw = draft.value.trim()
   const value = raw === '' ? null : Math.floor(Number(raw))
   if (value !== null && (!Number.isFinite(value) || value < 0)) {
-    message.warning('请填 0 或正整数,留空表示跟随全局')
+    message.warning(t('请填 0 或正整数,留空表示跟随全局'))
     return
   }
   await store.setToolCallLimit(props.project.id, value)
   open.value = false
-  message.success('已保存,下一轮对话生效')
+  message.success(t('已保存,下一轮对话生效'))
 }
 </script>
 
@@ -62,24 +65,24 @@ async function save(): Promise<void> {
   <a-popover v-model:open="open" trigger="click" placement="bottomRight">
     <template #content>
       <div class="proj-set">
-        <div class="proj-set-title">单轮工具调用上限</div>
+        <div class="proj-set-title">{{ t('单轮工具调用上限') }}</div>
         <a-space-compact>
           <a-input
             v-model:value="draft"
             size="small"
             style="width: 132px"
-            placeholder="留空跟随全局"
+            :placeholder="t('留空跟随全局')"
             @press-enter="save"
           />
-          <a-button size="small" type="primary" @click="save">保存</a-button>
+          <a-button size="small" type="primary" @click="save">{{ t('保存') }}</a-button>
         </a-space-compact>
         <div class="proj-set-hint" :style="{ color: token.colorTextTertiary }">{{ hint }}</div>
         <div class="proj-set-hint" :style="{ color: token.colorTextTertiary }">
-          复杂改动需要更多次数;填 0 不限,单轮会更慢更贵。
+          {{ t('复杂改动需要更多次数;填 0 不限,单轮会更慢更贵。') }}
         </div>
       </div>
     </template>
-    <a-tooltip title="项目设置">
+    <a-tooltip :title="t('项目设置')">
       <a-button type="text" size="small">
         <template #icon><SettingOutlined /></template>
       </a-button>

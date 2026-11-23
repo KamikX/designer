@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, uiMessage } from '@renderer/i18n'
 import { useRouter } from 'vue-router'
 import { theme } from 'antdv-next'
 import { MessageOutlined } from '@antdv-next/icons'
@@ -54,12 +55,12 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
         v-if="noModel"
         type="warning"
         show-icon
-        message="还没有可用的模型"
+        :message="t('还没有可用的模型')"
         style="margin-bottom: 12px"
       >
         <template #description>
-          先到设置里添加供应商、录入 API Key 并启用模型。
-          <a @click="router.push('/settings')">前往设置</a>
+          {{ t('先到设置里添加供应商、录入 API Key 并启用模型。') }}
+          <a @click="router.push('/settings')">{{ t('前往设置') }}</a>
         </template>
       </a-alert>
 
@@ -72,18 +73,24 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
       <div v-if="chatStore.messages.length === 0 && !noModel" class="chat-empty">
         <div class="chat-empty-inner">
           <MessageOutlined class="chat-empty-icon" :style="{ color: token.colorTextQuaternary }" />
-          <h2 class="chat-empty-title">开始你的设计</h2>
+          <h2 class="chat-empty-title">{{ t('开始你的设计') }}</h2>
           <div class="chat-empty-sub" :style="{ color: token.colorTextTertiary }">
-            描述页面、风格、内容,AI 会生成可预览的多文件设计稿;
+            {{ t('描述页面、风格、内容,AI 会生成可预览的多文件设计稿;') }}
             <br />
-            后续可以继续对话逐步调整
+            {{ t('后续可以继续对话逐步调整') }}
           </div>
         </div>
       </div>
 
       <MessageItem v-for="m in chatStore.messages" :key="m.id" :message="m" />
 
-      <a-alert v-if="chatStore.error" type="error" :message="chatStore.error" show-icon closable />
+      <a-alert
+        v-if="chatStore.error"
+        type="error"
+        :message="uiMessage(chatStore.error)"
+        show-icon
+        closable
+      />
     </div>
 
     <div class="chat-composer">

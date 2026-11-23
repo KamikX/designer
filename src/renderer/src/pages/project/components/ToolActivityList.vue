@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, activityLabel } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import {
   CheckOutlined,
@@ -50,19 +51,21 @@ const failed = computed(
  */
 const summary = computed(() => {
   const total = props.activities.length
-  const tail = failed.value ? `${total} 步,${failed.value} 步失败` : `已执行 ${total} 步`
+  const tail = failed.value
+    ? t('{0} 步,{1} 步失败', total, failed.value)
+    : t('已执行 {0} 步', total)
 
-  if (expanded.value) return props.streaming ? `执行中 · ${total} 步` : tail
+  if (expanded.value) return props.streaming ? t('执行中 · {0} 步', total) : tail
   if (props.streaming) {
     const running = props.activities.find((a) => isActiveToolState(a.state))
-    return running ? running.label : `执行中 · ${total} 步`
+    return running ? activityLabel(running.label) : t('执行中 · {0} 步', total)
   }
   return tail
 })
 
 /** 本地执行超过 500ms 才提示——快的没必要说,慢的用户该知道 */
 function perfNote(item: ToolActivity): string {
-  return item.execMs !== undefined && item.execMs > 500 ? `本地执行 ${item.execMs}ms` : ''
+  return item.execMs !== undefined && item.execMs > 500 ? t('本地执行 {0}ms', item.execMs) : ''
 }
 </script>
 
@@ -100,7 +103,7 @@ function perfNote(item: ToolActivity): string {
             }"
           />
         </span>
-        <span class="activity-label">{{ item.label }}</span>
+        <span class="activity-label">{{ activityLabel(item.label) }}</span>
         <span v-if="perfNote(item)" class="activity-detail" :style="{ color: token.colorWarning }">
           {{ perfNote(item) }}
         </span>
@@ -116,7 +119,7 @@ function perfNote(item: ToolActivity): string {
                   : token.colorTextTertiary
           }"
         >
-          {{ item.summary }}
+          {{ activityLabel(item.summary) }}
         </span>
       </div>
     </div>
