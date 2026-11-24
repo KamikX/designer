@@ -13,6 +13,7 @@ function project(styleBrief: string): Project {
     targets: ['admin'],
     libs: ['antdv-next'],
     description: '',
+    codeInstructions: '',
     styleBrief,
     designDocument: '',
     visualStylePriority: 'styleBrief',
@@ -129,4 +130,27 @@ describe('project store setStyleBrief', () => {
     expect(store.current?.designDocument).toBe('# Green')
     expect(hot.invalidate).not.toHaveBeenCalled()
   })
+})
+
+it('keeps saved code instructions aligned without replacing a different open project', async () => {
+  setActivePinia(createPinia())
+  const updated = { ...project('Blue'), codeInstructions: 'Use Zod.\nLocalize labels.' }
+  const save = vi.fn().mockResolvedValue(updated)
+  vi.stubGlobal('window', { api: { project: { setCodeInstructions: save } } })
+  try {
+    const store = useProjectStore()
+    store.projects = [project('Blue')]
+    store.current = project('Blue')
+    await store.setCodeInstructions('project-1', updated.codeInstructions)
+    expect(store.current?.codeInstructions).toBe(updated.codeInstructions)
+    expect(store.projects[0].codeInstructions).toBe(updated.codeInstructions)
+    store.current = { ...project('Other'), id: 'project-2' }
+    save.mockResolvedValue({ ...updated, codeInstructions: '' })
+    await store.setCodeInstructions('project-1', '')
+    expect(store.current.id).toBe('project-2')
+    expect(store.current.codeInstructions).toBe('')
+    expect(store.projects[0].codeInstructions).toBe('')
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })

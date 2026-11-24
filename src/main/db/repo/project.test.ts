@@ -60,6 +60,7 @@ vi.mock('../index', () => ({
 import {
   createProject,
   setProjectDescription,
+  setProjectCodeInstructions,
   setProjectStyleBrief,
   setProjectVisualGuidance
 } from './project'
@@ -83,6 +84,7 @@ function project(styleBrief: string): Project {
     targets: null,
     libs: null,
     description: '',
+    codeInstructions: '',
     styleBrief,
     designDocument: '',
     visualStylePriority: 'styleBrief',
@@ -233,5 +235,34 @@ describe('project target validation', () => {
   ])('rejects invalid IPC targets before writing: %j', ({ targets }) => {
     expect(() => createProject({ ...projectInput(), targets } as never)).toThrow()
     expect(state.creates).toHaveLength(0)
+  })
+})
+
+describe('project code instructions', () => {
+  beforeEach(() => {
+    state.updates.length = 0
+    state.updateRows.length = 0
+    state.whereClauses.length = 0
+    eqSpy.mockClear()
+  })
+
+  it('updates only the requested project and preserves multiline instructions', () => {
+    const instructions = 'Use Zod.\nKeep translations separate.'
+    state.updateRows.push({ ...project('Blue'), codeInstructions: instructions })
+    expect(setProjectCodeInstructions('project-1', `  ${instructions}  `)?.codeInstructions).toBe(
+      instructions
+    )
+    expect(state.updates[0]).toMatchObject({ codeInstructions: instructions })
+    expect(eqSpy).toHaveBeenCalledWith(projects.id, 'project-1')
+    expect(state.updates[0]).not.toHaveProperty('styleBrief')
+  })
+
+  it('allows clearing instructions and rejects malformed IPC input', () => {
+    setProjectCodeInstructions('project-1', '   ')
+    expect(state.updates[0]).toMatchObject({ codeInstructions: '' })
+    expect(() => setProjectCodeInstructions('', 'rules')).toThrow('Invalid project ID')
+    expect(() => setProjectCodeInstructions('project-1', null as unknown as string)).toThrow(
+      'Invalid project code instructions'
+    )
   })
 })

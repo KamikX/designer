@@ -1,0 +1,1 @@
+ALTER TABLE `projects` ADD `code_instructions` text DEFAULT '' NOT NULL;

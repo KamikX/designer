@@ -41,6 +41,8 @@ const api: DesignerApi = {
     rename: (id, name) => ipcRenderer.invoke('project:rename', id, name),
     setDescription: (id, description) =>
       ipcRenderer.invoke('project:set-description', id, description),
+    setCodeInstructions: (id, instructions) =>
+      ipcRenderer.invoke('project:set-code-instructions', id, instructions),
     setLibs: (id, libs) => ipcRenderer.invoke('project:set-libs', id, libs),
     setVisualGuidance: (id, guidance) =>
       ipcRenderer.invoke('project:set-visual-guidance', id, guidance),

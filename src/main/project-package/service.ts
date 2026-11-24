@@ -377,6 +377,7 @@ export function importProjectPackage(data: Buffer): ProjectPackageImportResult {
           styleBrief: rewrite(m.project.styleBrief) as string,
           designDocument: rewrite(m.project.designDocument) as string,
           description: rewrite(m.project.description) as string,
+          codeInstructions: rewrite(m.project.codeInstructions) as string,
           settings: projectSettings
         })
         .returning()

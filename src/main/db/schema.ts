@@ -56,6 +56,7 @@ export const projects = sqliteTable(
     libs: text('libs', { mode: 'json' }).$type<PreviewLib[]>(),
     externalLibraries: text('external_libraries', { mode: 'json' }).$type<ExternalLibraryRef[]>(),
     description: text('description').notNull().default(''),
+    codeInstructions: text('code_instructions').notNull().default(''),
     /** 项目的视觉方向；空字符串表示用户尚未定义 */
     styleBrief: text('style_brief').notNull().default(''),
     designDocument: text('design_document').notNull().default(''),

@@ -38,6 +38,7 @@ import {
   listProjects,
   renameProject,
   setProjectDescription,
+  setProjectCodeInstructions,
   saveProjectSettings,
   setProjectLibs,
   setProjectExternalLibraries,
@@ -156,6 +157,9 @@ export function registerIpc(): void {
   ipcMain.handle('project:rename', (_e, id: string, name: string) => renameProject(id, name))
   ipcMain.handle('project:set-description', (_e, id: string, description: string) =>
     setProjectDescription(id, description)
+  )
+  ipcMain.handle('project:set-code-instructions', (_e, id: string, instructions: string) =>
+    setProjectCodeInstructions(id, instructions)
   )
   ipcMain.handle('project:set-libs', (_e, id: string, libs: PreviewLib[]) =>
     setProjectLibs(id, libs)

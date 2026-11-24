@@ -28,6 +28,7 @@ const project = {
   stack: 'html',
   designMode: 'design',
   description: 'A dashboard',
+  codeInstructions: '',
   styleBrief: '',
   designDocument: '',
   visualStylePriority: 'styleBrief',
@@ -239,4 +240,42 @@ describe('localized installation questions', () => {
       expect(result).toContain('用户取消了安装')
     }
   )
+})
+
+describe('project code instructions in the system context', () => {
+  it.each(['tools', 'markers'] as const)('includes rules in the stable prefix for %s', (mode) => {
+    const instructions = 'Use Zod.\n```ts\nconst example = "{runtime}"\n```'
+    const output = buildSystemPrompt(
+      { ...project, codeInstructions: instructions },
+      [],
+      {
+        mode,
+        skillCatalog: 'SKILL_CATALOG',
+        localScope: 'TURN_SCOPE'
+      },
+      'en-US'
+    )
+    expect(output).toContain('## Project code instructions')
+    expect(output).toContain('Use Zod.')
+    expect(output).toContain('{runtime}')
+    expect(output).not.toContain('```ts')
+    expect(output).toContain('specific request in the current turn takes precedence')
+    expect(output).toContain('They do not enable web access')
+    expect(output.indexOf('## Project code instructions')).toBeLessThan(
+      output.indexOf('SKILL_CATALOG')
+    )
+    expect(output.indexOf('## Project code instructions')).toBeLessThan(
+      output.indexOf('TURN_SCOPE')
+    )
+  })
+
+  it('omits empty rules and does not leak between projects', () => {
+    const other = buildSystemPrompt({ ...project, codeInstructions: 'ONLY_THIS_PROJECT' }, [])
+    expect(other).toContain('ONLY_THIS_PROJECT')
+    for (const codeInstructions of ['', '   ']) {
+      const output = buildSystemPrompt({ ...project, codeInstructions }, [], {}, 'en-US')
+      expect(output).not.toContain('## Project code instructions')
+      expect(output).not.toContain('ONLY_THIS_PROJECT')
+    }
+  })
 })

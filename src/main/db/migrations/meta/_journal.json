@@ -120,6 +120,13 @@
       "when": 1795509140038,
       "tag": "0016_regular_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795533059968,
+      "tag": "0017_free_shinobi_shaw",
+      "breakpoints": true
     }
   ]
 }

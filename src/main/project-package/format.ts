@@ -98,6 +98,7 @@ export const projectSchema = z.object({
   libs: z.array(z.enum(['antdv-next', '@antdv-next/icons'])).nullable(),
   externalLibraries: z.array(z.object({ name: z.string(), version: z.string() })).nullable(),
   description: z.string(),
+  codeInstructions: z.string().default(''),
   styleBrief: z.string(),
   designDocument: z.string(),
   visualStylePriority: z.enum(['styleBrief', 'designDocument']),

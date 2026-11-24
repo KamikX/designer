@@ -83,6 +83,11 @@ export function buildSystemPrompt(
     mode === 'tools' && options.captureHint ? captureProtocol(lang) : '',
     stackPrompt(project.stack, project.libs ?? [], lang),
     libraryPrompt(project.externalLibraries ?? [], project.stack, project.libs ?? [], lang),
+    project.codeInstructions?.trim()
+      ? promptText(lang, 'system.codeInstructions', {
+          instructions: project.codeInstructions.replace(/```/g, '\\`\\`\\`')
+        })
+      : '',
     craftCore(lang),
     options.skillCatalog ?? '',
     // ---- 稳定区的尾巴:内容稳定但**这一轮取哪份**会变,排最后才不牵连前面 ----

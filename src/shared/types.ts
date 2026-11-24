@@ -302,6 +302,7 @@ export interface Project {
   libs: PreviewLib[] | null
   externalLibraries?: ExternalLibraryRef[] | null
   description: string
+  codeInstructions: string
   /** 用户定义的视觉方向；空字符串表示尚未定义 */
   styleBrief: string
   designDocument: string
@@ -1103,6 +1104,7 @@ export interface DesignerApi {
     create: (input: CreateProjectInput) => Promise<Project>
     rename: (id: string, name: string) => Promise<Project | null>
     setDescription: (id: string, description: string) => Promise<Project | null>
+    setCodeInstructions: (id: string, instructions: string) => Promise<Project | null>
     /** 修改依赖包。libs 不牵动文件树,创建后改是安全的(影响预览装配与提示词) */
     setLibs: (id: string, libs: PreviewLib[]) => Promise<Project | null>
     /** 覆盖保存项目级视觉方向；空字符串表示清除 */

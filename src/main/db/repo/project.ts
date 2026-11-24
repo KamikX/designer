@@ -79,6 +79,7 @@ export function createProject(input: CreateProjectInput): Project {
         targets,
         libs: input.libs?.length ? input.libs : null,
         description: input.description ?? '',
+        codeInstructions: '',
         ...guidance
       })
       .returning()
@@ -131,6 +132,18 @@ export function setProjectDescription(id: string, description: string): Project 
   const row = getDb()
     .update(projects)
     .set({ description: description.trim(), updatedAt: sql`(datetime('now'))` })
+    .where(eq(projects.id, id))
+    .returning()
+    .get()
+  return row ? toProject(row) : null
+}
+
+export function setProjectCodeInstructions(id: string, instructions: string): Project | null {
+  if (typeof id !== 'string' || !id) throw new Error('Invalid project ID')
+  if (typeof instructions !== 'string') throw new Error('Invalid project code instructions')
+  const row = getDb()
+    .update(projects)
+    .set({ codeInstructions: instructions.trim(), updatedAt: sql`(datetime('now'))` })
     .where(eq(projects.id, id))
     .returning()
     .get()

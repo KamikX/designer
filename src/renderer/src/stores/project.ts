@@ -37,6 +37,14 @@ export const useProjectStore = defineStore('project', {
       return project
     },
 
+    async setCodeInstructions(id: string, instructions: string): Promise<void> {
+      const updated = await window.api.project.setCodeInstructions(id, instructions)
+      if (!updated) throw new Error('Project not found')
+      const at = this.projects.findIndex((p) => p.id === id)
+      if (at >= 0) this.projects[at] = updated
+      if (this.current?.id === id) this.current = updated
+    },
+
     async setDescription(id: string, description: string): Promise<void> {
       const updated = await window.api.project.setDescription(id, description)
       if (!updated) throw new Error('Project not found')

@@ -839,5 +839,8 @@
   "项目包": "Project package",
   "项目已导入": "Project imported",
   "项目已导入，部分选择不可用": "Project imported; some selections are unavailable",
-  "项目生成中，暂时无法导出": "Wait for project generation to finish before exporting"
+  "项目生成中，暂时无法导出": "Wait for project generation to finish before exporting",
+  "代码生成规则": "Code generation rules",
+  "每轮生成自动应用，保存后下一轮生效。不会自动安装依赖或开启联网。": "Applied to every generation, starting with the next turn after saving. Does not automatically install dependencies or enable web access.",
+  "例如：使用 Zod 验证表单；通过 tailwind-variants 定义组件变体；所有界面文本使用翻译键。": "For example: validate forms with Zod; define component variants with tailwind-variants; use translation keys for all interface text."
 }

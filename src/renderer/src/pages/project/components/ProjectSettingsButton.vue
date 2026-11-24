@@ -17,6 +17,7 @@ const open = ref(false)
 const saving = ref(false)
 const importing = ref(false)
 const description = ref('')
+const codeInstructions = ref('')
 const guidance = reactive<VisualGuidance>({
   styleBrief: '',
   designDocument: '',
@@ -40,6 +41,7 @@ watch(open, async (isOpen) => {
   if (!isOpen) return
   importing.value = false
   description.value = props.project.description
+  codeInstructions.value = props.project.codeInstructions ?? ''
   Object.assign(guidance, {
     styleBrief: props.project.styleBrief,
     designDocument: props.project.designDocument ?? '',
@@ -70,6 +72,7 @@ async function save(): Promise<void> {
   const projectId = props.project.id
   try {
     await store.setDescription(projectId, description.value)
+    await store.setCodeInstructions(projectId, codeInstructions.value)
     await store.setVisualGuidance(projectId, { ...guidance })
     await store.setToolCallLimit(projectId, value)
     open.value = false
@@ -103,6 +106,20 @@ async function save(): Promise<void> {
           v-model:value="description"
           :rows="3"
           :placeholder="t('一句话说明这个项目要做什么,会作为 AI 的背景信息')"
+        />
+      </a-form-item>
+      <a-form-item
+        :label="t('代码生成规则')"
+        :extra="t('每轮生成自动应用，保存后下一轮生效。不会自动安装依赖或开启联网。')"
+      >
+        <a-textarea
+          v-model:value="codeInstructions"
+          :rows="6"
+          :placeholder="
+            t(
+              '例如：使用 Zod 验证表单；通过 tailwind-variants 定义组件变体；所有界面文本使用翻译键。'
+            )
+          "
         />
       </a-form-item>
       <VisualGuidanceFields

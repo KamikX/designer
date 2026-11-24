@@ -52,7 +52,7 @@ import {
 } from './service'
 import { canonicalJson, hash, PACKAGE_LIMITS, readPackage } from './format'
 import type { PackageManifest, VersionDocument } from './format'
-import { saveProjectSettings } from '../db/repo/project'
+import { getProject, saveProjectSettings, setProjectCodeInstructions } from '../db/repo/project'
 import { libraryId } from '../libraries/service'
 
 beforeEach(() => {
@@ -99,6 +99,7 @@ function seed(): void {
       name: 'Project',
       stack: 'html',
       description: 'Description',
+      codeInstructions: 'Use Zod.\nUse translation keys.',
       styleBrief: 'Minimal',
       designDocument: '# Design',
       visualStylePriority: 'designDocument',
@@ -209,6 +210,7 @@ describe('project packages', () => {
     expect(imported.project.id).not.toBe('p')
     expect(imported.project.name).toBe('Project (2)')
     expect(imported.project.designDocument).toBe('# Design')
+    expect(imported.project.codeInstructions).toBe('Use Zod.\nUse translation keys.')
     expect(imported.project.visualStylePriority).toBe('designDocument')
     expect(imported.project.settings).toMatchObject({
       providerId: 'provider',
@@ -806,4 +808,50 @@ describe('project packages', () => {
     expect((await openProjectPackage())!.project.name).toBe('Project (2)')
     expect(readdirSync(state.root).filter((p) => p.startsWith('.designer-export'))).toEqual([])
   })
+})
+
+it('imports legacy packages without code instructions with an empty default', async () => {
+  seed()
+  const zip = new AdmZip(await buildProjectPackage({ projectId: 'p', selectedArtifactId: 'a1' }))
+  const document = JSON.parse(zip.readAsText('project.json'))
+  delete document.codeInstructions
+  zip.updateFile('project.json', Buffer.from(JSON.stringify(document)))
+  const manifest = JSON.parse(zip.readAsText('manifest.json'))
+  const bytes = zip.getEntry('project.json')!.getData()
+  const descriptor = manifest.documents.find(
+    (entry: { path: string }) => entry.path === 'project.json'
+  )
+  descriptor.sha256 = hash(bytes)
+  descriptor.size = bytes.length
+  zip.updateFile('manifest.json', Buffer.from(JSON.stringify(manifest)))
+  expect(importProjectPackage(zip.toBuffer()).project.codeInstructions).toBe('')
+})
+
+it('persists and clears code instructions without changing another project or visual guidance', () => {
+  seed()
+  testDb.insert(schema.projects).values({ id: 'other', name: 'Other' }).run()
+  expect(getProject('other')?.codeInstructions).toBe('')
+  setProjectCodeInstructions('p', 'Use Zod.\nLocalize labels.')
+  expect(getProject('p')?.codeInstructions).toBe('Use Zod.\nLocalize labels.')
+  expect(getProject('p')?.designDocument).toBe('# Design')
+  expect(getProject('other')?.codeInstructions).toBe('')
+  setProjectCodeInstructions('p', '')
+  expect(getProject('p')?.codeInstructions).toBe('')
+})
+
+it('migrates existing projects to empty instructions without changing saved visual guidance', () => {
+  const legacy = new Database(':memory:')
+  try {
+    for (const migration of MIGRATIONS.slice(0, -1)) legacy.exec(migration)
+    legacy
+      .prepare('INSERT INTO projects (id, name, style_brief) VALUES (?, ?, ?)')
+      .run('legacy', 'Legacy', 'Warm neutrals')
+    legacy.exec(MIGRATIONS.at(-1)!)
+    expect(legacy.prepare('SELECT code_instructions, style_brief FROM projects').get()).toEqual({
+      code_instructions: '',
+      style_brief: 'Warm neutrals'
+    })
+  } finally {
+    legacy.close()
+  }
 })

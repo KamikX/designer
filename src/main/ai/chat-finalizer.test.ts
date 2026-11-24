@@ -11,6 +11,7 @@ function project(styleBrief: string): Project {
     targets: ['web'],
     libs: null,
     description: '',
+    codeInstructions: '',
     styleBrief,
     designDocument: '',
     visualStylePriority: 'styleBrief',
