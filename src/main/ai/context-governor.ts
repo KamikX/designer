@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import type { ModelMessage, ToolSet } from 'ai'
 import { DEFAULT_TOOL_CALL_LIMIT } from '../../shared/limits'
 import { compactToolHistory } from './compact-tool-history'
@@ -101,23 +103,22 @@ export class ToolBudgetGate {
   }
 }
 
-const BUDGET_EXCEEDED_TEXT = renderToolResult(
-  toolError(
-    'TOOL_BUDGET_EXCEEDED',
-    '本轮工具调用已达硬上限,此调用未执行。已完成的修改都已保存,请直接收尾总结。'
-  )
-)
-
 /** 阈值文案里的次数。不限时不写数字,免得模型对着 Infinity 犯迷糊 */
-function limitText(limit: number): string {
-  return Number.isFinite(limit) ? `${limit} 次` : '不限次数'
+function limitText(limit: number, lang: PromptLanguage = 'zh-CN'): string {
+  return Number.isFinite(limit)
+    ? promptText(lang, 'governor.limit', { limit: limit })
+    : promptText(lang, 'governor.unlimited')
 }
 
 /**
  * 把整套工具的 execute 包上同一个闸门。读写一视同仁:副作用与额度都在
  * reserve 这一步定生死,底层 execute 在被拒时**根本不会被调用**。
  */
-export function wrapToolsWithBudget(tools: ToolSet, gate: ToolBudgetGate): ToolSet {
+export function wrapToolsWithBudget(
+  tools: ToolSet,
+  gate: ToolBudgetGate,
+  lang: PromptLanguage = 'zh-CN'
+): ToolSet {
   const wrapped: ToolSet = {}
   for (const [name, entry] of Object.entries(tools)) {
     const execute = entry.execute
@@ -129,7 +130,10 @@ export function wrapToolsWithBudget(tools: ToolSet, gate: ToolBudgetGate): ToolS
       ...entry,
       execute: async (input: never, options: never) => {
         const callId = (options as { toolCallId?: string })?.toolCallId ?? `${name}-${gate.count()}`
-        if (!gate.reserve(callId)) return BUDGET_EXCEEDED_TEXT
+        if (!gate.reserve(callId))
+          return renderToolResult(
+            toolError('TOOL_BUDGET_EXCEEDED', promptText(lang, 'governor.budgetExceeded'))
+          )
         return execute(input, options)
       }
     } as ToolSet[string]
@@ -143,6 +147,7 @@ interface GovernorOptions {
   contextWindow: number
   /** 缺省按全局默认上限派生;实际调用方都从用户配置算好了传进来 */
   limits?: ToolLimits
+  lang?: PromptLanguage
 }
 
 export interface GovernPrepareInput {
@@ -161,10 +166,12 @@ export class ContextGovernor {
   private readonly gate: ToolBudgetGate
   private readonly contextWindow: number
   private readonly limits: ToolLimits
+  private readonly lang: PromptLanguage
   private estimatedInputTokens = 0
   private estimated = false
 
   constructor(options: GovernorOptions) {
+    this.lang = options.lang ?? 'zh-CN'
     this.ledger = options.ledger
     this.gate = options.gate
     this.contextWindow = options.contextWindow
@@ -196,10 +203,7 @@ export class ContextGovernor {
   readGate(path: string, revision: number): string | null {
     if (this.gate.count() < this.limits.noReread) return null
     if (!this.ledger.hasReadAtRevision(path, revision)) return null
-    return (
-      `${path} 在本轮已读过且未变化(工具调用已达 ${this.gate.count()} 次)。` +
-      '不要重读,基于已有内容直接修改。'
-    )
+    return promptText(this.lang, 'governor.rereadBlocked', { path, calls: this.gate.count() })
   }
 
   /** 硬上限 / 5× 窗口:停止循环,保留已完成的修改 */
@@ -215,7 +219,7 @@ export class ContextGovernor {
 
   /** 收尾文案要说出真实上限,不能再写死 40 */
   hardLimitText(): string {
-    return limitText(this.limits.hard)
+    return limitText(this.limits.hard, this.lang)
   }
 
   /**
@@ -237,6 +241,7 @@ export class ContextGovernor {
     if (!needCompact) return {}
 
     const compacted = compactToolHistory(input.messages, {
+      lang: this.lang,
       completedWrites: this.ledger.completedWrites,
       recentErrors: this.ledger.recentErrors,
       activatedSkills: this.ledger.activatedSkills,
@@ -246,8 +251,9 @@ export class ContextGovernor {
        * "该收尾了",而"已用几次"模型从自己的调用历史里看得出来。
        */
       extraNotes: [
-        `预算提醒:本轮工具调用接近上限(硬上限 ${limitText(this.limits.hard)})。` +
-          '请合并剩余操作:同文件用 multi_edit_file / apply_string_edits 一次改完,尽快收尾。'
+        promptText(this.lang, 'governor.budgetReminder', {
+          limit: limitText(this.limits.hard, this.lang)
+        })
       ]
     })
     return { messages: compacted }

@@ -1,3 +1,5 @@
+import { promptText } from '../ai/prompts/i18n'
+import type { PromptLanguage } from '../ai/prompts/i18n'
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join, relative } from 'path'
 import { tool } from 'ai'
@@ -21,7 +23,7 @@ import type { FileSkill } from './scan'
 /** 正文上限。规范建议单个技能正文控制在 5000 token 以内,这里按字符给个硬顶 */
 const MAX_BODY = 20_000
 
-export function buildSkillTools(skills: FileSkill[]): ToolSet {
+export function buildSkillTools(skills: FileSkill[], lang: PromptLanguage = 'zh-CN'): ToolSet {
   if (skills.length === 0) return {}
 
   const byName = new Map(skills.map((s) => [s.name, s]))
@@ -29,12 +31,10 @@ export function buildSkillTools(skills: FileSkill[]): ToolSet {
 
   const tools = {
     activate_skill: tool({
-      description:
-        '加载一个技能的完整内容。**先看系统提示里 available_skills 的 description**,' +
-        '触发条件对得上再加载。一次加载一个,不要把可能相关的全读一遍。',
+      description: promptText(lang, 'tools.activate_skill.description'),
       inputSchema: z.object({
         // enum 是这个工具存在的理由:从结构上杜绝模型编出一个不存在的技能名
-        name: z.enum(names).describe('技能名,必须是 available_skills 里列出的')
+        name: z.enum(names).describe(promptText(lang, 'tools.activate_skill.parameters.name'))
       }),
       execute: async (input) => {
         const skill = byName.get(input.name)

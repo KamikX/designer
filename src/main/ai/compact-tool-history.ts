@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import { modelMessageSchema } from 'ai'
 import type { ModelMessage } from 'ai'
 import type { ToolFailureSummary, WriteSummary } from './run-context-ledger'
@@ -25,6 +27,7 @@ import type { ToolFailureSummary, WriteSummary } from './run-context-ledger'
 export const TOOL_LEDGER_TAG = '<tool_ledger>'
 
 export interface CompactionContext {
+  lang?: PromptLanguage
   completedWrites: WriteSummary[]
   recentErrors: ToolFailureSummary[]
   activatedSkills: Set<string>
@@ -166,7 +169,7 @@ export function compactToolHistory(
   }
 
   // 5. 追加唯一账本(有可写事实才追加)
-  const ledger = renderLedger(ctx, compactIds.size)
+  const ledger = renderLedger(ctx, compactIds.size, ctx.lang)
   if (ledger) out.push({ role: 'user', content: ledger })
 
   // 6. 出门前逐条验:宁可在这里炸,也不能把非法消息交给下一 step
@@ -178,38 +181,56 @@ export function compactToolHistory(
 const MAX_LEDGER_WRITES = 20
 const MAX_LEDGER_ERRORS = 8
 
-function renderLedger(ctx: CompactionContext, compactedCount: number): string | null {
+function renderLedger(
+  ctx: CompactionContext,
+  compactedCount: number,
+  lang: PromptLanguage = 'zh-CN'
+): string | null {
   const lines: string[] = []
   const writes = ctx.completedWrites.slice(-MAX_LEDGER_WRITES)
   if (ctx.completedWrites.length > writes.length) {
-    lines.push(`- (更早还有 ${ctx.completedWrites.length - writes.length} 次已完成写入,从略)`)
+    lines.push(
+      promptText(lang, 'ledger.omittedWrites', {
+        count: ctx.completedWrites.length - writes.length
+      })
+    )
   }
   for (const write of writes) {
     lines.push(
-      `- 已完成写入:${write.path} @rev${write.revision}(${write.tool}${write.chars ? `,${write.chars} 字符` : ''})`
+      promptText(lang, 'ledger.write', {
+        path: write.path,
+        revision: write.revision,
+        tool: write.tool,
+        characters: write.chars ? promptText(lang, 'ledger.characters', { count: write.chars }) : ''
+      })
     )
   }
   const errors = ctx.recentErrors.slice(-MAX_LEDGER_ERRORS)
   if (ctx.recentErrors.length > errors.length) {
-    lines.push(`- (更早还有 ${ctx.recentErrors.length - errors.length} 条失败记录,从略)`)
+    lines.push(
+      promptText(lang, 'ledger.omittedErrors', { count: ctx.recentErrors.length - errors.length })
+    )
   }
   for (const error of errors) {
-    lines.push(`- 失败记录:${error.tool} ${error.code}${error.path ? ` @ ${error.path}` : ''}`)
+    lines.push(
+      promptText(lang, 'ledger.error', {
+        tool: error.tool,
+        code: error.code,
+        location: error.path ? ` @ ${error.path}` : ''
+      })
+    )
   }
   for (const skill of ctx.activatedSkills) {
-    lines.push(`- 技能 ${skill} 已激活,正文见上文,仍然有效,不要重复激活`)
+    lines.push(promptText(lang, 'ledger.activatedSkill', { skill: skill }))
   }
   for (const note of ctx.extraNotes ?? []) {
     lines.push(`- ${note}`)
   }
   if (lines.length === 0 && compactedCount === 0) return null
   if (compactedCount > 0) {
-    lines.push(`- 已清理 ${compactedCount} 条完成/过期的工具调用记录以节省上下文`)
+    lines.push(promptText(lang, 'ledger.compacted', { count: compactedCount }))
   }
-  return [
-    TOOL_LEDGER_TAG,
-    '(运行时工具账本:系统注记,不是用户的新要求。以下是本轮已确认的事实。)',
-    ...lines,
-    '</tool_ledger>'
-  ].join('\n')
+  return [TOOL_LEDGER_TAG, promptText(lang, 'ledger.heading'), ...lines, '</tool_ledger>'].join(
+    '\n'
+  )
 }

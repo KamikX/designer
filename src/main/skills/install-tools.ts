@@ -1,3 +1,5 @@
+import { promptText } from '../ai/prompts/i18n'
+import type { PromptLanguage } from '../ai/prompts/i18n'
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -26,33 +28,33 @@ export interface InstallToolContext {
   onChanged: () => void
 }
 
-export function buildInstallTools(context: InstallToolContext): ToolSet {
+export function buildInstallTools(
+  context: InstallToolContext,
+  lang: PromptLanguage = 'zh-CN'
+): ToolSet {
   const tools = {
     install_skill: tool({
-      description:
-        '安装一个技能。content 必须是完整的 SKILL.md(含 --- 包起来的 frontmatter,' +
-        '其中 name 和 description 必填,description 要写清"是什么 + 什么时候用")。' +
-        '**会先问用户装到哪里**,不要自己假设。',
+      description: promptText(lang, 'tools.install_skill.description'),
       inputSchema: z.object({
-        content: z.string().describe('完整的 SKILL.md 文本'),
-        summary: z.string().describe('一句话说明这个技能是干什么的,给用户看')
+        content: z.string().describe(promptText(lang, 'tools.install_skill.parameters.content')),
+        summary: z.string().describe(promptText(lang, 'tools.install_skill.parameters.summary'))
       }),
       execute: async (input) => {
         const answer = await context.ask({
-          intro: `要安装技能:${input.summary}`,
+          intro: promptText(lang, 'install.skill.intro', { summary: input.summary }),
           questions: [
             {
-              header: '装到哪',
-              question: '这个技能装到哪个位置?',
+              header: promptText(lang, 'install.skill.header'),
+              question: promptText(lang, 'install.skill.question'),
               kind: 'single',
               options: [
                 {
-                  label: '全局(~/.agents/skills)',
-                  description: '其他 AI 工具(Claude Code、Codex 等)也能用到'
+                  label: promptText(lang, 'install.skill.global'),
+                  description: promptText(lang, 'install.skill.globalDescription')
                 },
                 {
-                  label: '仅本应用',
-                  description: '只在这个应用里生效,不影响你在别处的配置'
+                  label: promptText(lang, 'install.skill.app'),
+                  description: promptText(lang, 'install.skill.appDescription')
                 }
               ]
             }
@@ -61,7 +63,11 @@ export function buildInstallTools(context: InstallToolContext): ToolSet {
 
         if (answer.skipped) return '用户取消了安装。'
         const picked = answer.selections[0]?.[0] ?? ''
-        const scope = picked.startsWith('全局') ? 'global' : 'app'
+        const scope = picked.startsWith(
+          promptText(lang, 'install.skill.global').split('(')[0].trim()
+        )
+          ? 'global'
+          : 'app'
 
         const result = installSkill(input.content, scope)
         if (!result.ok) return `错误:${result.error}`
@@ -72,19 +78,23 @@ export function buildInstallTools(context: InstallToolContext): ToolSet {
     }),
 
     install_mcp: tool({
-      description:
-        '安装一个 MCP 服务。**会先把完整命令给用户确认**,需要密钥时会逐个问。' +
-        '装完自动连一次做验证,并告诉你它提供了哪些工具。',
+      description: promptText(lang, 'tools.install_mcp.description'),
       inputSchema: z.object({
-        name: z.string().describe('服务名,用作配置里的键'),
-        summary: z.string().describe('一句话说明它是干什么的'),
-        command: z.string().optional().describe('stdio 类的可执行命令,如 npx'),
-        args: z.array(z.string()).optional().describe('命令参数'),
-        url: z.string().optional().describe('http/sse 类的服务地址'),
+        name: z.string().describe(promptText(lang, 'tools.install_mcp.parameters.name')),
+        summary: z.string().describe(promptText(lang, 'tools.install_mcp.parameters.summary')),
+        command: z
+          .string()
+          .optional()
+          .describe(promptText(lang, 'tools.install_mcp.parameters.command')),
+        args: z
+          .array(z.string())
+          .optional()
+          .describe(promptText(lang, 'tools.install_mcp.parameters.args')),
+        url: z.string().optional().describe(promptText(lang, 'tools.install_mcp.parameters.url')),
         secrets: z
           .array(z.object({ key: z.string(), label: z.string(), help: z.string().optional() }))
           .optional()
-          .describe('需要用户提供的密钥。配置里用 ${KEY} 引用,真值加密存储')
+          .describe(promptText(lang, 'tools.install_mcp.parameters.secrets'))
       }),
       execute: async (input) => {
         if (!input.command && !input.url) {
@@ -94,16 +104,22 @@ export function buildInstallTools(context: InstallToolContext): ToolSet {
         const shown = input.url ?? [input.command, ...(input.args ?? [])].join(' ')
         const answer = await context.ask({
           intro:
-            `要安装 MCP 服务「${input.name}」:${input.summary}\n\n` +
+            promptText(lang, 'install.mcp.intro', { name: input.name, summary: input.summary }) +
             (input.url
-              ? `它会连接:${shown}`
-              : `它会在你的机器上执行:\n${shown}\n\n进程以你的身份运行,能做的事和你在终端里一样。`),
+              ? promptText(lang, 'install.mcp.connect', { target: shown })
+              : promptText(lang, 'install.mcp.execute', { target: shown })),
           questions: [
             {
-              header: '确认',
-              question: '确认安装吗?',
+              header: promptText(lang, 'install.mcp.header'),
+              question: promptText(lang, 'install.mcp.question'),
               kind: 'single',
-              options: [{ label: '安装' }, { label: '取消', description: '不做任何改动' }]
+              options: [
+                { label: promptText(lang, 'install.mcp.confirm') },
+                {
+                  label: promptText(lang, 'install.mcp.cancel'),
+                  description: promptText(lang, 'install.mcp.cancelDescription')
+                }
+              ]
             }
           ],
           // 密钥和确认放在同一张卡片里:分两次问的话用户要点两轮,
@@ -111,7 +127,10 @@ export function buildInstallTools(context: InstallToolContext): ToolSet {
           ...(input.secrets?.length ? { secrets: input.secrets } : {})
         })
 
-        if (answer.skipped || answer.selections[0]?.[0] === '取消') {
+        if (
+          answer.skipped ||
+          answer.selections[0]?.[0] === promptText(lang, 'install.mcp.cancel')
+        ) {
           return '用户取消了安装,没有做任何改动。'
         }
 

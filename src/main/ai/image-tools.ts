@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -37,7 +39,10 @@ export interface ImageToolContext {
   onNote: (assetId: string, description: string) => void
 }
 
-export function buildImageTools(context: ImageToolContext): ToolSet {
+export function buildImageTools(
+  context: ImageToolContext,
+  lang: PromptLanguage = 'zh-CN'
+): ToolSet {
   const known = (assetId: string): { assetId: string; name: string } => {
     const hit = context.assets.find((a) => a.assetId === assetId)
     if (!hit) {
@@ -51,12 +56,9 @@ export function buildImageTools(context: ImageToolContext): ToolSet {
 
   const tools = {
     view_image: tool({
-      description:
-        '重新查看用户提供过的参考图。历史里只保留了图片的引用和一句描述,' +
-        '**需要看具体像素时**(取准确的颜色、看清某个组件的形状与间距)才调它。' +
-        '如果描述已经够回答当前问题,就不要调——图片按尺寸计费,不便宜。',
+      description: promptText(lang, 'tools.view_image.description'),
       inputSchema: z.object({
-        asset_id: z.string().describe('历史里给出的参考图 id')
+        asset_id: z.string().describe(promptText(lang, 'tools.view_image.parameters.asset_id'))
       }),
       execute: async ({ asset_id }) => {
         let hit: { assetId: string; name: string }
@@ -88,13 +90,13 @@ export function buildImageTools(context: ImageToolContext): ToolSet {
     }),
 
     note_image: tool({
-      description:
-        '看过参考图之后,用一两句话把它的要点记下来(配色、布局特征、气质),' +
-        '之后的轮次靠这句描述就够用,不必反复调 view_image 看图。' +
-        '写具体些——"深色底、大量留白、卡片圆角很大、主色偏冷蓝紫"比"很现代"有用得多。',
+      description: promptText(lang, 'tools.note_image.description'),
       inputSchema: z.object({
         asset_id: z.string(),
-        description: z.string().max(MAX_NOTE_CHARS).describe('一两句话,写特征不写感受')
+        description: z
+          .string()
+          .max(MAX_NOTE_CHARS)
+          .describe(promptText(lang, 'tools.note_image.parameters.description'))
       }),
       execute: async ({ asset_id, description }) => {
         try {

@@ -1,3 +1,5 @@
+import { promptText } from '../ai/prompts/i18n'
+import type { PromptLanguage } from '../ai/prompts/i18n'
 /**
  * 预览运行时错误的回流。
  *
@@ -71,19 +73,7 @@ export function pendingPreviewError(
 }
 
 /** 组装进 system prompt 的一段 */
-export function previewErrorPrompt(message: string | null): string {
+export function previewErrorPrompt(message: string | null, lang: PromptLanguage = 'zh-CN'): string {
   if (!message) return ''
-  return `
-## 上一版预览报错了
-
-用户当前看到的设计稿**跑不起来**,运行时错误如下:
-
-\`\`\`
-${message}
-\`\`\`
-
-**优先修这个**,再谈别的改动。错误信息里的文件名和行号是编译后的位置,
-不一定对得上源文件,用 search_files 按报错里的标识符去定位。
-修完在解说里一句话说明原因,别让用户以为你没看见。
-`.trim()
+  return promptText(lang, 'diagnostics.preview', { message: message }).trim()
 }

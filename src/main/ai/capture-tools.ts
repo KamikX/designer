@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { contentAwareModelOutput } from './tool-result'
@@ -24,7 +26,10 @@ const VIEWPORTS = {
   mobile: { width: 390, height: 844 }
 } as const
 
-export function buildCaptureTools(context: CaptureToolContext): ToolSet {
+export function buildCaptureTools(
+  context: CaptureToolContext,
+  lang: PromptLanguage = 'zh-CN'
+): ToolSet {
   // 懒加载:preview/capture 依赖 electron 的 BrowserWindow,提前 import 会把
   // 纯 node 环境的测试拖下水;截图真发生时 electron 一定在
   const capture =
@@ -34,20 +39,16 @@ export function buildCaptureTools(context: CaptureToolContext): ToolSet {
 
   return {
     capture_preview: tool({
-      description:
-        '渲染当前设计稿并截图给你自己看。**写完或大改之后必须看一眼再交**:' +
-        '层级失衡、间距混乱、模板脸,这些只有看渲染结果才能发现,交给用户去发现就晚了。' +
-        '看完对照手艺底线的五维自评,发现问题当轮修掉。' +
-        '移动端稿子传 viewport: "mobile"。图片按尺寸计费,同一版本看一次就够。',
+      description: promptText(lang, 'tools.capture_preview.description'),
       inputSchema: z.object({
         path: z
           .string()
           .optional()
-          .describe('要看的页面文件路径,缺省为入口页(index.html / App 根)'),
+          .describe(promptText(lang, 'tools.capture_preview.parameters.path')),
         viewport: z
           .enum(['desktop', 'mobile'])
           .optional()
-          .describe('视口尺寸,缺省 desktop(1280×800);mobile 是 390×844')
+          .describe(promptText(lang, 'tools.capture_preview.parameters.viewport'))
       }),
       execute: async (input) => {
         if (!context.hasFiles()) return '设计稿还没有任何文件,没什么可截图的。'

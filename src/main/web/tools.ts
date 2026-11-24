@@ -1,3 +1,5 @@
+import { promptText } from '../ai/prompts/i18n'
+import type { PromptLanguage } from '../ai/prompts/i18n'
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -30,7 +32,7 @@ import type { RenderedPage } from './browser'
  * 2. **fill_form 批量填**。一个字段一次调用的话,一个登录表单要三轮,而中间
  *    每一轮页面都可能变。
  */
-function browserTools(streamId: string): ToolSet {
+function browserTools(streamId: string, lang: PromptLanguage = 'zh-CN'): ToolSet {
   const session = (): BrowserSession => browserSession(streamId)
 
   /** 动作 → 新快照。所有动作共用这一条出口,保证行为一致 */
@@ -46,10 +48,10 @@ function browserTools(streamId: string): ToolSet {
 
   return {
     browser_open: tool({
-      description:
-        '在受控浏览器里打开一个网页,返回页面的可交互元素快照。' +
-        '之后用 browser_click / browser_fill_form 操作,每个动作都会带回新快照。',
-      inputSchema: z.object({ url: z.string().describe('完整 URL,http:// 或 https:// 开头') }),
+      description: promptText(lang, 'tools.browser_open.description'),
+      inputSchema: z.object({
+        url: z.string().describe(promptText(lang, 'tools.browser_open.parameters.url'))
+      }),
       execute: async (input) => {
         if (!/^https?:\/\//i.test(input.url)) return `错误:只支持 http/https,收到「${input.url}」。`
         try {
@@ -62,9 +64,7 @@ function browserTools(streamId: string): ToolSet {
     }),
 
     browser_snapshot: tool({
-      description:
-        '重新获取当前页面的元素快照。动作本身已经带回快照,一般不用单独调——' +
-        '只在等待异步内容加载完之后需要再看一眼时用。',
+      description: promptText(lang, 'tools.browser_snapshot.description'),
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -76,29 +76,27 @@ function browserTools(streamId: string): ToolSet {
     }),
 
     browser_click: tool({
-      description:
-        '点击快照里的一个元素。uid 用快照中方括号里的编号(如 e12)。' +
-        '**不可逆的操作(提交订单、删除、支付)在点之前必须先用 ask_user 跟用户确认。**',
+      description: promptText(lang, 'tools.browser_click.description'),
       inputSchema: z.object({
-        uid: z.string().describe('快照里的元素编号,形如 e12'),
-        why: z.string().optional().describe('点它是为了什么,一句话')
+        uid: z.string().describe(promptText(lang, 'tools.browser_click.parameters.uid')),
+        why: z.string().optional().describe(promptText(lang, 'tools.browser_click.parameters.why'))
       }),
       execute: async (input) => then(`点击 ${input.uid}`, () => session().click(input.uid))
     }),
 
     browser_fill_form: tool({
-      description:
-        '批量填写表单字段。**优先用它而不是多次单字段填写**:一次调用填完整个表单,' +
-        '更快、更稳,也避免中途页面变化导致后面的编号失效。',
+      description: promptText(lang, 'tools.browser_fill_form.description'),
       inputSchema: z.object({
         fields: z
           .array(
             z.object({
-              uid: z.string().describe('快照里的元素编号'),
-              value: z.string().describe('要填入的值,会覆盖原内容')
+              uid: z.string().describe(promptText(lang, 'tools.browser_fill_form.parameters.uid')),
+              value: z
+                .string()
+                .describe(promptText(lang, 'tools.browser_fill_form.parameters.value'))
             })
           )
-          .describe('要填的字段,按页面上的先后顺序')
+          .describe(promptText(lang, 'tools.browser_fill_form.parameters.fields'))
       }),
       execute: async (input) =>
         then(`填写 ${input.fields.length} 个字段`, async () => {
@@ -107,7 +105,7 @@ function browserTools(streamId: string): ToolSet {
     }),
 
     browser_press_key: tool({
-      description: '按一个键。常用于提交(Enter)、关闭弹层(Escape)、在下拉里移动。',
+      description: promptText(lang, 'tools.browser_press_key.description'),
       inputSchema: z.object({
         key: z.enum(['Enter', 'Tab', 'Escape', 'ArrowDown', 'ArrowUp', 'Backspace'])
       }),
@@ -115,9 +113,11 @@ function browserTools(streamId: string): ToolSet {
     }),
 
     browser_scroll: tool({
-      description: '滚动页面。快照里没找到目标元素时先滚一屏再看——很多内容是滚动到才渲染的。',
+      description: promptText(lang, 'tools.browser_scroll.description'),
       inputSchema: z.object({
-        direction: z.enum(['down', 'up']).describe('方向')
+        direction: z
+          .enum(['down', 'up'])
+          .describe(promptText(lang, 'tools.browser_scroll.parameters.direction'))
       }),
       execute: async (input) =>
         then(`向${input.direction === 'down' ? '下' : '上'}滚动`, () =>
@@ -127,19 +127,21 @@ function browserTools(streamId: string): ToolSet {
   }
 }
 
-export function buildWebTools(enabled: boolean, streamId?: string): ToolSet {
+export function buildWebTools(
+  enabled: boolean,
+  streamId?: string,
+  lang: PromptLanguage = 'zh-CN'
+): ToolSet {
   if (!enabled) return {}
 
   const tools = {
     // 有 streamId 才给浏览器操作:那些工具要按轮次持有一个常驻窗口,
     // 没有归属就没法在轮次结束时回收
-    ...(streamId ? browserTools(streamId) : {}),
+    ...(streamId ? browserTools(streamId, lang) : {}),
     web_search: tool({
-      description:
-        '联网搜索,返回标题 / 链接 / 摘要。**先搜再读**:摘要够回答就不要再 web_fetch,' +
-        '抓取页面要真的渲染一遍,比搜索贵得多。涉及时效性的问题(版本、价格、新闻)一律先搜。',
+      description: promptText(lang, 'tools.web_search.description'),
       inputSchema: z.object({
-        query: z.string().describe('搜索词。像人一样写,不要堆关键词')
+        query: z.string().describe(promptText(lang, 'tools.web_search.parameters.query'))
       }),
       execute: async (input) => {
         const outcome = await webSearch(input.query)
@@ -162,12 +164,13 @@ export function buildWebTools(enabled: boolean, streamId?: string): ToolSet {
     }),
 
     web_fetch: tool({
-      description:
-        '打开一个网页并取回正文(会真实渲染,JS 生成的内容也拿得到)。' +
-        '只在搜索摘要不足以回答时才用,一次一个 URL。',
+      description: promptText(lang, 'tools.web_fetch.description'),
       inputSchema: z.object({
-        url: z.string().describe('完整 URL,必须以 http:// 或 https:// 开头'),
-        intent: z.string().optional().describe('你想从这个页面得到什么。正文过长时按它提炼')
+        url: z.string().describe(promptText(lang, 'tools.web_fetch.parameters.url')),
+        intent: z
+          .string()
+          .optional()
+          .describe(promptText(lang, 'tools.web_fetch.parameters.intent'))
       }),
       execute: async (input) => {
         if (!/^https?:\/\//i.test(input.url)) {

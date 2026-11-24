@@ -25,14 +25,6 @@ store.load()
 
 const SECTIONS = [
   {
-    key: 'libraries',
-    get label() {
-      return t('依赖库')
-    },
-    icon: DatabaseOutlined,
-    component: LibrariesPanel
-  },
-  {
     key: 'general',
     get label() {
       return t('通用')
@@ -47,6 +39,14 @@ const SECTIONS = [
     },
     icon: ApiOutlined,
     component: ProviderPanel
+  },
+  {
+    key: 'libraries',
+    get label() {
+      return t('依赖库')
+    },
+    icon: DatabaseOutlined,
+    component: LibrariesPanel
   },
   {
     key: 'data',
@@ -75,18 +75,11 @@ const current = computed(() => SECTIONS.find((s) => s.key === active.value)!)
   <div class="settings-page">
     <div class="settings" :style="{ background: token.colorBgContainer }">
       <div class="settings-sider" :style="{ borderColor: token.colorBorderSecondary }">
-        <div
-          v-for="s in SECTIONS"
-          :key="s.key"
-          class="settings-nav-item"
-          :class="{ 'settings-nav-item--active': active === s.key }"
-          :style="
-            active === s.key
+        <div v-for="s in SECTIONS" :key="s.key" class="settings-nav-item"
+          :class="{ 'settings-nav-item--active': active === s.key }" :style="active === s.key
               ? { background: token.colorPrimaryBg, color: token.colorPrimary }
               : undefined
-          "
-          @click="active = s.key"
-        >
+            " @click="active = s.key">
           <component :is="s.icon" />
           <span>{{ s.label }}</span>
         </div>

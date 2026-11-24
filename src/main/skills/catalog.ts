@@ -1,3 +1,5 @@
+import { promptText } from '../ai/prompts/i18n'
+import type { PromptLanguage } from '../ai/prompts/i18n'
 import type { FileSkill } from './scan'
 
 /**
@@ -29,7 +31,11 @@ const CHARS_PER_TOKEN = 3
 /** 缩短描述时的下限。再短就看不出触发条件了,那这条目录等于没有 */
 const MIN_DESCRIPTION = 80
 
-export function skillCatalog(skills: FileSkill[], contextWindow?: number): string {
+export function skillCatalog(
+  skills: FileSkill[],
+  contextWindow?: number,
+  lang: PromptLanguage = 'zh-CN'
+): string {
   if (skills.length === 0) return ''
 
   const budget = contextWindow
@@ -44,20 +50,7 @@ export function skillCatalog(skills: FileSkill[], contextWindow?: number): strin
     )
     .join('\n')
 
-  return `
-## 可用技能
-
-下面列出的是你可以调用的技能。**只在 description 里的触发条件对得上时才用
-activate_skill 加载**——每个技能几千字,凭"看着可能有用"就全加载会挤掉真正要
-做的事。
-
-加载之后,正文里提到的 \`references/xxx.md\` 是相对该技能目录的路径,用
-read_local_file 读。
-
-<available_skills>
-${body}
-</available_skills>
-`.trim()
+  return promptText(lang, 'skills.catalog', { body: body }).trim()
 }
 
 /**

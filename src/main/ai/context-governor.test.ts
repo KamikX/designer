@@ -281,3 +281,48 @@ describe('token 预算', () => {
     expect(governor.cumulativeInputTokens().reported).toBe(false)
   })
 })
+
+describe('English runtime instructions', () => {
+  it('localizes the budget reminder, ledger, reread gate, and hard-limit refusal', async () => {
+    const ledger = new RunContextLedger()
+    const gate = new ToolBudgetGate(4)
+    for (let i = 0; i < 3; i++) gate.reserve(`reserved-${i}`)
+    ledger.noteRead('App.vue', 2)
+    ledger.noteWriteSuccess('App.vue', 2, 'edit_file', 120)
+    ledger.activatedSkills.add('craft-color')
+    const governor = new ContextGovernor({
+      ledger,
+      gate,
+      contextWindow: 64000,
+      limits: resolveToolLimits(4),
+      lang: 'en-US'
+    })
+    const prepared = governor.prepareStep({
+      messages: [{ role: 'user', content: 'Review' }],
+      serializedChars: 1000
+    })
+    const text = JSON.stringify(prepared.messages)
+    expect(text).toContain('Budget reminder')
+    expect(text).toContain('120 characters')
+    expect(text).toContain('already activated')
+    expect(text).not.toMatch(/\p{Script=Han}/u)
+    expect(governor.readGate('App.vue', 2)).toContain('has not changed')
+    expect(governor.hardLimitText()).toBe('4 calls')
+    gate.reserve('last')
+    const tools = wrapToolsWithBudget(
+      {
+        test: {
+          execute: async () => {
+            throw new Error('must not execute')
+          }
+        }
+      } as never,
+      gate,
+      'en-US'
+    )
+    const execute = tools.test.execute as (input: unknown, options: unknown) => Promise<unknown>
+    const refused = await execute({}, { toolCallId: 'excess' })
+    expect(String(refused)).toContain('TOOL_BUDGET_EXCEEDED')
+    expect(String(refused)).toContain('Finish with a summary now')
+  })
+})

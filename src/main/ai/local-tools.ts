@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import { statSync } from 'fs'
 import { relative, sep } from 'path'
 import { tool } from 'ai'
@@ -77,7 +79,8 @@ export interface LocalToolOptions {
 
 export function buildLocalTools(
   roots: WorkspaceRoot[],
-  options: LocalToolOptions = { canSeeImages: false }
+  options: LocalToolOptions = { canSeeImages: false },
+  lang: PromptLanguage = 'zh-CN'
 ): ToolSet {
   if (roots.length === 0) return {}
 
@@ -86,12 +89,19 @@ export function buildLocalTools(
 
   const tools = {
     list_local_dir: tool({
-      description:
-        `列出用户本地目录的结构。可访问范围:${scope}。` +
-        '自动跳过 node_modules / .git / dist 这类目录。先用它了解项目长什么样,再决定读哪些文件。',
+      description: promptText(lang, 'tools.list_local_dir.description', { scope: scope }),
       inputSchema: z.object({
-        path: z.string().optional().describe('目录路径,缺省为第一个授权根目录'),
-        depth: z.number().int().min(0).max(6).optional().describe('展开层数,缺省 2')
+        path: z
+          .string()
+          .optional()
+          .describe(promptText(lang, 'tools.list_local_dir.parameters.path')),
+        depth: z
+          .number()
+          .int()
+          .min(0)
+          .max(6)
+          .optional()
+          .describe(promptText(lang, 'tools.list_local_dir.parameters.depth'))
       }),
       execute: async (input) =>
         guarded(() => {
@@ -114,10 +124,7 @@ export function buildLocalTools(
     }),
 
     check_local_path: tool({
-      description:
-        '确认一个本地路径能不能用:存不存在、是文件还是目录、多大。' +
-        '拿到用户给的路径后**先用它确认一次**,再决定用哪个读取工具,' +
-        '比直接读一把撞上错误要省一轮。',
+      description: promptText(lang, 'tools.check_local_path.description'),
       inputSchema: z.object({ path: z.string() }),
       execute: async ({ path }) =>
         guarded(() => {
@@ -158,12 +165,13 @@ export function buildLocalTools(
     }),
 
     find_local_files: tool({
-      description:
-        '按文件名通配查找本地文件(支持 * ** ?),如 `**/*.tsx`、`**/tailwind.config.*`。' +
-        '想知道项目用了什么技术、有没有设计规范文件时先用它。',
+      description: promptText(lang, 'tools.find_local_files.description'),
       inputSchema: z.object({
-        glob: z.string().describe('相对授权根目录的通配,如 **/*.json'),
-        path: z.string().optional().describe('在哪个目录下找,缺省为第一个授权根目录')
+        glob: z.string().describe(promptText(lang, 'tools.find_local_files.parameters.glob')),
+        path: z
+          .string()
+          .optional()
+          .describe(promptText(lang, 'tools.find_local_files.parameters.path'))
       }),
       execute: async (input) =>
         guarded(() => {
@@ -178,14 +186,14 @@ export function buildLocalTools(
     }),
 
     search_local: tool({
-      description:
-        '在本地文件内容里搜索,返回 `路径:行:列` 与命中行。' +
-        '定位"这个项目的主色定义在哪""有没有用某个组件库"这类问题的首选。' +
-        '自动跳过二进制与超大文件。',
+      description: promptText(lang, 'tools.search_local.description'),
       inputSchema: z.object({
         query: z.string(),
         is_regex: z.boolean().optional(),
-        glob: z.string().optional().describe('只搜匹配的文件,如 **/*.css'),
+        glob: z
+          .string()
+          .optional()
+          .describe(promptText(lang, 'tools.search_local.parameters.glob')),
         path: z.string().optional(),
         max_results: z.number().int().min(1).max(200).optional()
       }),
@@ -210,11 +218,9 @@ export function buildLocalTools(
     }),
 
     read_local_file: tool({
-      description:
-        '按行区间读本地文本文件,返回带行号的内容。**尽量带 start_line / end_line**,' +
-        `单次最多 ${LIMITS.readLines} 行。` +
-        '只有能按 UTF-8 解析出真实内容的文件才读得了;二进制、其他编码会明确告诉你读不了,' +
-        'pdf / docx / xlsx 请用 read_local_document。',
+      description: promptText(lang, 'tools.read_local_file.description', {
+        maxLines: LIMITS.readLines
+      }),
       inputSchema: z.object({
         path: z.string(),
         start_line: z.number().int().min(1).optional(),
@@ -241,10 +247,7 @@ export function buildLocalTools(
     }),
 
     read_local_document: tool({
-      description:
-        '读取并解析文档:pdf / docx / xlsx / csv。' +
-        '用户给了需求文档、数据表、竞品资料时用它——表格会转成 markdown,pdf 按页拼接。' +
-        '内容很长时会先由辅助模型提炼成设计要点(设置里配了才有),并在结果里注明。',
+      description: promptText(lang, 'tools.read_local_document.description'),
       inputSchema: z.object({ path: z.string() }),
       execute: async ({ path }) => {
         let file: string
@@ -327,13 +330,17 @@ export function buildLocalTools(
     ...(options.canSeeImages
       ? {
           read_document_images: tool({
-            description:
-              '把文档里的图片取出来看:pdf 渲染成页面图,docx / xlsx 抠出内嵌配图。' +
-              '用于扫描件、或者正文说不清而配图能说清的情况(流程图、竞品截图、版式)。' +
-              `一次最多 ${MAX_IMAGES} 张,图片按尺寸计费,别整份文档渲一遍。`,
+            description: promptText(lang, 'tools.read_document_images.description', {
+              maxImages: MAX_IMAGES
+            }),
             inputSchema: z.object({
               path: z.string(),
-              from: z.number().int().min(1).optional().describe('从第几页 / 第几张开始,缺省 1'),
+              from: z
+                .number()
+                .int()
+                .min(1)
+                .optional()
+                .describe(promptText(lang, 'tools.read_document_images.parameters.from')),
               count: z.number().int().min(1).max(MAX_IMAGES).optional()
             }),
             execute: async (input) => {
@@ -455,17 +462,19 @@ function formatSize(bytes: number): string {
  * 模型——否则用户打错一个字母,表现是 AI 装作没看见他提过这个文件,
  * 然后开始瞎猜。
  */
-export function localScopePrompt(roots: WorkspaceRoot[], missing: string[] = []): string {
+export function localScopePrompt(
+  roots: WorkspaceRoot[],
+  missing: string[] = [],
+  lang: PromptLanguage = 'zh-CN'
+): string {
   if (roots.length === 0 && missing.length === 0) return ''
 
   const typo = missing.length
-    ? `\n\n**注意**:用户这次提到的这些路径在本机不存在,多半是写错了:\n${missing
-        .map((p) => `- ${p}`)
-        .join('\n')}\n先向用户确认正确路径,不要凭猜测继续。`
+    ? promptText(lang, 'scope.missingPaths', { paths: missing.map((p) => `- ${p}`).join('\n') })
     : ''
 
   if (roots.length === 0) {
-    return `## 本地文件\n\n用户还没有授权任何本地目录,所以你现在读不了任何本地文件。${typo}`
+    return promptText(lang, 'scope.unauthorized', { typo: typo })
   }
 
   // 标出哪些是单个文件:用户拖一份 pdf 进来时授权的就是那一个文件。
@@ -474,34 +483,15 @@ export function localScopePrompt(roots: WorkspaceRoot[], missing: string[] = [])
     .map((r) => {
       let kind = ''
       try {
-        kind = statSync(r.path).isFile() ? '(单个文件)' : ''
+        kind = statSync(r.path).isFile() ? promptText(lang, 'scope.singleFile') : ''
       } catch {
-        kind = '(已不存在)'
+        kind = promptText(lang, 'scope.nonexistent')
       }
       return `- ${r.name} → ${r.path} ${kind}`.trimEnd()
     })
     .join('\n')
 
-  return `
-## 可访问的本地范围
-
-用户授权了这些位置,你可以用 check_local_path / list_local_dir / find_local_files /
-search_local / read_local_file / read_local_document 读它们:
-
-${list}
-
-文件可能很长,**不要一次读完**:先用 search_local 定位,再用 read_local_file 带
-start_line / end_line 读那一段。整份读进来的代价是把它全变成 token,而其中
-绝大部分与设计无关。
-
-用途是**照着用户的真实项目做设计**:先摸清它的技术栈、已有的设计 token、
-组件命名习惯,再产出与之贴合的设计稿,而不是凭空造一套。
-路径可以写 \`根名/子路径\`,也可以写绝对路径;范围之外一律拒绝。
-
-需要看别处的文件时,直接请用户把路径发给你——他在对话里写出的路径会自动
-获得访问权。**不要自己去猜路径试探**,范围之外一律读不到,也不会告诉你
-那里有没有东西。${typo}
-`.trim()
+  return promptText(lang, 'scope.authorized', { list: list, typo: typo }).trim()
 }
 
 /** 相对路径展示用,避免把用户的完整磁盘路径反复喂给模型 */

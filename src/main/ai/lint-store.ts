@@ -1,3 +1,4 @@
+import type { PromptLanguage } from './prompts/i18n'
 import { renderLint } from './slop-lint'
 import type { Finding } from './slop-lint'
 
@@ -22,11 +23,15 @@ export function recordLint(projectId: string, artifactId: string, findings: Find
 }
 
 /** @param currentArtifactId 本轮的基线版本。只有结果来自它才算数 */
-export function pendingLint(projectId: string, currentArtifactId: string | null): string {
+export function pendingLint(
+  projectId: string,
+  currentArtifactId: string | null,
+  lang: PromptLanguage = 'zh-CN'
+): string {
   const hit = store.get(projectId)
   if (!hit) return ''
   if (currentArtifactId && hit.artifactId !== currentArtifactId) return ''
-  return renderLint(hit.findings)
+  return renderLint(hit.findings, lang)
 }
 
 export function clearLint(projectId: string): void {

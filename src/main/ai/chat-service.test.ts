@@ -24,6 +24,9 @@ vi.mock('../db/repo/ai-observability', () => ({
 
 const state = vi.hoisted(() => ({
   msgCounter: 0,
+  lang: 'zh-CN' as 'en-US' | 'zh-CN',
+  contextWindow: 64000,
+  toolCallLimit: 80,
   createArtifactVersion: vi.fn(() => ({ id: 'artifact-new' })),
   updateMessage: vi.fn(),
   llm: null as unknown
@@ -83,7 +86,7 @@ vi.mock('../db/repo/model', () => ({
       displayName: 'Mock',
       type: 'chat',
       abilities: ['tools'],
-      contextWindow: 64_000,
+      contextWindow: state.contextWindow,
       enabled: true,
       isBuiltin: false,
       sortOrder: 0
@@ -106,6 +109,8 @@ vi.mock('../crypto', () => ({ decryptSecret: () => 'sk-test' }))
 vi.mock('@ai-sdk/openai', () => ({ createOpenAI: () => () => state.llm }))
 vi.mock('../config', () => ({
   readConfig: () => ({
+    lang: state.lang,
+    toolCallLimit: state.toolCallLimit,
     openaiCompat: { store: false, encryptedReasoning: false },
     assistantModel: null
   })
@@ -128,7 +133,6 @@ vi.mock('../preview/errors', () => ({
 }))
 vi.mock('./slop-lint', () => ({ lintArtifact: () => [] }))
 vi.mock('./lint-store', () => ({ pendingLint: () => '', recordLint: vi.fn() }))
-vi.mock('./prompts', () => ({ buildSystemPrompt: () => '' }))
 vi.mock('./prompts/chat', () => ({ buildChatPrompt: () => '' }))
 vi.mock('./style-brief', () => ({
   awaitMarkerUsageBeforeCommit: async (u: PromiseLike<unknown>, c: () => Promise<unknown>) => ({
@@ -141,10 +145,9 @@ vi.mock('./style-brief', () => ({
   markerCompletionOutcome: () => 'complete',
   renderStyleBriefPrompt: () => ''
 }))
-vi.mock('./ask-user', () => ({
-  askUser: vi.fn(),
-  buildAskUserTool: () => ({}),
-  releaseQuestions: vi.fn()
+vi.mock('./ask-user', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./ask-user')>()),
+  askUser: vi.fn()
 }))
 vi.mock('./image-tools', () => ({ buildImageTools: () => ({}) }))
 vi.mock('./capture-tools', () => ({ buildCaptureTools: () => ({}) }))
@@ -179,6 +182,9 @@ const USAGE = {
 }
 
 beforeEach(() => {
+  state.lang = 'zh-CN'
+  state.contextWindow = 64000
+  state.toolCallLimit = 80
   obs.runFinishes.length = 0
   state.createArtifactVersion.mockClear()
   state.updateMessage.mockClear()
@@ -258,5 +264,125 @@ describe('致命一致性错误', () => {
     const errorEvent = events.find((e) => e.type === 'error')
     expect(errorEvent).toBeDefined()
     expect((errorEvent as { artifactId?: string | null }).artifactId ?? null).toBeNull()
+  })
+})
+
+describe('designer language snapshot', () => {
+  it('uses the configured language in model instructions and tool schemas, changing only next run', async () => {
+    type Request = Parameters<InstanceType<typeof MockLanguageModelV3>['doStream']>[0]
+    const requests: Request[] = []
+    state.lang = 'en-US'
+    state.llm = new MockLanguageModelV3({
+      doStream: async (request) => {
+        requests.push(request)
+        // Changing settings during a run must not change its later model steps.
+        state.lang = 'zh-CN'
+        const firstStep = requests.length === 1
+        const chunks: V3StreamPart[] = firstStep
+          ? [
+              { type: 'stream-start', warnings: [] },
+              { type: 'tool-call', toolCallId: 'list-test', toolName: 'list_files', input: '{}' },
+              {
+                type: 'finish',
+                finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+                usage: USAGE
+              }
+            ]
+          : [
+              { type: 'stream-start', warnings: [] },
+              { type: 'text-start', id: 'response' },
+              { type: 'text-delta', id: 'response', delta: 'Complete.' },
+              { type: 'text-end', id: 'response' },
+              { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: USAGE }
+            ]
+        return { stream: simulateReadableStream({ chunks }) }
+      }
+    })
+    const sender = { isDestroyed: () => false, send: () => {} } as unknown as WebContents
+    const input = {
+      conversationId: 'c1',
+      text: 'Review the current design',
+      providerId: 'prov-1',
+      modelId: 'model-row-1'
+    }
+    sendChat(sender, input)
+    await vi.waitFor(() => expect(obs.runFinishes).toHaveLength(1))
+    expect(requests).toHaveLength(2)
+    const systemText = (request: Request): string =>
+      request.prompt
+        .filter((message) => message.role === 'system')
+        .map((message) => message.content)
+        .join('\n')
+    for (const request of requests) {
+      expect(systemText(request)).toContain('option descriptions in English')
+      expect(systemText(request)).not.toContain('解说用中文')
+      const ask = request.tools?.find(
+        (tool) => tool.type === 'function' && tool.name === 'ask_user'
+      )
+      expect(ask).toBeDefined()
+      expect(JSON.stringify(ask)).not.toMatch(/\p{Script=Han}/u)
+      expect(JSON.stringify(ask)).toContain('style-brief')
+    }
+    expect(requests[0].tools).toEqual(requests[1].tools)
+    sendChat(sender, input)
+    await vi.waitFor(() => expect(obs.runFinishes).toHaveLength(2))
+    expect(requests).toHaveLength(3)
+    expect(systemText(requests[2])).toContain('选项名称和选项释义一律使用中文')
+    const ask = requests[2].tools?.find(
+      (tool) => tool.type === 'function' && tool.name === 'ask_user'
+    )
+    expect(JSON.stringify(ask)).toMatch(/\p{Script=Han}/u)
+  })
+})
+
+describe('localized stop notifications', () => {
+  it.each([
+    { lang: 'en-US' as const, breaker: 'token', expected: 'exceeded the context budget' },
+    {
+      lang: 'en-US' as const,
+      breaker: 'tool',
+      expected: '1; adjustable in settings or the project'
+    },
+    { lang: 'zh-CN' as const, breaker: 'token', expected: '本轮累计输入已超上下文预算' },
+    { lang: 'zh-CN' as const, breaker: 'tool', expected: '本轮工具调用已达上限(1 次' }
+  ])('uses $lang for the $breaker stop notice', async ({ lang, breaker, expected }) => {
+    state.lang = lang
+    state.contextWindow = breaker === 'token' ? 1 : 64000
+    state.toolCallLimit = breaker === 'tool' ? 1 : 80
+    state.llm = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'tool-call', toolCallId: 'stop-list', toolName: 'list_files', input: '{}' },
+            {
+              type: 'finish',
+              finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+              usage: USAGE
+            }
+          ] as V3StreamPart[]
+        })
+      })
+    })
+    const events: ChatStreamEvent[] = []
+    const sender = {
+      isDestroyed: () => false,
+      send: (_channel: string, event: ChatStreamEvent) => events.push(event)
+    } as unknown as WebContents
+    sendChat(sender, {
+      conversationId: 'c1',
+      text: 'Review',
+      providerId: 'prov-1',
+      modelId: 'model-row-1'
+    })
+    await vi.waitFor(() => expect(obs.runFinishes).toHaveLength(1))
+    const deltas = events
+      .filter((event) => event.type === 'delta')
+      .map((event) => event.text)
+      .join('')
+    expect(deltas).toContain(expected)
+    if (lang === 'en-US') expect(deltas).not.toMatch(/\p{Script=Han}/u)
+    expect(JSON.stringify(state.updateMessage.mock.calls)).toContain(expected)
+    expect(obs.runFinishes[0].status).toBe('aborted')
   })
 })

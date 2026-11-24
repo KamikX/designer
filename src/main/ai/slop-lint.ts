@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage, PromptValues, PromptKey } from './prompts/i18n'
 /**
  * 产物的反 AI 味检查。
  *
@@ -34,6 +36,7 @@ export interface Finding {
   fix: string
   /** 命中的原文片段,截断 */
   snippet?: string
+  values?: PromptValues
 }
 
 /** Tailwind 默认靛蓝一族。最可靠的 AI 标记 */
@@ -83,8 +86,8 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
     hit(AI_INDIGO, {
       rule: 'ai-indigo',
       severity: 'P0',
-      message: '用了 Tailwind 默认靛蓝,而 StyleBrief 没有点名这个色系。这是最可靠的"AI 生成"标记。',
-      fix: '换成本项目 theme.css 里定义的品牌色 token。'
+      message: promptText('zh-CN', 'diagnostics.rules.ai-indigo.message'),
+      fix: promptText('zh-CN', 'diagnostics.rules.ai-indigo.fix')
     })
   }
 
@@ -92,23 +95,23 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
     hit(TRUST_GRADIENT, {
       rule: 'trust-gradient',
       severity: 'P0',
-      message: '出现了紫/靛 → 蓝/粉的双色渐变,而 StyleBrief 没有点名渐变。',
-      fix: '删掉渐变。一个平面配上有层次的字排,任何时候都比它强。'
+      message: promptText('zh-CN', 'diagnostics.rules.trust-gradient.message'),
+      fix: promptText('zh-CN', 'diagnostics.rules.trust-gradient.fix')
     })
   }
 
   hit(INVENTED_METRIC, {
     rule: 'invented-metric',
     severity: 'P0',
-    message: '出现了编造的数字。假数据会让整份产出失去可信度。',
-    fix: '换成 — 或带标注的占位块;有真实来源时才写具体数值。'
+    message: promptText('zh-CN', 'diagnostics.rules.invented-metric.message'),
+    fix: promptText('zh-CN', 'diagnostics.rules.invented-metric.fix')
   })
 
   hit(FILLER, {
     rule: 'filler-copy',
     severity: 'P0',
-    message: '出现了填充文案。',
-    fix: '空白区域是要用构图解决的设计问题,不是靠编字填满的。换个版面或写真实内容。'
+    message: promptText('zh-CN', 'diagnostics.rules.filler-copy.message'),
+    fix: promptText('zh-CN', 'diagnostics.rules.filler-copy.fix')
   })
 
   // emoji 只在当图标用时才算问题,正文里出现无所谓
@@ -119,8 +122,8 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
         findings.push({
           rule: 'emoji-icon',
           severity: 'P0',
-          message: '拿 emoji 当功能图标,而 StyleBrief 没有点名 emoji。',
-          fix: '换成 1.6–1.8px 描边的单线 SVG,stroke="currentColor"。',
+          message: promptText('zh-CN', 'diagnostics.rules.emoji-icon.message'),
+          fix: promptText('zh-CN', 'diagnostics.rules.emoji-icon.fix'),
           snippet: clip(m[0])
         })
         break
@@ -131,8 +134,8 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
   hit(REMOTE_PLACEHOLDER, {
     rule: 'remote-placeholder',
     severity: 'P1',
-    message: '引了外部占位图服务。又脆又是明显的 AI 痕迹。',
-    fix: '用 .ph-img 这类本地占位块。'
+    message: promptText('zh-CN', 'diagnostics.rules.remote-placeholder.message'),
+    fix: promptText('zh-CN', 'diagnostics.rules.remote-placeholder.fix')
   })
 
   /*
@@ -149,8 +152,8 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
       findings.push({
         rule: 'caps-no-tracking',
         severity: 'P1',
-        message: '全大写没有加足够的字距(需要 ≥0.06em)。',
-        fix: '加 letter-spacing: 0.08em。不加会挤成一团,是最可靠的业余标记。',
+        message: promptText('zh-CN', 'diagnostics.rules.caps-no-tracking.message'),
+        fix: promptText('zh-CN', 'diagnostics.rules.caps-no-tracking.fix'),
         snippet: clip(text)
       })
       break
@@ -168,8 +171,8 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
     findings.push({
       rule: 'antd-unthemed',
       severity: 'P1',
-      message: '用了 antdv-next 组件,但 App.vue 没有 a-config-provider 定制主题,控件是默认蓝。',
-      fix: '最外层包 <a-config-provider :theme>，让 colorPrimary、字体、圆角与明暗按 StyleBrief 映射到 theme.css；实现方式见 antdv-theme 技能。',
+      message: promptText('zh-CN', 'diagnostics.rules.antd-unthemed.message'),
+      fix: promptText('zh-CN', 'diagnostics.rules.antd-unthemed.fix'),
       snippet: 'App.vue'
     })
   }
@@ -183,8 +186,11 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
     findings.push({
       rule: 'legacy-seed-fingerprint',
       severity: 'P1',
-      message: `同时出现 ${legacySeedFeatures.length} 类旧设计种子特征，像是整套母版被原样沿用。`,
-      fix: '回到 StyleBrief，重新生成本项目的字体、表面、尺度和组件几何；保留语义 token 接口，不复制旧视觉取值。',
+      message: promptText('zh-CN', 'diagnostics.rules.legacy-seed-fingerprint.message', {
+        count: legacySeedFeatures.length
+      }),
+      values: { count: legacySeedFeatures.length },
+      fix: promptText('zh-CN', 'diagnostics.rules.legacy-seed-fingerprint.fix'),
       snippet: clip(legacySeedFeatures.map((feature) => feature.snippet).join(' ; '))
     })
   }
@@ -196,8 +202,9 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
       findings.push({
         rule: 'raw-hex',
         severity: 'P1',
-        message: `出现了 ${hexes.length} 个字面色值,说明 token 没有被遵守。`,
-        fix: '颜色一律用 theme.css 里的 token 类名,不要写死色值。'
+        message: promptText('zh-CN', 'diagnostics.rules.raw-hex.message', { count: hexes.length }),
+        values: { count: hexes.length },
+        fix: promptText('zh-CN', 'diagnostics.rules.raw-hex.fix')
       })
     }
   }
@@ -211,28 +218,27 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
  * 措辞是有讲究的:说"这是退步"而不是"建议改进"。后者会被当成可选意见,
  * 而模型对可选意见的默认反应是"我觉得现在挺好"。
  */
-export function renderLint(findings: Finding[]): string {
+export function renderLint(findings: Finding[], lang: PromptLanguage = 'zh-CN'): string {
   if (findings.length === 0) return ''
 
   const p0 = findings.filter((f) => f.severity === 'P0')
   const body = findings
     .map(
       (f) =>
-        `**[${f.severity}] ${f.rule}** —— ${f.message}\n  改法:${f.fix}` +
-        (f.snippet ? `\n  命中:\`${f.snippet}\`` : '')
+        promptText(lang, 'diagnostics.finding', {
+          severity: f.severity,
+          rule: f.rule,
+          message: findingText(f, 'message', lang),
+          fix: findingText(f, 'fix', lang)
+        }) + (f.snippet ? promptText(lang, 'diagnostics.match', { snippet: f.snippet }) : '')
     )
     .join('\n\n')
 
-  return `
-## 上一版产物的检查结果
-
-${p0.length} 条必须修,${findings.length - p0.length} 条应该修。这些是**确定的退步**,
-不是风格意见——每一条都是机械核对出的事实,绕不过去。
-
-${body}
-
-先把这些修掉,再谈别的改动。
-`.trim()
+  return promptText(lang, 'diagnostics.lint', {
+    required: p0.length,
+    findings_length___required: findings.length - p0.length,
+    body: body
+  }).trim()
 }
 
 function clip(text: string): string {
@@ -274,4 +280,26 @@ function collectLegacySeedFeatures(source: string): LegacySeedFeature[] {
   if (buttonHeight && baseRadius) features.push({ snippet: `${buttonHeight} / ${baseRadius}` })
 
   return features
+}
+
+const LOCALIZED_RULES = new Set([
+  'ai-indigo',
+  'trust-gradient',
+  'invented-metric',
+  'filler-copy',
+  'emoji-icon',
+  'remote-placeholder',
+  'caps-no-tracking',
+  'antd-unthemed',
+  'legacy-seed-fingerprint',
+  'raw-hex'
+])
+
+function findingText(finding: Finding, field: 'message' | 'fix', lang: PromptLanguage): string {
+  if (!LOCALIZED_RULES.has(finding.rule)) return finding[field]
+  return promptText(
+    lang,
+    ('diagnostics.rules.' + finding.rule + '.' + field) as PromptKey,
+    finding.values
+  )
 }

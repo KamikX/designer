@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -13,17 +15,15 @@ import { z } from 'zod'
  * 取的是**本机时间**,不联网。用户的时区就是他的时区,不需要问任何人。
  */
 
-export function buildTimeTools(): ToolSet {
+export function buildTimeTools(lang: PromptLanguage = 'zh-CN'): ToolSet {
   const tools = {
     get_current_time: tool({
-      description:
-        '获取当前日期时间(本机时区)。**凡是涉及"今天""现在""最近"的问题都先调它**,' +
-        '不要凭印象猜——你的训练数据有截止时间,而用户在此刻。',
+      description: promptText(lang, 'tools.get_current_time.description'),
       inputSchema: z.object({
         timezone: z
           .string()
           .optional()
-          .describe('IANA 时区名(如 Asia/Shanghai、America/New_York)。缺省用本机时区')
+          .describe(promptText(lang, 'tools.get_current_time.parameters.timezone'))
       }),
       execute: async (input) => {
         try {

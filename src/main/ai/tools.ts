@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -92,7 +94,8 @@ type ToolKind = 'read' | 'locate' | 'textPatch' | 'write' | 'neutral'
 export function buildFileTools(
   vfs: SessionVfs,
   sink: FileToolSink,
-  options: FileToolOptions = {}
+  options: FileToolOptions = {},
+  lang: PromptLanguage = 'zh-CN'
 ): ToolSet {
   const emitPatch = sink.onPatch
   const ledger = options.ledger ?? new RunContextLedger()
@@ -211,11 +214,9 @@ export function buildFileTools(
     /* -------------------------------- 读 -------------------------------- */
 
     list_files: tool({
-      description:
-        '列出设计稿的文件,附带每个文件的行数。先看这个再决定要不要打开文件。' +
-        '可以用 glob 缩小范围,如 `css/**` 或 `*.html`。',
+      description: promptText(lang, 'tools.list_files.description'),
       inputSchema: z.object({
-        glob: z.string().optional().describe('路径通配,支持 * ** ?;缺省列出全部')
+        glob: z.string().optional().describe(promptText(lang, 'tools.list_files.parameters.glob'))
       }),
       // 参数不解构:schema 带可选字段时,解构模式会参与 INPUT 泛型推断
       // 并把它压成 never,inputSchema 随即报类型不匹配
@@ -230,23 +231,28 @@ export function buildFileTools(
     }),
 
     outline_file: tool({
-      description:
-        '看文件的结构大纲(带行号的骨架:html 的区块与 id、css 的选择器、js 的顶层声明)。' +
-        '定位用它,比整份读文件便宜一个数量级。确定了大概位置再用 read_file 取那一段。',
+      description: promptText(lang, 'tools.outline_file.description'),
       inputSchema: z.object({ path: z.string() }),
       execute: async (input) =>
         run('outline_file', 'read', input, input.path, () => toolOk(vfs.outline(input.path)))
     }),
 
     read_file: tool({
-      description:
-        '按行区间读取文件,返回带行号的文本。行号仅供定位参考,不要用于编辑——编辑一律靠锚点。' +
-        '**尽量带上 start_line / end_line 只读需要的那一段**;不带区间时会截断,并把区间之外的结构大纲一并返回。' +
-        '单行超过 800 字符会被截断显示,这样的行不要抄进 old_string,改用 capture_range 取锚点。',
+      description: promptText(lang, 'tools.read_file.description'),
       inputSchema: z.object({
-        path: z.string().describe('相对路径,如 css/style.css'),
-        start_line: z.number().int().min(1).optional().describe('起始行号,从 1 开始(含)'),
-        end_line: z.number().int().min(1).optional().describe('结束行号(含)')
+        path: z.string().describe(promptText(lang, 'tools.read_file.parameters.path')),
+        start_line: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.read_file.parameters.start_line')),
+        end_line: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.read_file.parameters.end_line'))
       }),
       execute: async (input) =>
         run('read_file', 'read', input, input.path, () =>
@@ -255,15 +261,32 @@ export function buildFileTools(
     }),
 
     get_range: tool({
-      description:
-        '按行列精确取出原文,**不带行号**——取到的字符串可以原样当 edit_file 的 old_string 用。' +
-        'search_files 给出行列之后用它取锚点,能避免手抄导致的缩进/空白对不上。',
+      description: promptText(lang, 'tools.get_range.description'),
       inputSchema: z.object({
         path: z.string(),
-        start_line: z.number().int().min(1).describe('起始行,从 1 开始(含)'),
-        end_line: z.number().int().min(1).optional().describe('结束行(含),缺省为只取起始行'),
-        start_column: z.number().int().min(1).optional().describe('起始列,缺省为行首'),
-        end_column: z.number().int().min(1).optional().describe('结束列(含),缺省为行尾')
+        start_line: z
+          .number()
+          .int()
+          .min(1)
+          .describe(promptText(lang, 'tools.get_range.parameters.start_line')),
+        end_line: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.get_range.parameters.end_line')),
+        start_column: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.get_range.parameters.start_column')),
+        end_column: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.get_range.parameters.end_column'))
       }),
       execute: async (input) =>
         run('get_range', 'locate', input, input.path, () =>
@@ -280,20 +303,36 @@ export function buildFileTools(
     }),
 
     capture_range: tool({
-      description:
-        '把任意范围捕获为**服务端锚点**:返回精确不截断的原文和 anchorId,之后用 apply_string_edits 按 anchorId 修改。' +
-        '超长行、被截断的预览、第一次补丁失败后,一律用它代替手抄 old_string。' +
-        '行列 1 起、两端包含;列按 UTF-16 计数;删整行时传 include_trailing_newline 把换行一起圈进来。',
+      description: promptText(lang, 'tools.capture_range.description'),
       inputSchema: z.object({
         path: z.string(),
-        start_line: z.number().int().min(1).describe('起始行,从 1 开始(含)'),
-        end_line: z.number().int().min(1).optional().describe('结束行(含),缺省等于起始行'),
-        start_column: z.number().int().min(1).optional().describe('起始列(含),缺省为行首'),
-        end_column: z.number().int().min(1).optional().describe('结束列(含),缺省为行尾'),
+        start_line: z
+          .number()
+          .int()
+          .min(1)
+          .describe(promptText(lang, 'tools.capture_range.parameters.start_line')),
+        end_line: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.capture_range.parameters.end_line')),
+        start_column: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.capture_range.parameters.start_column')),
+        end_column: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(promptText(lang, 'tools.capture_range.parameters.end_column')),
         include_trailing_newline: z
           .boolean()
           .optional()
-          .describe('把结束行后的换行并入锚点(整行删除用),缺省 false')
+          .describe(promptText(lang, 'tools.capture_range.parameters.include_trailing_newline'))
       }),
       execute: async (input) =>
         run('capture_range', 'locate', input, input.path, () => {
@@ -317,16 +356,28 @@ export function buildFileTools(
     }),
 
     search_files: tool({
-      description:
-        '全文搜索,返回 `路径:行:列 [matchId]` 与命中行内容。**这是定位的首选**。' +
-        '每个命中带 matchId,可直接作为 apply_string_edits 的锚点——预览被截断也不影响,' +
-        '因为区间由服务端持有。想看命中点周围就带 context_lines。每行只报第一处命中。',
+      description: promptText(lang, 'tools.search_files.description'),
       inputSchema: z.object({
-        query: z.string().describe('要找的文本,如 `--brand` 或 `class="hero"`'),
-        is_regex: z.boolean().optional().describe('query 按正则解析,缺省按纯文本'),
-        glob: z.string().optional().describe('只搜路径匹配该通配的文件'),
-        context_lines: z.number().int().min(0).max(5).optional().describe('每处命中前后带几行'),
-        case_sensitive: z.boolean().optional().describe('区分大小写,缺省不区分'),
+        query: z.string().describe(promptText(lang, 'tools.search_files.parameters.query')),
+        is_regex: z
+          .boolean()
+          .optional()
+          .describe(promptText(lang, 'tools.search_files.parameters.is_regex')),
+        glob: z
+          .string()
+          .optional()
+          .describe(promptText(lang, 'tools.search_files.parameters.glob')),
+        context_lines: z
+          .number()
+          .int()
+          .min(0)
+          .max(5)
+          .optional()
+          .describe(promptText(lang, 'tools.search_files.parameters.context_lines')),
+        case_sensitive: z
+          .boolean()
+          .optional()
+          .describe(promptText(lang, 'tools.search_files.parameters.case_sensitive')),
         max_results: z.number().int().min(1).max(60).optional()
       }),
       execute: async (input) =>
@@ -362,18 +413,17 @@ export function buildFileTools(
     /* -------------------------------- 写 -------------------------------- */
 
     apply_string_edits: tool({
-      description:
-        '按锚点批量编辑,**不需要复述原文**:anchor_id 来自 capture_range 或 search_files 的 matchId。' +
-        '四种操作:replace(替换锚点内容)、remove(删除)、insert_before / insert_after(在锚点前后插入)。' +
-        '同一锚点可组合 before+replace+after;跨文件原子提交,任何一处失败整批回滚。' +
-        '超长行、截断行、文本补丁失败后,用它是默认选择。',
+      description: promptText(lang, 'tools.apply_string_edits.description'),
       inputSchema: z.object({
         operations: z
           .array(
             z.object({
               type: z.enum(['replace', 'remove', 'insert_before', 'insert_after']),
               anchor_id: z.string(),
-              content: z.string().optional().describe('replace / insert_* 的新内容;remove 不需要')
+              content: z
+                .string()
+                .optional()
+                .describe(promptText(lang, 'tools.apply_string_edits.parameters.content'))
             })
           )
           .min(1)
@@ -404,14 +454,15 @@ export function buildFileTools(
     }),
 
     edit_file: tool({
-      description:
-        '替换文件中的一处内容。old_string 必须与原文逐字符一致(含缩进与空行)且在文件中唯一。' +
-        '同一个文件要改多处时用 multi_edit_file;原文超长或曾被截断时改用 capture_range + apply_string_edits。',
+      description: promptText(lang, 'tools.edit_file.description'),
       inputSchema: z.object({
         path: z.string(),
-        old_string: z.string().describe('被替换的原文,必须逐字符一致'),
-        new_string: z.string().describe('替换后的新内容'),
-        replace_all: z.boolean().optional().describe('原文出现多处且都要替换时传 true')
+        old_string: z.string().describe(promptText(lang, 'tools.edit_file.parameters.old_string')),
+        new_string: z.string().describe(promptText(lang, 'tools.edit_file.parameters.new_string')),
+        replace_all: z
+          .boolean()
+          .optional()
+          .describe(promptText(lang, 'tools.edit_file.parameters.replace_all'))
       }),
       // 同 list_files:带可选字段的 schema 不能解构参数
       execute: async (input) =>
@@ -429,9 +480,7 @@ export function buildFileTools(
     }),
 
     multi_edit_file: tool({
-      description:
-        '在同一个文件里一次做多处替换,按顺序施加,全成或全不成(任何一处锚点对不上就整体回滚)。' +
-        '改同一个文件的多个地方时优先用它——每多一轮工具调用,整个对话都要重发一遍。',
+      description: promptText(lang, 'tools.multi_edit_file.description'),
       inputSchema: z.object({
         path: z.string(),
         edits: z
@@ -443,7 +492,7 @@ export function buildFileTools(
             })
           )
           .min(1)
-          .describe('按施加顺序排列;每处的 old_string 都要在当时的文件里唯一')
+          .describe(promptText(lang, 'tools.multi_edit_file.parameters.edits'))
       }),
       execute: async (input) =>
         run('multi_edit_file', 'textPatch', input, input.path, () => {
@@ -467,22 +516,10 @@ export function buildFileTools(
     }),
 
     apply_patch: tool({
-      description:
-        '用补丁一次改多个文件,适合**短行、格式规整**的小 hunk 与 Add/Delete。格式(不带行号,靠上下文行定位):\n' +
-        '*** Begin Patch\n' +
-        '*** Update File: css/style.css\n' +
-        '@@\n' +
-        ' .hero {\n' +
-        '-  color: red;\n' +
-        '+  color: #1677ff;\n' +
-        ' }\n' +
-        '*** Add File: css/theme.css\n' +
-        '+:root { --brand: #1677ff; }\n' +
-        '*** Delete File: css/old.css\n' +
-        '*** End Patch\n' +
-        '每个 hunk 必须带至少一行上下文(以空格开头)用于定位,且在文件中唯一。' +
-        '涉及超长行或补丁曾失败的文件,改用 capture_range/matchId + apply_string_edits。',
-      inputSchema: z.object({ patch: z.string().describe('完整补丁文本') }),
+      description: promptText(lang, 'tools.apply_patch.description'),
+      inputSchema: z.object({
+        patch: z.string().describe(promptText(lang, 'tools.apply_patch.parameters.patch'))
+      }),
       execute: async (input) =>
         run('apply_patch', 'textPatch', input, null, () => {
           const ops = parsePatch(input.patch)
@@ -539,12 +576,10 @@ export function buildFileTools(
     }),
 
     write_file: tool({
-      description:
-        '整份写入文件——用于新建文件,或改动幅度过大时的重写。' +
-        '已有文件的局部修改一律用 edit_file / multi_edit_file / apply_string_edits,不要为了改一处而重写整份。',
+      description: promptText(lang, 'tools.write_file.description'),
       inputSchema: z.object({
         path: z.string(),
-        content: z.string().describe('文件完整内容,不允许出现"其余保持不变"这类占位')
+        content: z.string().describe(promptText(lang, 'tools.write_file.parameters.content'))
       }),
       execute: async (input) =>
         run('write_file', 'write', input, input.path, () => {
@@ -561,12 +596,10 @@ export function buildFileTools(
     }),
 
     move_file: tool({
-      description:
-        '重命名或移动文件。**不要用 write_file + delete_file 代替**——那要把整份内容再吐一遍,' +
-        '而这个操作根本不需要内容参与。',
+      description: promptText(lang, 'tools.move_file.description'),
       inputSchema: z.object({
-        from: z.string().describe('原路径'),
-        to: z.string().describe('新路径,不能是已存在的文件')
+        from: z.string().describe(promptText(lang, 'tools.move_file.parameters.from')),
+        to: z.string().describe(promptText(lang, 'tools.move_file.parameters.to'))
       }),
       execute: async (input) =>
         run('move_file', 'write', input, input.from, () => {
@@ -587,9 +620,7 @@ export function buildFileTools(
     }),
 
     copy_file: tool({
-      description:
-        '复制文件。要基于现有页面做一个变体时用它,再在副本上 edit_file,' +
-        '比 write_file 整份重打一遍省得多。',
+      description: promptText(lang, 'tools.copy_file.description'),
       inputSchema: z.object({ from: z.string(), to: z.string() }),
       execute: async (input) =>
         run('copy_file', 'write', input, input.from, () => {
@@ -601,7 +632,7 @@ export function buildFileTools(
     }),
 
     delete_file: tool({
-      description: '删除文件。',
+      description: promptText(lang, 'tools.delete_file.description'),
       inputSchema: z.object({ path: z.string() }),
       execute: async (input) =>
         run('delete_file', 'write', input, input.path, () => {
@@ -615,8 +646,7 @@ export function buildFileTools(
     /* ------------------------------- 自查 ------------------------------- */
 
     diff_changes: tool({
-      description:
-        '看本回合到目前为止改了什么(unified diff)。收尾前自查用,比重新读一遍文件便宜得多。',
+      description: promptText(lang, 'tools.diff_changes.description'),
       inputSchema: z.object({}),
       execute: async (input) =>
         run('diff_changes', 'neutral', input, null, () => {
@@ -635,11 +665,9 @@ export function buildFileTools(
     }),
 
     check_syntax: tool({
-      description:
-        '语法自检:括号 / 标签配对,且 vue/tsx/ts/css 走与预览完全相同的真编译器。' +
-        '改完收尾前跑一遍,别把编译不过的版本交出去。不传 path 就检查本回合动过的所有文件。',
+      description: promptText(lang, 'tools.check_syntax.description'),
       inputSchema: z.object({
-        path: z.string().optional().describe('缺省时检查本回合改动过的全部文件')
+        path: z.string().optional().describe(promptText(lang, 'tools.check_syntax.parameters.path'))
       }),
       execute: async (input) =>
         run('check_syntax', 'neutral', input, input.path ?? null, () => {
@@ -687,9 +715,7 @@ export function buildFileTools(
     }),
 
     revert_file: tool({
-      description:
-        '把一个文件退回本回合开始时的样子。改坏了想重来时用它——' +
-        '重写一份自己刚弄坏的文件最容易越描越黑。',
+      description: promptText(lang, 'tools.revert_file.description'),
       inputSchema: z.object({ path: z.string() }),
       execute: async (input) =>
         run('revert_file', 'write', input, input.path, () => {

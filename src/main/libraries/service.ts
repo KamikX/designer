@@ -1,3 +1,5 @@
+import { promptText } from '../ai/prompts/i18n'
+import type { PromptLanguage } from '../ai/prompts/i18n'
 import { createHash } from 'node:crypto'
 import {
   existsSync,
@@ -400,15 +402,21 @@ export function libraryFile(lib: InstalledLibrary, file: string): string {
 export function libraryPrompt(
   refs: ExternalLibraryRef[],
   stack: Stack,
-  builtins: PreviewLib[] = []
+  builtins: PreviewLib[] = [],
+  lang: PromptLanguage = 'en-US'
 ): string {
   if (!refs.length) return ''
   return (
-    '## Available external libraries\nOnly the following additional imports are allowed. CSS is loaded by the preview runtime.\n' +
+    promptText(lang, 'libraries.heading') +
     resolveLibraries(refs, stack, builtins)
-      .map(
-        (lib) =>
-          `### ${lib.name}@${lib.version}\nAllowed imports: ${Object.keys(lib.entries).join(', ')}\n${lib.description}\n${lib.instructions}`
+      .map((lib) =>
+        promptText(lang, 'libraries.entry', {
+          name: lib.name,
+          version: lib.version,
+          imports: Object.keys(lib.entries).join(', '),
+          description: lib.description,
+          instructions: lib.instructions
+        })
       )
       .join('\n\n')
   )

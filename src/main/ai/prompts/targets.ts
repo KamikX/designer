@@ -1,3 +1,5 @@
+import { promptText } from './i18n'
+import type { PromptLanguage } from './i18n'
 import type { DesignTarget } from '../../../shared/types'
 import type { TargetTemplate } from '../../skills/targets'
 
@@ -13,55 +15,44 @@ import type { TargetTemplate } from '../../skills/targets'
  * 不破坏前缀缓存。
  */
 
-export const TARGET_LABELS: Record<DesignTarget, string> = {
-  landing: '落地页',
-  web: 'Web 应用',
-  mobile: '移动端 App',
-  admin: '中后台'
-}
+export const TARGET_LABELS = targetLabels('zh-CN')
 
 /**
  * 一句话切人格。借 open-design 的做法:同一个模型,先说清"此刻你是谁",
  * 产出的姿态就跟着变——落地页需要的是品牌感,中后台需要的是清晰的运营效率。
  */
-const TARGET_ROLES: Record<DesignTarget, string> = {
-  landing:
-    '**落地页** —— 此刻你是品牌设计师:讲清价值、推动主行动；视觉重点由 StyleBrief 与内容层级决定。',
-  web: '**Web 应用** —— 此刻你是系统设计师:hover、焦点、键盘是一等公民,第一屏就是干活的界面。',
-  mobile: '**移动端 App** —— 此刻你是交互设计师:真机框呈现,一屏只做一件事,拇指够得着才算数。',
-  admin:
-    '**中后台** —— 此刻你是信息架构师:优先让高频运营任务清晰、高效；具体的字体、色温、表面与装饰程度服从 StyleBrief。'
+function targetLabels(lang: PromptLanguage): Record<DesignTarget, string> {
+  return {
+    landing: promptText(lang, 'targets.labels.landing'),
+    web: promptText(lang, 'targets.labels.web'),
+    mobile: promptText(lang, 'targets.labels.mobile'),
+    admin: promptText(lang, 'targets.labels.admin')
+  }
 }
 
-export function targetContractPrompt(targets: DesignTarget[]): string {
+function targetRoles(lang: PromptLanguage): Record<DesignTarget, string> {
+  return {
+    landing: promptText(lang, 'targets.roles.landing'),
+    web: promptText(lang, 'targets.roles.web'),
+    mobile: promptText(lang, 'targets.roles.mobile'),
+    admin: promptText(lang, 'targets.roles.admin')
+  }
+}
+
+export function targetContractPrompt(
+  targets: DesignTarget[],
+  lang: PromptLanguage = 'zh-CN'
+): string {
   if (targets.length === 0) return ''
 
-  const roles = targets.map((t) => `- ${TARGET_ROLES[t]}`).join('\n')
-  const multi =
-    targets.length > 1
-      ? `
+  const roles = targets.map((t) => `- ${targetRoles(lang)[t]}`).join('\n')
+  const multi = targets.length > 1 ? promptText(lang, 'targets.multiTarget') : ''
 
-**多端交付结构**:每个端是独立交付物。html 栈每端一个入口文件(如 mobile.html、
-landing.html),index.html 只做链接各端的启动页;vue3/react 栈每端一个顶层视图,
-App 里做入口切换。**绝不做"同一页面里的平台切换 tab"**——那是设计工具的控件,
-不是产品的一部分。一次先做透一个端,再做下一个。`
-      : ''
-
-  return `## 本项目的端
-
-勾选的端:${targets.map((t) => TARGET_LABELS[t]).join('、')}。对应的端设计模板已注入在下方,
-**不要再用 activate_skill 加载它们**。
-
-${roles}
-
-**动手前的纪律(所有端通用)**:
-
-- 先按模板里的格式输出一行判读(受众、任务与模板要求的关键上下文),让用户在你写完
-  两百行代码**之前**就能便宜地纠偏。
-- 只有当前任务所必需、又无法从项目视觉方向或当前设计稿推断的信息才提问:一轮最多问一次,
-  一次不超过 3 题,每题给选项。风格方向遵守项目视觉方向段的首次确认和延续规则。
-- 用户的话命中模板「信号追问」表里的条目时,追**那个点**,不要问通用问卷。
-${multi}`
+  return promptText(lang, 'targets.contract', {
+    targets: targets.map((t) => targetLabels(lang)[t]).join(lang === 'zh-CN' ? '、' : ', '),
+    roles: roles,
+    multi: multi
+  })
 }
 
 /**
@@ -123,13 +114,10 @@ export function routeActiveTargets(input: TargetRouteInput): TargetRoute {
 }
 
 /** 非活动端的一句话兼容说明:告诉模型它们存在,但本轮没有模板正文 */
-export function renderCompatNote(compat: DesignTarget[]): string {
+export function renderCompatNote(compat: DesignTarget[], lang: PromptLanguage = 'zh-CN'): string {
   if (compat.length === 0) return ''
-  const names = compat.map((t) => TARGET_LABELS[t]).join('、')
-  return (
-    `本项目还勾选了:${names}。本轮未注入它们的完整端模板;` +
-    '如果这轮工作涉及这些端,先在判读里声明切换,下一轮会带上对应模板。'
-  )
+  const names = compat.map((t) => targetLabels(lang)[t]).join(lang === 'zh-CN' ? '、' : ', ')
+  return promptText(lang, 'targets.compatibility', { names: names })
 }
 
 /**

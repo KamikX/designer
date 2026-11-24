@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import type { PromptLanguage } from './prompts/i18n'
 import { randomUUID } from 'crypto'
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
@@ -97,39 +99,40 @@ export async function askUser(
   return { answer, configured: secrets ? Object.keys(secrets) : [] }
 }
 
-export function buildAskUserTool(context: AskUserContext): ToolSet {
+export function buildAskUserTool(context: AskUserContext, lang: PromptLanguage = 'zh-CN'): ToolSet {
   const tools = {
     ask_user: tool({
-      description:
-        '在动手之前向用户确认方向。方向不明确时**先问再做**——猜错一版的代价是整份设计稿重出,' +
-        '而问一次只要用户点几下。\n' +
-        '适合问:风格倾向、配色、信息密度、目标人群、要不要某个模块。\n' +
-        '不要问:实现细节、你自己能定的小事、用户已经在需求里说清楚的东西。\n' +
-        "仅首次整体视觉方向确认时传 purpose: 'style-brief'；其他提问不要传这个字段。\n" +
-        `一次最多 ${MAX_QUESTIONS} 题,每题给 2-4 个**具体**的选项(不要"简约风/复杂风"这种废话选项),` +
-        '选项配一句释义帮用户判断。用户可能跳过,跳过就按你的判断继续,不要再问第二次。',
+      description: promptText(lang, 'tools.ask_user.description', { maxQuestions: MAX_QUESTIONS }),
       inputSchema: z.object({
-        intro: z.string().optional().describe('一句话说明为什么要问,让用户知道这几题影响什么'),
+        intro: z.string().optional().describe(promptText(lang, 'tools.ask_user.parameters.intro')),
         purpose: z
           .literal('style-brief')
           .optional()
-          .describe('仅首次整体视觉方向确认使用；其他普通提问不要填写。'),
+          .describe(promptText(lang, 'tools.ask_user.parameters.purpose')),
         questions: z
           .array(
             z.object({
-              header: z.string().describe('极短标签,不超过 8 个字,如「风格」「配色」'),
-              question: z.string().describe('完整问题'),
-              kind: z.enum(['single', 'multiple']).describe('single 单选 / multiple 多选'),
+              header: z.string().describe(promptText(lang, 'tools.ask_user.parameters.header')),
+              question: z.string().describe(promptText(lang, 'tools.ask_user.parameters.question')),
+              kind: z
+                .enum(['single', 'multiple'])
+                .describe(promptText(lang, 'tools.ask_user.parameters.kind')),
               options: z
                 .array(
                   z.object({
-                    label: z.string().describe('选项名,简短'),
-                    description: z.string().optional().describe('一句话释义,帮用户判断')
+                    label: z.string().describe(promptText(lang, 'tools.ask_user.parameters.label')),
+                    description: z
+                      .string()
+                      .optional()
+                      .describe(promptText(lang, 'tools.ask_user.parameters.description'))
                   })
                 )
                 .min(2)
                 .max(4),
-              allowCustom: z.boolean().optional().describe('允许用户自己填一个选项之外的答案')
+              allowCustom: z
+                .boolean()
+                .optional()
+                .describe(promptText(lang, 'tools.ask_user.parameters.allowCustom'))
             })
           )
           .min(1)
@@ -140,7 +143,7 @@ export function buildAskUserTool(context: AskUserContext): ToolSet {
             placeholder: z.string().optional()
           })
           .optional()
-          .describe('末尾附一个自由描述框,让用户补充选项覆盖不到的信息')
+          .describe(promptText(lang, 'tools.ask_user.parameters.notes'))
       }),
       execute: async (input) => {
         const ask = input as AskUserInput

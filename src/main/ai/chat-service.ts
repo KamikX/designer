@@ -1,3 +1,4 @@
+import { promptText, resolvePromptLanguage } from './prompts/i18n'
 import { randomUUID } from 'crypto'
 import { parsePartialJson, streamText } from 'ai'
 import type { ModelMessage, StepResult, ToolSet } from 'ai'
@@ -126,6 +127,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
    */
   const project = conversation.projectId ? getProject(conversation.projectId) : null
   if (conversation.projectId && !project) throw new Error('项目不存在')
+  const appLanguage = resolvePromptLanguage(readConfig().lang)
+  const lang = project ? appLanguage : 'zh-CN'
   const isChat = !project
   /** 授权范围:项目会话跟着项目,纯聊天跟着这次会话 */
   const scope: RootScope = project ? { projectId: project.id } : { conversationId: conversation.id }
@@ -180,10 +183,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const roots = [...userRoots, ...skillRoots(availableSkills)]
   // 上一版预览跑挂了的话,这一轮先让模型知道。纯聊天没有预览
   const previewError = project
-    ? previewErrorPrompt(pendingPreviewError(project.id, base?.id ?? null))
+    ? previewErrorPrompt(pendingPreviewError(project.id, base?.id ?? null), lang)
     : ''
   // 上一版产物的反 AI 味检查结果。和预览报错同理:按版本失效
-  const slopLint = project ? pendingLint(project.id, base?.id ?? null) : ''
+  const slopLint = project ? pendingLint(project.id, base?.id ?? null, lang) : ''
 
   const attachments = toImageParts(input.attachments ?? [])
   if (attachments.length > 0 && !model.abilities.includes('vision')) {
@@ -264,7 +267,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     ledger: runLedger,
     gate: budgetGate,
     contextWindow: model.contextWindow,
-    limits: toolLimits
+    limits: toolLimits,
+    lang
   })
   const initialStyleGate = project
     ? createInitialStyleWriteGate({
@@ -383,7 +387,8 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                     },
                     onDelete: (path) => emit({ streamId, type: 'file-delete', path })
                   },
-                  { ledger: runLedger, readGate: (path, rev) => governor.readGate(path, rev) }
+                  { ledger: runLedger, readGate: (path, rev) => governor.readGate(path, rev) },
+                  lang
                 )
               : {}),
             // 整体视觉方向是项目数据；纯聊天没有项目，因而不暴露此工具。
@@ -413,58 +418,71 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                       }
                     }
                   }
-                : null
+                : null,
+              lang
             ),
             // 无条件内置:模型对"今天是几号"只有训练截止时的印象,而且它
             // 意识不到这一点——不给它这个,涉及日期的输出会自信地错
-            ...buildTimeTools(),
-            ...buildSkillTools(availableSkills),
+            ...buildTimeTools(lang),
+            ...buildSkillTools(availableSkills, lang),
             // 装技能 / 装 MCP。两个都强制走 ask_user——它们改的是用户机器上的
             // 持久状态,模型不该自己拍板
-            ...buildInstallTools({
-              ask: async (ask) => {
-                const askContext = {
-                  streamId,
-                  signal: abort.signal,
-                  emit: (questionId: string, input: typeof ask) =>
-                    emit({ streamId, type: 'question', questionId, ask: input }),
-                  onAnswered: (questionId: string, input: typeof ask, answer: AskUserAnswer) =>
-                    questionParts.push({ type: 'question', questionId, ask: input, answer })
+            ...buildInstallTools(
+              {
+                ask: async (ask) => {
+                  const askContext = {
+                    streamId,
+                    signal: abort.signal,
+                    emit: (questionId: string, input: typeof ask) =>
+                      emit({ streamId, type: 'question', questionId, ask: input }),
+                    onAnswered: (questionId: string, input: typeof ask, answer: AskUserAnswer) =>
+                      questionParts.push({ type: 'question', questionId, ask: input, answer })
+                  }
+                  return (await askUser(askContext, ask)).answer
+                },
+                onChanged: () => {
+                  // 下一轮重扫,新装的技能才会出现在目录里
+                  fileSkills = scanSkills()
                 }
-                return (await askUser(askContext, ask)).answer
               },
-              onChanged: () => {
-                // 下一轮重扫,新装的技能才会出现在目录里
-                fileSkills = scanSkills()
-              }
-            }),
-            ...buildWebTools(input.webSearch === true, streamId),
-            ...buildAskUserTool({
-              streamId,
-              signal: abort.signal,
-              emit: (questionId, ask) => emit({ streamId, type: 'question', questionId, ask }),
-              onAnswered: (questionId, ask, answer) => {
-                questionParts.push({ type: 'question', questionId, ask, answer })
-                // 安装类工具走它们自己的 askUser context，不会触发这个回调；
-                // 其他普通 ask_user 也不能解锁；只有显式的首次风格确认才可以。
-                if (ask.purpose === 'style-brief') {
-                  initialStyleGate?.onStyleQuestionAnswered(ask, answer)
-                  if (initialStyleGate && !initialStyleGate.isLocked()) vfs.allowWrites()
+              lang
+            ),
+            ...buildWebTools(input.webSearch === true, streamId, lang),
+            ...buildAskUserTool(
+              {
+                streamId,
+                signal: abort.signal,
+                emit: (questionId, ask) => emit({ streamId, type: 'question', questionId, ask }),
+                onAnswered: (questionId, ask, answer) => {
+                  questionParts.push({ type: 'question', questionId, ask, answer })
+                  // 安装类工具走它们自己的 askUser context，不会触发这个回调；
+                  // 其他普通 ask_user 也不能解锁；只有显式的首次风格确认才可以。
+                  if (ask.purpose === 'style-brief') {
+                    initialStyleGate?.onStyleQuestionAnswered(ask, answer)
+                    if (initialStyleGate && !initialStyleGate.isLocked()) vfs.allowWrites()
+                  }
                 }
-              }
-            }),
-            ...buildLocalTools(roots, { canSeeImages, intent: input.text }),
-            ...buildImageTools({
-              assets: knownImages(priorMessages, attachments),
-              onNote: (assetId, description) =>
-                noteImage(input.conversationId, assetId, description)
-            }),
+              },
+              lang
+            ),
+            ...buildLocalTools(roots, { canSeeImages, intent: input.text }, lang),
+            ...buildImageTools(
+              {
+                assets: knownImages(priorMessages, attachments),
+                onNote: (assetId, description) =>
+                  noteImage(input.conversationId, assetId, description)
+              },
+              lang
+            ),
             // 截图自审:多模态模型才给——拍了看不见等于白拍
             ...(captureSessionId
-              ? buildCaptureTools({
-                  sessionId: captureSessionId,
-                  hasFiles: () => vfs.list().length > 0
-                })
+              ? buildCaptureTools(
+                  {
+                    sessionId: captureSessionId,
+                    hasFiles: () => vfs.list().length > 0
+                  },
+                  lang
+                )
               : {}),
             // MCP 排最后:名字带服务前缀,不会和内置工具撞
             ...(mcp ? mcp.tools : {})
@@ -488,30 +506,36 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       const injectedTargets = new Set(targetTemplates.map((t) => t.name))
       const catalogSkills = availableSkills.filter((s) => !injectedTargets.has(s.name))
       // 目录只列**本会话可用**的技能:纯聊天没勾就是空,连目录都不出现
-      const catalog = useTools ? skillCatalog(catalogSkills, model!.contextWindow) : ''
+      const catalog = useTools ? skillCatalog(catalogSkills, model!.contextWindow, lang) : ''
       const system = project
-        ? buildSystemPrompt(project, currentFiles, {
-            mode: useTools ? 'tools' : 'markers',
-            localScope: localScopePrompt(userRoots, detected.missing),
-            previewError,
-            slopLint,
-            skillCatalog: catalog,
-            styleBriefPrompt: renderStyleBriefPrompt(
-              project,
-              currentFiles.length > 0,
-              useTools ? 'tools' : 'markers'
-            ),
-            targetContract: [
-              targetContractPrompt(targetRoute.active),
-              renderCompatNote(targetRoute.compat)
-            ]
-              .filter(Boolean)
-              .join('\n\n'),
-            targetTemplates: renderTargetTemplates(targetTemplates),
-            captureHint: !!captureSessionId
-          })
+        ? buildSystemPrompt(
+            project,
+            currentFiles,
+            {
+              mode: useTools ? 'tools' : 'markers',
+              localScope: localScopePrompt(userRoots, detected.missing, lang),
+              previewError,
+              slopLint,
+              skillCatalog: catalog,
+              styleBriefPrompt: renderStyleBriefPrompt(
+                project,
+                currentFiles.length > 0,
+                useTools ? 'tools' : 'markers',
+                lang
+              ),
+              targetContract: [
+                targetContractPrompt(targetRoute.active, lang),
+                renderCompatNote(targetRoute.compat, lang)
+              ]
+                .filter(Boolean)
+                .join('\n\n'),
+              targetTemplates: renderTargetTemplates(targetTemplates),
+              captureHint: !!captureSessionId
+            },
+            lang
+          )
         : buildChatPrompt({
-            localScope: localScopePrompt(userRoots, detected.missing),
+            localScope: localScopePrompt(userRoots, detected.missing, lang),
             webSearch: input.webSearch === true,
             skillCatalog: catalog
           })
@@ -581,7 +605,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           ? {
               // 所有工具共用同一个同步闸门:单个 step 一次吐出超额并行调用时,
               // 只有预留到名额的会执行,其余原地返回 TOOL_BUDGET_EXCEEDED
-              tools: wrapToolsWithBudget(tools, budgetGate),
+              tools: wrapToolsWithBudget(tools, budgetGate, lang),
               stopWhen: () => governor.shouldStop(),
               prepareStep: ({ messages }: { messages: ModelMessage[] }) => {
                 // 序列化字符数做保守估算的分母;system 一并计入
@@ -782,10 +806,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
         const hitTool = governor.hitToolLimit(countToolCalls(await result.steps))
         trace.setBreaker(hitTool ? 'tool' : 'token')
         // 两种触顶给的下一步不一样:次数触顶可以去设置里调高,token 触顶只能拆需求
-        const reason = hitTool
-          ? `本轮工具调用已达上限(${governor.hardLimitText()},可在设置或项目里调整)`
-          : '本轮累计输入已超上下文预算'
-        const note = `\n\n(${reason},先停在这里。改动已保存,可以继续让我接着改。)`
+        const note = hitTool
+          ? promptText(appLanguage, 'run.stopped.tools', {
+              limit: toolLimits.hard
+            })
+          : promptText(appLanguage, 'run.stopped.context')
         toolNarration += note
         emit({ streamId, type: 'delta', text: note })
       }
