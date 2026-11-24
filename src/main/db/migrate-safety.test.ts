@@ -182,3 +182,24 @@ describe('全套迁移', () => {
     db.close()
   })
 })
+
+describe('external library migration', () => {
+  it('preserves existing projects with no external dependencies', () => {
+    const db = new Database(':memory:')
+    try {
+      for (const migration of MIGRATIONS.slice(0, 15)) db.exec(migration)
+      db.prepare('INSERT INTO projects (id, name) VALUES (?, ?)').run(
+        'existing-project',
+        'Existing project'
+      )
+      db.exec(MIGRATIONS[15])
+      expect(
+        db
+          .prepare('SELECT name, external_libraries FROM projects WHERE id = ?')
+          .get('existing-project')
+      ).toEqual({ name: 'Existing project', external_libraries: null })
+    } finally {
+      db.close()
+    }
+  })
+})

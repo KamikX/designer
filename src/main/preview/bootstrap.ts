@@ -1,4 +1,4 @@
-import type { PreviewLib, Stack } from '../../shared/types'
+import type { InstalledLibrary, PreviewLib, Stack } from '../../shared/types'
 import { ANNOTATE_RUNTIME } from './annotate-runtime'
 import { LIB_VERSIONS, libSetupPaths } from './lib-setup'
 
@@ -33,6 +33,8 @@ import { LIB_VERSIONS, libSetupPaths } from './lib-setup'
 const VENDOR_IMPORTS: Record<string, string> = {
   vue: 'preview://vendor/vue.esm.js',
   react: 'preview://vendor/react.esm.js',
+  'react/jsx-runtime': 'preview://vendor/react-jsx-runtime.esm.js',
+  'react/jsx-dev-runtime': 'preview://vendor/react-jsx-runtime.esm.js',
   'react-dom': 'preview://vendor/react-dom.esm.js',
   // React 18 的 createRoot 官方入口是 react-dom/client,但 UMD 构建里两者
   // 同一个对象,指到同一个文件即可
@@ -228,17 +230,40 @@ const REACT_BOOT = `
 </script>
 `
 
-export function buildBootstrapHtml(stack: Stack, theme?: string, libs: PreviewLib[] = []): string {
+export function buildBootstrapHtml(
+  stack: Stack,
+  theme?: string,
+  libs: PreviewLib[] = [],
+  external: InstalledLibrary[] = []
+): string {
   // 组件库目前只有 vue3 栈的运行时装配;别的栈传进来也不生效
   const activeLibs = stack === 'vue3' ? libs : []
-  const boot =
+  let boot =
     stack === 'vue3'
       ? vueBoot(libSetupPaths(activeLibs), activeLibs.includes('antdv-next'))
       : REACT_BOOT
+  const extra: Record<string, string> = {}
+  const styles: string[] = []
+  for (const lib of external) {
+    for (const [spec, file] of Object.entries(lib.entries))
+      extra[spec] = `./__libraries__/${lib.id}/${file}`
+    styles.push(...lib.styles.map((file) => `./__libraries__/${lib.id}/${file}`))
+  }
+  if (styles.length) {
+    boot = boot.replace(
+      '  try {',
+      `  try {
+    await Promise.all(${JSON.stringify(styles)}.map(href => new Promise((resolve, reject) => {
+      const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = href;
+      link.onload = resolve; link.onerror = () => reject(new Error('Library stylesheet failed: ' + href));
+      document.head.append(link);
+    })))`
+    )
+  }
   // import map 必须出现在任何模块脚本之前,所以放在 head 最前面
   return `<!doctype html>
 <html>
-<head>${buildImportMap(libImports(activeLibs))}${COMMON_HEAD}${themeTag(theme)}</head>
+<head>${buildImportMap({ ...libImports(activeLibs), ...extra })}${COMMON_HEAD}${themeTag(theme)}</head>
 <body>
 <div id="app"></div>
 ${boot}

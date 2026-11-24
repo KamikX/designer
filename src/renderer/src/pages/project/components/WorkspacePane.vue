@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LibraryPicker from '@renderer/components/libraries/LibraryPicker.vue'
 import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { AppstoreAddOutlined, FileTextOutlined } from '@antdv-next/icons'
@@ -7,7 +8,7 @@ import { useProjectStore } from '@renderer/stores/project'
 import FileTree from './FileTree.vue'
 import CodeViewer from './CodeViewer.vue'
 import PreviewPane from './PreviewPane.vue'
-import type { PreviewLib, Project } from '@shared/types'
+import type { ExternalLibraryRef, PreviewLib, Project } from '@shared/types'
 
 const props = defineProps<{ project: Project }>()
 
@@ -100,6 +101,19 @@ async function toggleLib(value: PreviewLib): Promise<void> {
     message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   }
 }
+const externalSaving = ref(false)
+async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> {
+  externalSaving.value = true
+  try {
+    await projectStore.setExternalLibraries(props.project.id, refs)
+    store.previewEpoch++
+    message.success(t('依赖包已更新,预览已刷新;AI 从下一轮开始按新依赖生成'))
+  } catch (err) {
+    message.error(uiMessage(String(err)))
+  } finally {
+    externalSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -127,23 +141,38 @@ async function toggleLib(value: PreviewLib): Promise<void> {
       />
 
       <!-- 依赖包创建后也能改:老项目不用重建就能用上组件库 -->
-      <a-popover v-if="project.stack === 'vue3'" trigger="click" placement="bottomRight">
+      <a-popover v-if="project.stack !== 'html'" trigger="click" placement="bottomRight">
         <template #content>
           <div class="libs-pop">
             <div class="libs-pop-title">{{ t('依赖包(预览环境自动加载)') }}</div>
-            <label v-for="opt in LIB_OPTIONS" :key="opt.value" class="libs-pop-row">
+            <label
+              v-for="opt in project.stack === 'vue3' ? LIB_OPTIONS : []"
+              :key="opt.value"
+              class="libs-pop-row"
+            >
               <a-checkbox :checked="libDraft.includes(opt.value)" @change="toggleLib(opt.value)" />
               <span class="libs-pop-name">{{ opt.label }}</span>
               <span class="libs-pop-meta" :style="{ color: token.colorTextTertiary }">
                 {{ opt.hint }}
               </span>
             </label>
+            <LibraryPicker
+              :key="project.id"
+              :model-value="project.externalLibraries ?? []"
+              :disabled="externalSaving"
+              :stack="project.stack"
+              @update:model-value="saveExternalLibraries"
+            />
           </div>
         </template>
         <a-tooltip :title="t('依赖包')">
           <button class="libs-btn" :style="{ color: token.colorTextSecondary }" type="button">
             <AppstoreAddOutlined />
-            <span v-if="libDraft.length" class="libs-badge tabular">{{ libDraft.length }}</span>
+            <span
+              v-if="libDraft.length + (project.externalLibraries?.length ?? 0)"
+              class="libs-badge tabular"
+              >{{ libDraft.length + (project.externalLibraries?.length ?? 0) }}</span
+            >
           </button>
         </a-tooltip>
       </a-popover>

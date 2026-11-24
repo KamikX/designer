@@ -8,6 +8,7 @@ import {
   SettingOutlined
 } from '@antdv-next/icons'
 import { useProviderStore } from '@renderer/stores/provider'
+import LibrariesPanel from './components/LibrariesPanel.vue'
 import GeneralPanel from './components/GeneralPanel.vue'
 import ProviderPanel from './components/ProviderPanel.vue'
 import DataBackendPanel from './components/DataBackendPanel.vue'
@@ -23,6 +24,14 @@ const store = useProviderStore()
 store.load()
 
 const SECTIONS = [
+  {
+    key: 'libraries',
+    get label() {
+      return t('依赖库')
+    },
+    icon: DatabaseOutlined,
+    component: LibrariesPanel
+  },
   {
     key: 'general',
     get label() {

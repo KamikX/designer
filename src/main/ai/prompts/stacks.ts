@@ -66,7 +66,7 @@ ${COMMON_RUNTIME}
   \`const props = defineProps<{ title: string; items?: Item[] }>()\`
   \`const emit = defineEmits<{ pick: [id: number] }>()\`
   编译器会据此生成运行时校验,比手写对象更准也更短。
-- 抽出来的工具函数写 .ts 文件;只允许 import 相对路径的 .vue/.ts 文件和 'vue' 本身。
+- 抽出来的工具函数写 .ts 文件;只允许 import 相对路径的 .vue/.ts 文件和 'vue' 本身,以及下方 Available external libraries 中明确列出的 import。
 ${TS_RULES}
 ${COMMON_RUNTIME}
 `,
@@ -77,7 +77,7 @@ ${COMMON_RUNTIME}
 - **组件一律用 .tsx**,工具函数用 .ts。用户明确要求 JavaScript 时才用 .jsx/.js。
 - 函数组件 + hooks;props 用 interface 或 type 声明。
 - 不需要写 \`import React\`,运行环境会自动注入。
-- 只允许 import 相对路径的 .tsx/.ts 文件和 'react' / 'react-dom',不要引其他 npm 包。
+- 只允许 import 相对路径的 .tsx/.ts 文件和 'react' / 'react-dom',此外只允许引入下方 Available external libraries 明确列出的 npm 包。
 ${TS_RULES}
 ${COMMON_RUNTIME}
 `

@@ -1,3 +1,4 @@
+import { reactive } from 'vue'
 import { describe, expect, it } from 'vitest'
 import {
   buildCreateProjectInput,
@@ -15,6 +16,7 @@ describe('buildCreateProjectInput', () => {
         designMode: 'design',
         targets: ['admin'],
         libs: ['antdv-next'],
+        externalLibraries: [],
         description: '  管理订单  ',
         styleBrief: '  深色工业感，高密度，直角卡片  '
       })
@@ -24,6 +26,7 @@ describe('buildCreateProjectInput', () => {
       designMode: 'design',
       targets: ['admin'],
       libs: ['antdv-next'],
+      externalLibraries: [],
       description: '管理订单',
       styleBrief: '深色工业感，高密度，直角卡片'
     })
@@ -37,11 +40,20 @@ describe('buildCreateProjectInput', () => {
         designMode: 'prototype',
         targets: [],
         libs: ['antdv-next'],
+        externalLibraries: [],
         description: '',
         styleBrief: '   '
       })
     ).toMatchObject({ libs: [], styleBrief: '' })
   })
+})
+
+it('creates a cloneable IPC payload from reactive external library selections', () => {
+  const form = reactive(createDefaultProjectForm())
+  form.stack = 'react'
+  form.externalLibraries = [{ name: 'zod', version: '4.4.3' }]
+  const input = buildCreateProjectInput(form)
+  expect(structuredClone(input)).toEqual(input)
 })
 
 describe('resetProjectForm', () => {
@@ -66,6 +78,7 @@ describe('resetProjectForm', () => {
       // 默认勾 web:targets 为空时端契约与端模板零注入,见 create-project.ts
       targets: ['web'],
       libs: [],
+      externalLibraries: [],
       description: '',
       styleBrief: ''
     })

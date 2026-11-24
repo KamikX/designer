@@ -250,6 +250,37 @@ export interface GroupSendInput {
 /** @deprecated 名字留作过渡,内容与 SessionSettings 一致 */
 export type ProjectSettings = SessionSettings
 
+export interface ExternalLibraryRef {
+  name: string
+  version: string
+}
+
+export interface InstallLibraryInput extends ExternalLibraryRef {
+  stacks: ('vue3' | 'react')[]
+  description: string
+  instructions: string
+  /** Full import specifiers, e.g. zod/v4. The package root is always included. */
+  subpaths: string[]
+  /** Package-relative CSS paths. */
+  css: string[]
+}
+
+export interface InstalledLibrary extends InstallLibraryInput {
+  id: string
+  installedAt: string
+  entries: Record<string, string>
+  styles: string[]
+  files: string[]
+  ready: boolean
+}
+
+export interface LibraryProgress {
+  name: string
+  version: string
+  stage: 'installing' | 'building' | 'ready' | 'error'
+  message: string
+}
+
 export interface Project {
   id: string
   name: string
@@ -259,6 +290,7 @@ export interface Project {
   targets: DesignTarget[] | null
   /** 勾选的组件库。null / [] 表示纯 Tailwind,预览不加载任何组件库 */
   libs: PreviewLib[] | null
+  externalLibraries?: ExternalLibraryRef[] | null
   description: string
   /** 用户定义的视觉方向；空字符串表示尚未定义 */
   styleBrief: string
@@ -273,6 +305,7 @@ export interface CreateProjectInput {
   designMode: DesignMode
   targets?: DesignTarget[]
   libs?: PreviewLib[]
+  externalLibraries?: ExternalLibraryRef[]
   description?: string
   styleBrief?: string
 }
@@ -1025,7 +1058,18 @@ export interface DesignerApi {
     read: () => Promise<AppConfig>
     patch: (patch: Partial<AppConfig>) => Promise<AppConfig>
   }
+  libraries: {
+    list: () => Promise<InstalledLibrary[]>
+    install: (input: InstallLibraryInput) => Promise<InstalledLibrary>
+    update: (
+      ref: ExternalLibraryRef,
+      patch: { description: string; instructions: string }
+    ) => Promise<void>
+    remove: (ref: ExternalLibraryRef) => Promise<void>
+    onProgress: (callback: (progress: LibraryProgress) => void) => () => void
+  }
   project: {
+    setExternalLibraries: (id: string, libraries: ExternalLibraryRef[]) => Promise<Project | null>
     list: () => Promise<Project[]>
     get: (id: string) => Promise<Project | null>
     create: (input: CreateProjectInput) => Promise<Project>

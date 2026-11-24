@@ -1,4 +1,4 @@
-import type { PreviewLib, Stack } from '../../shared/types'
+import type { ExternalLibraryRef, PreviewLib, Stack } from '../../shared/types'
 
 /**
  * 运行中设计会话的预览源注册表。
@@ -13,6 +13,7 @@ import type { PreviewLib, Stack } from '../../shared/types'
  */
 export interface SessionPreviewSource {
   stack: Stack
+  externalLibraries?: ExternalLibraryRef[]
   libs: PreviewLib[]
   /** 每次请求现取:截图发生在模型连续编辑之间,快照一定要是最新的 */
   files: () => { path: string; content: string }[]

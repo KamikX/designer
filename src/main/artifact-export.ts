@@ -1,3 +1,5 @@
+import { LIB_VERSIONS } from './preview/lib-setup'
+import { resolveLibraries } from './libraries/service'
 import { translate } from '../shared/i18n'
 import { mkdirSync, writeFileSync } from 'fs'
 import { dirname, join, normalize, sep } from 'path'
@@ -25,12 +27,38 @@ export async function exportArtifact(artifactId: string): Promise<string | null>
   // 规则在 shared,渲染层的文件树根节点显示的就是这个名字
   const targetDir = join(result.filePaths[0], exportDirName(project?.name, artifact.version))
 
+  const libraries = resolveLibraries(
+    project?.externalLibraries ?? [],
+    project?.stack ?? 'html',
+    project?.libs ?? []
+  )
+
+  mkdirSync(targetDir, { recursive: true })
   for (const file of getArtifactFiles(artifactId)) {
     const safe = safeJoin(targetDir, file.path)
     mkdirSync(dirname(safe), { recursive: true })
     writeFileSync(safe, file.content, 'utf-8')
   }
 
+  writeFileSync(
+    join(targetDir, 'designer-libraries.json'),
+    JSON.stringify(
+      {
+        libraries: [
+          ...(project?.libs ?? []).map((name) => ({ name, version: LIB_VERSIONS[name] })),
+          ...libraries.map(({ name, version, subpaths, css }) => ({
+            name,
+            version,
+            subpaths,
+            css
+          }))
+        ]
+      },
+      null,
+      2
+    ) + '\n',
+    'utf8'
+  )
   shell.showItemInFolder(targetDir)
   return targetDir
 }

@@ -246,6 +246,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     registerSessionPreview(captureSessionId, {
       stack: project.stack,
       libs: project.libs ?? [],
+      externalLibraries: project.externalLibraries ?? [],
       files: () => vfs.list().map((path) => vfs.raw(path))
     })
   }

@@ -1,4 +1,11 @@
-import type { CreateProjectInput, DesignMode, DesignTarget, PreviewLib, Stack } from '@shared/types'
+import type {
+  CreateProjectInput,
+  DesignMode,
+  DesignTarget,
+  ExternalLibraryRef,
+  PreviewLib,
+  Stack
+} from '@shared/types'
 
 export const STYLE_BRIEF_FIELD_LABEL = '视觉风格（可选）'
 
@@ -7,6 +14,7 @@ export interface CreateProjectForm {
   stack: Stack
   designMode: DesignMode
   targets: DesignTarget[]
+  externalLibraries: ExternalLibraryRef[]
   libs: PreviewLib[]
   description: string
   styleBrief: string
@@ -21,6 +29,7 @@ export function createDefaultProjectForm(): CreateProjectForm {
     // 设计指导骤降。用户建移动端/落地页项目时自己改勾选即可
     targets: ['web'],
     libs: [],
+    externalLibraries: [],
     description: '',
     styleBrief: ''
   }
@@ -39,6 +48,10 @@ export function buildCreateProjectInput(form: CreateProjectForm): CreateProjectI
     designMode: form.designMode,
     targets: [...form.targets],
     // 组件库只在 vue3 栈有意义；切过栈的话别把残留勾选带进去
+    externalLibraries:
+      form.stack === 'html'
+        ? []
+        : form.externalLibraries.map((ref) => ({ name: ref.name, version: ref.version })),
     libs: form.stack === 'vue3' ? [...form.libs] : [],
     description: form.description.trim(),
     styleBrief: form.styleBrief.trim()

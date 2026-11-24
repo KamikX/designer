@@ -1,3 +1,4 @@
+import { installLibrary, listLibraries, updateLibrary, removeLibrary } from '../libraries/service'
 import { translate } from '../../shared/i18n'
 import { dialog, ipcMain, nativeTheme } from 'electron'
 import { ulid } from 'ulid'
@@ -17,6 +18,8 @@ import {
 } from '../skills/files'
 import type {
   CreateProjectInput,
+  InstallLibraryInput,
+  ExternalLibraryRef,
   CreateGroupInput,
   CreateProviderInput,
   UpdateGroupInput,
@@ -35,6 +38,7 @@ import {
   renameProject,
   saveProjectSettings,
   setProjectLibs,
+  setProjectExternalLibraries,
   setProjectStyleBrief
 } from '../db/repo/project'
 import {
@@ -114,6 +118,25 @@ export function registerIpc(): void {
     nativeTheme.themeSource = next.dark ? 'dark' : 'light'
     return next
   })
+
+  ipcMain.handle('libraries:list', () => listLibraries())
+  ipcMain.handle('libraries:install', (event, input: InstallLibraryInput) =>
+    installLibrary(input, (progress) => {
+      if (!event.sender.isDestroyed()) event.sender.send('libraries:progress', progress)
+    })
+  )
+  ipcMain.handle(
+    'libraries:update',
+    (_event, ref: ExternalLibraryRef, patch: { description: string; instructions: string }) =>
+      updateLibrary(ref, patch)
+  )
+  ipcMain.handle('libraries:remove', (_event, ref: ExternalLibraryRef) =>
+    removeLibrary(ref, listProjects())
+  )
+  ipcMain.handle(
+    'project:set-external-libraries',
+    (_event, id: string, refs: ExternalLibraryRef[]) => setProjectExternalLibraries(id, refs)
+  )
 
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:get', (_e, id: string) => getProject(id))

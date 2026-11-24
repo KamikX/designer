@@ -16,7 +16,23 @@ const api: DesignerApi = {
     read: () => ipcRenderer.invoke('config:read'),
     patch: (patch) => ipcRenderer.invoke('config:patch', patch)
   },
+  libraries: {
+    list: () => ipcRenderer.invoke('libraries:list'),
+    install: (input) => ipcRenderer.invoke('libraries:install', input),
+    update: (ref, patch) => ipcRenderer.invoke('libraries:update', ref, patch),
+    remove: (ref) => ipcRenderer.invoke('libraries:remove', ref),
+    onProgress: (callback) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        progress: Parameters<typeof callback>[0]
+      ): void => callback(progress)
+      ipcRenderer.on('libraries:progress', listener)
+      return () => ipcRenderer.removeListener('libraries:progress', listener)
+    }
+  },
   project: {
+    setExternalLibraries: (id, refs) =>
+      ipcRenderer.invoke('project:set-external-libraries', id, refs),
     list: () => ipcRenderer.invoke('project:list'),
     get: (id) => ipcRenderer.invoke('project:get', id),
     create: (input) => ipcRenderer.invoke('project:create', input),

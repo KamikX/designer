@@ -1,3 +1,4 @@
+import { libraryPrompt } from '../../libraries/service'
 import type { ArtifactFile, Project } from '../../../shared/types'
 import { FILE_PROTOCOL } from './protocol'
 import { CRAFT_CORE } from './craft-core'
@@ -75,6 +76,7 @@ export function buildSystemPrompt(
     mode === 'tools' ? TOOL_PROTOCOL : FILE_PROTOCOL,
     mode === 'tools' && options.captureHint ? CAPTURE_PROTOCOL : '',
     stackPrompt(project.stack, project.libs ?? []),
+    libraryPrompt(project.externalLibraries ?? [], project.stack, project.libs ?? []),
     CRAFT_CORE,
     options.skillCatalog ?? '',
     // ---- 稳定区的尾巴:内容稳定但**这一轮取哪份**会变,排最后才不牵连前面 ----

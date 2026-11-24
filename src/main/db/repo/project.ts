@@ -1,12 +1,14 @@
 import { desc, eq, sql } from 'drizzle-orm'
 import type {
   CreateProjectInput,
+  ExternalLibraryRef,
   PreviewLib,
   Project,
   ProjectSettings
 } from '../../../shared/types'
 import { getDb } from '../index'
 import { projects } from '../schema'
+import { resolveLibraries } from '../../libraries/service'
 import type { ProjectRow } from '../schema'
 
 /**
@@ -37,10 +39,12 @@ export function getProject(id: string): Project | null {
 }
 
 export function createProject(input: CreateProjectInput): Project {
+  resolveLibraries(input.externalLibraries ?? [], input.stack, input.libs ?? [])
   return toProject(
     getDb()
       .insert(projects)
       .values({
+        externalLibraries: input.externalLibraries?.length ? input.externalLibraries : null,
         name: input.name,
         stack: input.stack,
         designMode: input.designMode,
@@ -122,4 +126,20 @@ export function saveProjectSettings(id: string, patch: ProjectSettings): void {
     .set({ settings: { ...current.settings, ...patch } })
     .where(eq(projects.id, id))
     .run()
+}
+
+export function setProjectExternalLibraries(
+  id: string,
+  refs: ExternalLibraryRef[]
+): Project | null {
+  const project = getProject(id)
+  if (!project) return null
+  resolveLibraries(refs, project.stack, project.libs ?? [])
+  const row = getDb()
+    .update(projects)
+    .set({ externalLibraries: refs.length ? refs : null, updatedAt: sql`(datetime('now'))` })
+    .where(eq(projects.id, id))
+    .returning()
+    .get()
+  return row ? toProject(row) : null
 }

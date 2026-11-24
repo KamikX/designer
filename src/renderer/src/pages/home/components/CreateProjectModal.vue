@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LibraryPicker from '@renderer/components/libraries/LibraryPicker.vue'
 import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { useProjectStore } from '@renderer/stores/project'
@@ -214,6 +215,10 @@ async function submit(): Promise<void> {
               </span>
             </div>
           </div>
+        </a-form-item>
+
+        <a-form-item v-if="form.stack !== 'html'" :label="t('依赖库')">
+          <LibraryPicker :key="form.stack" v-model="form.externalLibraries" :stack="form.stack" />
         </a-form-item>
 
         <a-form-item :label="t('设计端类型(可多选,决定 AI 加载哪些端的设计规范)')">

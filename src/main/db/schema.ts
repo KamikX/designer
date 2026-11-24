@@ -1,7 +1,12 @@
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { ulid } from 'ulid'
-import type { DesignTarget, PreviewLib, SessionSettings } from '../../shared/types'
+import type {
+  DesignTarget,
+  ExternalLibraryRef,
+  PreviewLib,
+  SessionSettings
+} from '../../shared/types'
 
 /**
  * 表结构的唯一事实来源。
@@ -48,6 +53,7 @@ export const projects = sqliteTable(
     targets: text('targets', { mode: 'json' }).$type<DesignTarget[]>(),
     /** 勾选的组件库(antdv-next 等),JSON 数组。null = 纯 Tailwind */
     libs: text('libs', { mode: 'json' }).$type<PreviewLib[]>(),
+    externalLibraries: text('external_libraries', { mode: 'json' }).$type<ExternalLibraryRef[]>(),
     description: text('description').notNull().default(''),
     /** 项目的视觉方向；空字符串表示用户尚未定义 */
     styleBrief: text('style_brief').notNull().default(''),

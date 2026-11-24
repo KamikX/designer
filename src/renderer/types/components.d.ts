@@ -31,6 +31,7 @@ declare module 'vue' {
     AMentions: typeof import('antdv-next')['Mentions']
     AMenu: typeof import('antdv-next')['Menu']
     AModal: typeof import('antdv-next')['Modal']
+    APopconfirm: typeof import('antdv-next')['Popconfirm']
     APopover: typeof import('antdv-next')['Popover']
     AResult: typeof import('antdv-next')['Result']
     ASegmented: typeof import('antdv-next')['Segmented']

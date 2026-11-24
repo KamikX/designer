@@ -1,3 +1,4 @@
+import { resolveLibraries, libraryFile } from '../libraries/service'
 import { readFileSync } from 'fs'
 import { extname, join, normalize, sep } from 'path'
 import { app, protocol } from 'electron'
@@ -10,7 +11,7 @@ import { resolveModuleFile } from './resolve'
 import { libSetupSource } from './lib-setup'
 import { getSessionPreview } from './session-registry'
 import type { Compiled } from './compile'
-import type { PreviewLib, Stack } from '../../shared/types'
+import type { ExternalLibraryRef, PreviewLib, Stack } from '../../shared/types'
 
 /**
  * preview:// 协议:iframe 预览的静态服务。
@@ -54,6 +55,13 @@ const MIME: Record<string, string> = {
   '.vue': 'text/plain; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.jpg': 'image/jpeg',
   '.md': 'text/plain; charset=utf-8'
 }
 
@@ -129,6 +137,7 @@ function serveArtifact(pathname: string): Response {
     files: getArtifactFiles(artifact.id),
     stack: project.stack,
     libs: project.libs ?? [],
+    externalLibraries: project.externalLibraries ?? [],
     filePath,
     // 版本产物不可变,(artifactId, path) 是天然的永久缓存键
     cacheScope: artifact.id
@@ -145,6 +154,7 @@ function serveSession(pathname: string): Response {
     files: source.files(),
     stack: source.stack,
     libs: source.libs,
+    externalLibraries: source.externalLibraries ?? [],
     filePath: decodeURIComponent(rest.join('/')),
     // 会话内容在模型的连续编辑下随时在变,不能缓存
     cacheScope: null
@@ -155,12 +165,45 @@ interface FileSetRequest {
   files: { path: string; content: string }[]
   stack: Stack
   libs: PreviewLib[]
+  externalLibraries: ExternalLibraryRef[]
   filePath: string
   /** 非空时按 (scope, path) 缓存编译产物;null 表示内容可变,每次现编 */
   cacheScope: string | null
 }
 
-function serveFileSet({ files, stack, libs, filePath, cacheScope }: FileSetRequest): Response {
+function serveFileSet({
+  files,
+  stack,
+  libs,
+  externalLibraries,
+  filePath,
+  cacheScope
+}: FileSetRequest): Response {
+  let external: ReturnType<typeof resolveLibraries>
+  try {
+    external = resolveLibraries(externalLibraries, stack, libs)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const script = `reportError(${JSON.stringify(message).replace(/</g, '\\u003c')})`
+    return html(
+      injectHtmlRuntime(`<html><head></head><body><script>${script}</script></body></html>`)
+    )
+  }
+  if (filePath.startsWith('__libraries__/')) {
+    const [, id, ...parts] = filePath.split('/')
+    const lib = external.find((lib) => lib.id === id)
+    if (!lib) return new Response('Library not selected', { status: 404 })
+    const file = parts.join('/')
+    if (!lib.files.includes(file)) return new Response('Library file not found', { status: 404 })
+    const target = libraryFile(lib, file)
+    try {
+      return new Response(readFileSync(target), {
+        headers: { 'content-type': mimeOf(target), 'cache-control': 'no-cache' }
+      })
+    } catch {
+      return new Response('Library file not found', { status: 404 })
+    }
+  }
   const isEntry = filePath === '' || filePath === 'index.html'
   // 设计 token:三种栈共用同一个约定文件,由运行时统一注入,
   // 页面里不需要 link 或 import
@@ -168,7 +211,7 @@ function serveFileSet({ files, stack, libs, filePath, cacheScope }: FileSetReque
 
   // vue3 / react:入口出引导页,其余文件按名直出(引导页里 fetch 用)
   if (isEntry && stack !== 'html') {
-    return html(buildBootstrapHtml(stack, theme, libs))
+    return html(buildBootstrapHtml(stack, theme, libs, external))
   }
 
   const requested = filePath === '' ? 'index.html' : filePath
