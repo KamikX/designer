@@ -7,7 +7,8 @@ import { useRouter } from 'vue-router'
 import { useProjectStore } from '@renderer/stores/project'
 import { useChatStore } from '@renderer/stores/chat'
 import CreateProjectModal from './components/CreateProjectModal.vue'
-import type { Project, Stack } from '@shared/types'
+import ProjectTags from '@renderer/components/project/ProjectTags.vue'
+import type { Project } from '@shared/types'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
 // 上下文,主题、语言、z-index 全用的是默认值
@@ -19,19 +20,6 @@ const store = useProjectStore()
 store.load()
 
 const createOpen = ref(false)
-
-/*
- * 技术栈只留一个标签,没有配色。
- *
- * 原来每个栈配一套主题色 + 一条顶部渐变条,而 craft-anti-slop 把"圆角卡片配
- * 彩色竖条"和"双色渐变"直接列为模板感的来源。更关键的是那个颜色**不表达
- * 任何状态**——HTML 是橙的、Vue 是绿的,只是装饰。颜色留给真正的状态
- * (生成中、出错),技术栈用小号定宽字说清楚就够了。
- */
-const STACK_LABEL: Record<Stack, string> = { html: 'HTML', vue3: 'Vue 3', react: 'React' }
-
-const modeLabel = (mode: string): string =>
-  mode === 'design' ? t('UI 设计') : mode === 'prototype' ? t('原型') : mode
 
 /** 正在生成中的项目集合。流状态在 chat store 里全局存着,首页也看得见 */
 const chatStore = useChatStore()
@@ -125,12 +113,17 @@ function fromNow(time: string): string {
             <div class="card-desc" :style="{ color: token.colorTextTertiary }">
               {{ p.description || t('暂无描述') }}
             </div>
+            <ProjectTags
+              class="card-tags"
+              :stack="p.stack"
+              :design-mode="p.designMode"
+              :targets="p.targets"
+            />
           </div>
 
           <div class="card-foot" :style="{ borderColor: token.colorBorderSecondary }">
-            <!-- 技术栈与模式:定宽小字,中性色。它们是标注,不是强调 -->
+            <!-- Keep secondary metadata quiet so the project name remains the entry point. -->
             <span class="card-meta" :style="{ color: token.colorTextQuaternary }">
-              {{ STACK_LABEL[p.stack] }} · {{ modeLabel(p.designMode) }} ·
               {{ fromNow(p.updatedAt) }}
             </span>
             <!-- 唯一上色的地方:真正的状态 -->
@@ -315,6 +308,10 @@ function fromNow(time: string): string {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.card-tags {
+  margin-top: 10px;
 }
 
 .card-foot {

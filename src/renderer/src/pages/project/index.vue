@@ -7,6 +7,7 @@ import ChatPanel from './components/ChatPanel.vue'
 import WorkspacePane from './components/WorkspacePane.vue'
 import ExportButton from './components/ExportButton.vue'
 import ProjectSettingsButton from './components/ProjectSettingsButton.vue'
+import ProjectTags from '@renderer/components/project/ProjectTags.vue'
 
 /**
  * 项目工作台:左对话 / 右预览与代码,中间分割条可拖拽调宽。
@@ -28,8 +29,6 @@ watch(
   },
   { immediate: true }
 )
-
-const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react: 'React' }
 </script>
 
 <template>
@@ -48,11 +47,13 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
            不用 h1:h1 是首页那种独占一行的页头,这里是一条工具栏,28px 会
            把两侧的滚动区各吃掉一截高度 -->
       <h2 class="workbench-title">{{ store.current?.name }}</h2>
-      <!-- 技术栈是元数据不是标签:和首页项目卡一样降成一行等宽小字,
-           a-tag 的描边框会让它读起来像一个可点的筛选器 -->
-      <span v-if="store.current" class="workbench-stack">
-        {{ STACK_LABEL[store.current.stack] }}
-      </span>
+      <ProjectTags
+        v-if="store.current"
+        class="workbench-tags"
+        :stack="store.current.stack"
+        :design-mode="store.current.designMode"
+        :targets="store.current.targets"
+      />
       <!-- 顶到最右:导出与项目设置都是项目级动作,和标题同级 -->
       <ExportButton v-if="store.current" style="margin-left: auto" />
       <ProjectSettingsButton v-if="store.current" :project="store.current" />
@@ -92,18 +93,21 @@ const STACK_LABEL: Record<string, string> = { html: 'HTML', vue3: 'Vue 3', react
 
 .workbench-title {
   margin: 0;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.workbench-stack {
-  flex-shrink: 0;
-  font-size: 12px;
-  /* 比标题退两级:它是"这是什么栈"的注脚,不参与标题那一层 */
-  color: var(--text-soft);
-  letter-spacing: 0.01em;
+.workbench-tags {
+  flex: 0 1 auto;
+}
+
+.workbench-tags :deep(.ant-tag) {
+  background: #fff;
+  color: #000;
+  border: none;
 }
 
 /*
