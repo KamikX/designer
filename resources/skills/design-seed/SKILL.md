@@ -38,6 +38,10 @@ StyleBrief 高于本文任何示例。design-seed 不提供可复制的成品视
 
 ## 先展示体系，再扩展页面
 
+The specification-page workflow below applies to page targets. For `components` projects, follow
+`target-components` for the preview deliverable instead; do not create a separate design-system
+page or view. Theme generation and semantic token requirements above still apply.
+
 ## 第一个页面画设计体系本身
 
 token 定完之后,**先画一个可预览的规范页**(html 栈叫 `design-system.html`,

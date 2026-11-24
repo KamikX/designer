@@ -8,3 +8,4 @@ out
 
 # 截图冒烟的临时 bundle
 .capture-smoke*.cjs
+docs/snippet.md

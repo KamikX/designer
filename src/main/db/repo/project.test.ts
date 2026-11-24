@@ -164,3 +164,43 @@ describe('project visual guidance persistence', () => {
     expect(state.updates.at(-1)).not.toHaveProperty('visualStylePriority')
   })
 })
+
+describe('project target validation', () => {
+  beforeEach(() => {
+    state.creates.length = 0
+  })
+
+  it('persists component development in the existing target field', () => {
+    expect(createProject({ ...projectInput(), targets: ['components'] }).targets).toEqual([
+      'components'
+    ])
+    expect(state.creates).toHaveLength(1)
+  })
+
+  it.each([
+    { targets: ['web', 'mobile'] },
+    { targets: ['admin', 'landing'] },
+    { targets: [] },
+    { targets: undefined }
+  ] as { targets: CreateProjectInput['targets'] }[])(
+    'preserves valid page and empty selections: %j',
+    ({ targets }) => {
+      const created = createProject({ ...projectInput(), targets })
+      expect(created.targets).toEqual(targets?.length ? targets : null)
+    }
+  )
+
+  it.each([
+    { targets: ['components', 'web'] },
+    { targets: ['admin', 'components'] },
+    { targets: ['unknown'] },
+    { targets: 'components' },
+    { targets: null },
+    { targets: [1] },
+    { targets: [{}] },
+    { targets: new Array(1) }
+  ])('rejects invalid IPC targets before writing: %j', ({ targets }) => {
+    expect(() => createProject({ ...projectInput(), targets } as never)).toThrow()
+    expect(state.creates).toHaveLength(0)
+  })
+})

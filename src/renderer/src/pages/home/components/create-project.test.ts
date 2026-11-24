@@ -4,6 +4,7 @@ import {
   buildCreateProjectInput,
   createDefaultProjectForm,
   resetProjectForm,
+  toggleProjectTarget,
   STYLE_BRIEF_FIELD_LABEL
 } from './create-project'
 
@@ -99,4 +100,41 @@ describe('CreateProjectModal', () => {
   it('明确标注视觉风格可以留空', () => {
     expect(STYLE_BRIEF_FIELD_LABEL).toBe('视觉风格（可选）')
   })
+})
+
+describe('component target selection', () => {
+  it('replaces page targets and allows deselection without selecting a default', () => {
+    const form = createDefaultProjectForm()
+    form.targets = ['web', 'mobile']
+    toggleProjectTarget(form, 'components')
+    expect(form.targets).toEqual(['components'])
+    toggleProjectTarget(form, 'components')
+    expect(form.targets).toEqual([])
+  })
+
+  it('replaces component development with a page target and preserves page multi-selection', () => {
+    const form = createDefaultProjectForm()
+    toggleProjectTarget(form, 'components')
+    toggleProjectTarget(form, 'admin')
+    toggleProjectTarget(form, 'mobile')
+    expect(form.targets).toEqual(['admin', 'mobile'])
+    toggleProjectTarget(form, 'admin')
+    expect(form.targets).toEqual(['mobile'])
+  })
+
+  it.each(['html', 'vue3', 'react'] as const)(
+    'submits components and resets to Web for %s',
+    (stack) => {
+      const form = reactive(createDefaultProjectForm())
+      form.stack = stack
+      toggleProjectTarget(form, 'components')
+      const input = buildCreateProjectInput(form)
+      expect(input.targets).toEqual(['components'])
+      expect(input.stack).toBe(stack)
+      expect(structuredClone(input)).toEqual(input)
+      resetProjectForm(form)
+      expect(form.targets).toEqual(['web'])
+      expect(input.targets).toEqual(['components'])
+    }
+  )
 })

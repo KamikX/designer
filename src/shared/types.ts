@@ -106,7 +106,8 @@ export type DesignMode = 'design' | 'prototype'
  *
  * mobile 移动端 App / web PC Web 应用 / landing 营销落地页 / admin 中后台
  */
-export type DesignTarget = 'mobile' | 'web' | 'landing' | 'admin'
+/** Component projects exclude page targets so page templates cannot expand their scope. */
+export type DesignTarget = 'mobile' | 'web' | 'landing' | 'admin' | 'components'
 
 /**
  * 预览环境可加载的组件库(CDN / vendor 的浏览器 ESM 构建)。

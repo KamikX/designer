@@ -64,3 +64,14 @@ export function buildCreateProjectInput(form: CreateProjectForm): CreateProjectI
     visualStylePriority: form.visualStylePriority
   }
 }
+
+/** Component deliverables need their own contract rather than page-target templates. */
+export function toggleProjectTarget(form: CreateProjectForm, value: DesignTarget): void {
+  if (form.targets.includes(value)) {
+    form.targets = form.targets.filter((target) => target !== value)
+  } else if (value === 'components') {
+    form.targets = ['components']
+  } else {
+    form.targets = [...form.targets.filter((target) => target !== 'components'), value]
+  }
+}

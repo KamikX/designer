@@ -824,5 +824,8 @@
   "Visual style 优先": "Visual style first",
   "DESIGN.md 优先": "DESIGN.md first",
   "已清除 Visual style；继续使用 DESIGN.md 的视觉规则。": "Visual style cleared; continue using the visual rules in DESIGN.md.",
-  "移除": "Remove"
+  "移除": "Remove",
+  "组件开发": "Component development",
+  "通过提示词或参考素材开发可复用组件，提供独立预览": "Reusable components from prompts or references, with an isolated preview.",
+  "设计目标（页面类型可多选；组件开发单独选择）": "Design targets (select multiple page types, or Component development alone)"
 }

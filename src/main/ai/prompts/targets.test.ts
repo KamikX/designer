@@ -9,7 +9,7 @@ import {
 import { buildSystemPrompt } from './index'
 import { loadTargetTemplates } from '../../skills/targets'
 import type { FileSkill } from '../../skills/scan'
-import type { Project } from '../../../shared/types'
+import type { Project, Stack } from '../../../shared/types'
 
 function builtinSkill(name: string): FileSkill {
   const dir = join(process.cwd(), 'resources', 'skills', name)
@@ -152,4 +152,79 @@ describe('routeActiveTargets 活动目标路由', () => {
     expect(note).toContain('Web 应用')
     expect(note).not.toContain('模板正文')
   })
+})
+
+describe('component development prompts', () => {
+  const skills = [builtinSkill('target-components'), builtinSkill('target-web')]
+
+  it('always selects the component template without component keywords', () => {
+    const route = routeActiveTargets({
+      targets: ['components'],
+      userText: 'Match this image, then make the selected state clearer',
+      currentFiles: [{ path: 'App.vue' }]
+    })
+    expect(route).toEqual({ active: ['components'], compat: [] })
+    const templates = loadTargetTemplates(skills, route.active)
+    expect(templates.map((template) => template.name)).toEqual(['target-components'])
+    expect(templates[0].body).toContain('# Component development')
+    expect(templates[0].body).not.toContain('metadata:')
+  })
+
+  it.each(['html', 'vue3', 'react'] as Stack[])(
+    'includes component boundaries and the existing entry contract for %s in both protocols',
+    (stack) => {
+      for (const mode of ['tools', 'markers'] as const) {
+        for (const lang of ['en-US', 'zh-CN'] as const) {
+          const project = {
+            id: 'components-project',
+            name: 'Components',
+            stack,
+            designMode: 'design',
+            targets: ['components'],
+            description: '',
+            styleBrief: 'Warm neutrals',
+            designDocument: '',
+            visualStylePriority: 'styleBrief',
+            settings: null,
+            createdAt: '',
+            updatedAt: '',
+            libs: stack === 'vue3' ? ['antdv-next'] : []
+          } as Project
+          const prompt = buildSystemPrompt(
+            project,
+            [],
+            {
+              mode,
+              targetContract: targetContractPrompt(['components'], lang),
+              targetTemplates: renderTargetTemplates(loadTargetTemplates(skills, ['components']))
+            },
+            lang
+          )
+          expect(prompt).toContain(lang === 'en-US' ? '**Component development**' : '**组件开发**')
+          expect(prompt).not.toContain(
+            lang === 'en-US' ? '**Multi-target deliverables**' : '多端交付结构'
+          )
+          expect(prompt).toContain('ask which part to')
+          expect(prompt).toContain('Do not add an application shell')
+          expect(prompt).toContain('Keep components independent of preview-only data')
+          expect(prompt).toContain('Do not generate Storybook configuration')
+          expect(prompt).toContain(
+            stack === 'html' ? 'index.html' : stack === 'vue3' ? 'App.vue' : 'App.tsx'
+          )
+          expect(prompt).toContain(mode === 'tools' ? 'apply_string_edits' : '<antdFile')
+          expect(prompt).not.toMatch(/\{(?:runtime|typeRules|targets|roles|multi)\}/)
+          expect(prompt.indexOf('# Component development')).toBeLessThan(
+            prompt.indexOf(lang === 'en-US' ? '## Current design' : '## 当前设计稿')
+          )
+          if (stack === 'vue3') {
+            expect(prompt).toContain(
+              lang === 'en-US'
+                ? 'unless the user explicitly requests developing that custom component'
+                : '用户明确要求开发该自定义组件时除外'
+            )
+          }
+        }
+      }
+    }
+  )
 })

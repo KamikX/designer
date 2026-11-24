@@ -8,7 +8,8 @@ import type { DesignTarget, PreviewLib, Stack } from '@shared/types'
 import {
   buildCreateProjectInput,
   createDefaultProjectForm,
-  resetProjectForm
+  resetProjectForm,
+  toggleProjectTarget
 } from './create-project'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
@@ -77,13 +78,16 @@ const TARGET_OPTIONS = computed<{ value: DesignTarget; label: string; hint: stri
     value: 'admin',
     label: t('中后台'),
     hint: t('管理系统,信息密度优先,表格与筛选')
+  },
+  {
+    value: 'components',
+    label: t('组件开发'),
+    hint: t('通过提示词或参考素材开发可复用组件，提供独立预览')
   }
 ])
 
 function toggleTarget(value: DesignTarget): void {
-  const at = form.targets.indexOf(value)
-  if (at >= 0) form.targets.splice(at, 1)
-  else form.targets.push(value)
+  toggleProjectTarget(form, value)
 }
 
 const STACK_OPTIONS = computed<{ value: Stack; label: string; hint: string }[]>(() => [
@@ -228,7 +232,7 @@ async function submit(): Promise<void> {
           <LibraryPicker :key="form.stack" v-model="form.externalLibraries" :stack="form.stack" />
         </a-form-item>
 
-        <a-form-item :label="t('设计端类型(可多选,决定 AI 加载哪些端的设计规范)')">
+        <a-form-item :label="t('设计目标（页面类型可多选；组件开发单独选择）')">
           <div class="target-grid">
             <div
               v-for="opt in TARGET_OPTIONS"

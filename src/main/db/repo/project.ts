@@ -2,6 +2,7 @@ import { validateVisualGuidance } from '../../../shared/visual-guidance'
 import { desc, eq, sql } from 'drizzle-orm'
 import type {
   CreateProjectInput,
+  DesignTarget,
   ExternalLibraryRef,
   PreviewLib,
   Project,
@@ -25,8 +26,7 @@ import type { ProjectRow } from '../schema'
  * 契约对不上，这几行的返回值就直接编译不过，不会悄悄漂移。
  */
 
-// stack/designMode 在库里是宽松的 text，出库时收窄成联合类型。
-// 运行时不做校验——写入口只有 createProject，入参本身就是联合类型
+// Keep legacy rows readable without rewriting their persisted configuration.
 function toProject(row: ProjectRow): Project {
   return row as Project
 }
@@ -40,7 +40,26 @@ export function getProject(id: string): Project | null {
   return row ? toProject(row) : null
 }
 
+const DESIGN_TARGETS: readonly DesignTarget[] = ['mobile', 'web', 'landing', 'admin', 'components']
+
+/** IPC callers can bypass the wizard, so enforce the component boundary before persistence. */
+function validateTargets(targets: unknown): DesignTarget[] | null {
+  if (targets === undefined) return null
+  if (
+    !Array.isArray(targets) ||
+    Array.from(targets).some((target) => !DESIGN_TARGETS.includes(target))
+  ) {
+    throw new Error('Invalid design targets')
+  }
+  const unique = [...new Set(targets)] as DesignTarget[]
+  if (unique.includes('components') && unique.length > 1) {
+    throw new Error('Component development cannot be combined with page targets')
+  }
+  return unique.length ? unique : null
+}
+
 export function createProject(input: CreateProjectInput): Project {
+  const targets = validateTargets(input.targets)
   const guidance = validateVisualGuidance({
     styleBrief: input.styleBrief === undefined ? '' : input.styleBrief,
     designDocument: input.designDocument === undefined ? '' : input.designDocument,
@@ -57,7 +76,7 @@ export function createProject(input: CreateProjectInput): Project {
         stack: input.stack,
         designMode: input.designMode,
         // 空数组归一成 null:两者都是"没选",不该以两种形态存在库里
-        targets: input.targets?.length ? input.targets : null,
+        targets,
         libs: input.libs?.length ? input.libs : null,
         description: input.description ?? '',
         ...guidance

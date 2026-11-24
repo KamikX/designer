@@ -12,6 +12,14 @@ function readSkill(name: string): string {
 }
 
 describe('内置设计技能的 StyleBrief 契约', () => {
+  it('keeps the seed specification-page workflow out of component projects', () => {
+    const seed = readSkill('design-seed')
+    expect(seed).toContain('The specification-page workflow below applies to page targets')
+    expect(seed).toContain('For `components` projects')
+    expect(seed).toContain('do not create a separate design-system')
+    expect(readSkill('target-components')).toContain('shared semantic tokens from `theme.css`')
+  })
+
   it('design-seed 以 StyleBrief 生成完整主题，而非复制固定母版', () => {
     const seed = readSkill('design-seed')
 

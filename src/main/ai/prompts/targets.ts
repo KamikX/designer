@@ -26,7 +26,8 @@ function targetLabels(lang: PromptLanguage): Record<DesignTarget, string> {
     landing: promptText(lang, 'targets.labels.landing'),
     web: promptText(lang, 'targets.labels.web'),
     mobile: promptText(lang, 'targets.labels.mobile'),
-    admin: promptText(lang, 'targets.labels.admin')
+    admin: promptText(lang, 'targets.labels.admin'),
+    components: promptText(lang, 'targets.labels.components')
   }
 }
 
@@ -35,7 +36,8 @@ function targetRoles(lang: PromptLanguage): Record<DesignTarget, string> {
     landing: promptText(lang, 'targets.roles.landing'),
     web: promptText(lang, 'targets.roles.web'),
     mobile: promptText(lang, 'targets.roles.mobile'),
-    admin: promptText(lang, 'targets.roles.admin')
+    admin: promptText(lang, 'targets.roles.admin'),
+    components: promptText(lang, 'targets.roles.components')
   }
 }
 
@@ -64,6 +66,7 @@ export function targetContractPrompt(
  * 也不为"可能用得上"付三倍稳定区。
  */
 const TARGET_KEYWORDS: Record<DesignTarget, RegExp> = {
+  components: /组件|component|komponent/i,
   admin: /中后台|后台|admin|管理端|运营端/i,
   landing: /落地页|landing|官网首页|营销页/i,
   mobile: /移动端|手机|mobile|app\b|真机/i,
@@ -72,6 +75,7 @@ const TARGET_KEYWORDS: Record<DesignTarget, RegExp> = {
 
 /** 文件路径 → 端的启发:多端交付结构约定每端一个入口/目录 */
 const TARGET_PATH_HINTS: Record<DesignTarget, RegExp> = {
+  components: /(^|\/)components\//,
   admin: /(^|\/)admin[./]/,
   landing: /(^|\/)landing[./]/,
   mobile: /(^|\/)mobile[./]/,
