@@ -645,6 +645,8 @@ export interface ArtifactFile {
 }
 
 export interface SendChatInput {
+  /** The selected project snapshot is the base for this turn, even when newer versions exist. */
+  baseArtifactId?: string
   conversationId: string
   text: string
   providerId: string

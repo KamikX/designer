@@ -48,6 +48,9 @@ export const useArtifactStore = defineStore('artifact', {
     projectId: '' as string,
     artifacts: [] as Artifact[],
     currentId: '' as string,
+    loading: false,
+    loadError: '',
+    requestId: 0,
     files: [] as ArtifactFile[],
     /** 流式期间的半成品文件,按出现顺序 */
     pending: [] as PendingFile[],
@@ -104,6 +107,9 @@ export const useArtifactStore = defineStore('artifact', {
      * 上一个项目的 preview://artifact/…。用户看到的"串",有一部分就是这个。
      */
     async loadForProject(projectId: string): Promise<void> {
+      const requestId = ++this.requestId
+      this.loading = true
+      this.loadError = ''
       this.projectId = projectId
       this.pending = []
       this.pendingDeletes = []
@@ -112,27 +118,45 @@ export const useArtifactStore = defineStore('artifact', {
       this.files = []
       this.selectedPath = ''
 
-      const artifacts = await window.api.artifact.list(projectId)
-      // await 期间用户可能又切走了:晚到的回复不许翻案
-      if (this.projectId !== projectId) return
-      this.artifacts = artifacts
-      await this.select(artifacts[0]?.id ?? '')
+      try {
+        const artifacts = await window.api.artifact.list(projectId)
+        if (this.requestId !== requestId || this.projectId !== projectId) return
+        this.artifacts = artifacts
+        await this.select(artifacts[0]?.id ?? '')
+      } catch (error) {
+        if (this.requestId !== requestId || this.projectId !== projectId) return
+        this.loadError = error instanceof Error ? error.message : String(error)
+        this.loading = false
+      }
     },
 
     async select(artifactId: string): Promise<void> {
-      this.currentId = artifactId
+      if (artifactId && !this.artifacts.some((a) => a.id === artifactId)) return
+      const requestId = ++this.requestId
+      const projectId = this.projectId
+      this.loadError = ''
       if (!artifactId) {
+        this.currentId = ''
         this.files = []
         this.selectedPath = ''
+        this.loading = false
         return
       }
-      const files = await window.api.artifact.files(artifactId)
-      // 同上。注意空 id 走的是上面的同步分支,它不占 IPC 的先后序位,
-      // 单靠"回复按序到达"兜不住这条
-      if (this.currentId !== artifactId) return
-      this.files = files
-      if (!files.some((f) => f.path === this.selectedPath)) {
-        this.selectedPath = files[0]?.path ?? ''
+      this.loading = true
+      try {
+        const files = await window.api.artifact.files(artifactId)
+        if (this.requestId !== requestId || this.projectId !== projectId) return
+        // Commit the identity and files together so preview, code and export agree.
+        this.files = files
+        this.currentId = artifactId
+        if (!files.some((f) => f.path === this.selectedPath)) {
+          this.selectedPath = files[0]?.path ?? ''
+        }
+      } catch (error) {
+        if (this.requestId !== requestId || this.projectId !== projectId) return
+        this.loadError = error instanceof Error ? error.message : String(error)
+      } finally {
+        if (this.requestId === requestId && this.projectId === projectId) this.loading = false
       }
     },
 
@@ -222,19 +246,33 @@ export const useArtifactStore = defineStore('artifact', {
      */
     async afterNewVersion(artifactId: string): Promise<void> {
       const projectId = this.projectId
-      const artifacts = await window.api.artifact.list(projectId)
-      if (projectId !== this.projectId) return
+      const requestId = ++this.requestId
+      this.loading = true
+      this.loadError = ''
+      let artifacts: Artifact[]
+      try {
+        artifacts = await window.api.artifact.list(projectId)
+      } catch (error) {
+        if (projectId !== this.projectId || requestId !== this.requestId) return
+        this.loadError = error instanceof Error ? error.message : String(error)
+        this.resetPending()
+        this.loading = false
+        return
+      }
+      if (projectId !== this.projectId || requestId !== this.requestId) return
       this.artifacts = artifacts
       if (!artifacts.some((a) => a.id === artifactId)) {
+        this.loading = false
         this.resetPending()
         return
       }
       await this.select(artifactId)
+      if (projectId !== this.projectId || this.requestId !== requestId + 1) return
       this.resetPending()
     },
 
     async exportCurrent(): Promise<string | null> {
-      if (!this.currentId) return null
+      if (!this.currentId || this.loading) return null
       this.exporting = true
       try {
         return await window.api.artifact.exportTo(this.currentId)

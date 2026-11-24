@@ -6,6 +6,7 @@ import { AppstoreAddOutlined, FileTextOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { useProjectStore } from '@renderer/stores/project'
 import FileTree from './FileTree.vue'
+import VersionPicker from './VersionPicker.vue'
 import CodeViewer from './CodeViewer.vue'
 import PreviewPane from './PreviewPane.vue'
 import type { ExternalLibraryRef, PreviewLib, Project } from '@shared/types'
@@ -140,6 +141,8 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
         ]"
       />
 
+      <VersionPicker :project-id="project.id" />
+
       <!-- 依赖包创建后也能改:老项目不用重建就能用上组件库 -->
       <a-popover v-if="project.stack !== 'html'" trigger="click" placement="bottomRight">
         <template #content>
@@ -178,6 +181,13 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
       </a-popover>
     </div>
 
+    <a-alert
+      v-if="store.loadError"
+      type="error"
+      show-icon
+      :message="uiMessage(store.loadError)"
+      style="margin-top: 12px"
+    />
     <div class="workspace-body">
       <!-- 和对话侧、首页同一副空态骨架(淡图标 + 真 h3 + 13px 说明)。
            a-empty 自带的那张灰色插画在三种空态里各画一次,谁都不像这个应用 -->
@@ -235,6 +245,7 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
  * 短于它分隔的内容,就不像结构而像一处装饰。
  */
 .workspace-header {
+  flex-wrap: wrap;
   flex-shrink: 0;
   gap: 12px;
   display: flex;

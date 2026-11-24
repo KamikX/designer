@@ -170,3 +170,74 @@ describe('切项目', () => {
     expect(store.files).toEqual([])
   })
 })
+
+describe('version selection', () => {
+  it('commits identity and files together, retaining an existing selected path', async () => {
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    store.artifacts = [artifact('new', 2), artifact('old', 1)]
+    store.currentId = 'new'
+    store.files = [file('App.vue', 'new')]
+    store.selectedPath = 'App.vue'
+    const reply = deferred<ArtifactFile[]>()
+    files.mockReturnValue(reply.promise)
+
+    const selection = store.select('old')
+    expect(store.loading).toBe(true)
+    expect(store.currentId).toBe('new')
+    expect(store.files[0].content).toBe('new')
+    reply.resolve([file('App.vue', 'old')])
+    await selection
+
+    expect(store.currentId).toBe('old')
+    expect(store.selectedPath).toBe('App.vue')
+    expect(store.files[0].content).toBe('old')
+    expect(store.loading).toBe(false)
+  })
+
+  it('preserves the displayed snapshot when loading fails', async () => {
+    const store = useArtifactStore()
+    store.artifacts = [artifact('new', 2), artifact('old', 1)]
+    store.currentId = 'new'
+    store.files = [file('App.vue', 'new')]
+    files.mockRejectedValue(new Error('load failed'))
+    await store.select('old')
+    expect(store.currentId).toBe('new')
+    expect(store.files[0].content).toBe('new')
+    expect(store.loadError).toBe('load failed')
+    expect(store.loading).toBe(false)
+  })
+
+  it('ignores an older request even when the same version is selected again', async () => {
+    const store = useArtifactStore()
+    store.artifacts = [artifact('a', 2), artifact('b', 1)]
+    const slow = deferred<ArtifactFile[]>()
+    files
+      .mockReturnValueOnce(slow.promise)
+      .mockResolvedValueOnce([file('b', 'b')])
+      .mockResolvedValueOnce([file('a', 'latest reply')])
+    const first = store.select('a')
+    await store.select('b')
+    await store.select('a')
+    slow.resolve([file('a', 'stale reply')])
+    await first
+    expect(store.files[0].content).toBe('latest reply')
+    expect(store.selectedPath).toBe('a')
+  })
+
+  it('rejects IDs outside the loaded project list', async () => {
+    const store = useArtifactStore()
+    await store.select('foreign')
+    expect(files).not.toHaveBeenCalled()
+  })
+
+  it('opens the newest snapshot again when re-entering a project', async () => {
+    const store = useArtifactStore()
+    list.mockResolvedValue([artifact('new', 2), artifact('old', 1)])
+    files.mockImplementation(async (id) => [file(id, id)])
+    await store.loadForProject('p')
+    await store.select('old')
+    await store.loadForProject('p')
+    expect(store.currentId).toBe('new')
+  })
+})

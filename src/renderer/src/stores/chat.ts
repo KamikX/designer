@@ -122,6 +122,7 @@ export const useChatStore = defineStore('chat', {
      */
     streams: {} as Record<string, StreamState>,
     error: '' as string,
+    sendingConversations: [] as string[],
     /** 当前项目 id。选择要按项目存,存的时候得知道存给谁 */
     projectId: '' as string,
     /** 工作台模型选择。跟着项目走,进项目时从 project.settings 恢复 */
@@ -169,6 +170,9 @@ export const useChatStore = defineStore('chat', {
     /** 只看**当前打开的会话**在不在生成。别的会话在后台跑不关这里的事 */
     streaming(state): boolean {
       return state.streams[state.conversationId] != null
+    },
+    sending(state): boolean {
+      return state.sendingConversations.includes(state.conversationId)
     },
     awaitingAnswer(state): boolean {
       return state.pendingQuestionId !== ''
@@ -489,13 +493,24 @@ export const useChatStore = defineStore('chat', {
     },
 
     async send(text: string, attachments: ChatAttachment[] = []): Promise<void> {
-      if (!this.selected || this.streaming || (!text.trim() && attachments.length === 0)) return
+      const artifact = useArtifactStore()
+      if (
+        !this.selected ||
+        this.streaming ||
+        this.sending ||
+        (!text.trim() && attachments.length === 0) ||
+        (this.projectId && (artifact.projectId !== this.projectId || artifact.loading))
+      )
+        return
       this.error = ''
 
+      const conversationId = this.conversationId
+      this.sendingConversations.push(conversationId)
       let result: SendChatResult
       try {
         result = await window.api.chat.send({
           conversationId: this.conversationId,
+          ...(this.projectId && artifact.current ? { baseArtifactId: artifact.currentId } : {}),
           text: text.trim(),
           providerId: this.selected.providerId,
           modelId: this.selected.modelId,
@@ -512,6 +527,8 @@ export const useChatStore = defineStore('chat', {
         // 比如模型不支持识图——主进程给的是人话,直接显示
         this.error = err instanceof Error ? err.message : String(err)
         return
+      } finally {
+        this.sendingConversations = this.sendingConversations.filter((id) => id !== conversationId)
       }
 
       // 主进程已落库,这里按返回的 id 就地补上本地态,不用重新拉全量

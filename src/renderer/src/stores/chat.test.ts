@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useChatStore } from './chat'
+import { useArtifactStore } from './artifact'
 
 /**
  * 工具活动相位的聚焦测试:tool-input-start → preparing,
@@ -192,5 +193,77 @@ describe('纯聊天设置持久化', () => {
 
     store.openProject({ id: 'p-b', settings: { webSearch: true } } as never)
     expect(store.webSearch).toBe(true)
+  })
+})
+
+describe('version-aware send', () => {
+  function setup(): {
+    chat: ReturnType<typeof useChatStore>
+    artifact: ReturnType<typeof useArtifactStore>
+    send: ReturnType<typeof vi.fn>
+  } {
+    const chat = useChatStore()
+    const artifact = useArtifactStore()
+    chat.projectId = 'p'
+    chat.conversationId = 'c'
+    chat.selected = { providerId: 'provider', modelId: 'model' }
+    artifact.projectId = 'p'
+    artifact.currentId = 'old'
+    artifact.artifacts = [
+      {
+        id: 'old',
+        projectId: 'p',
+        messageId: null,
+        version: 1,
+        baseArtifactId: null,
+        summary: '',
+        createdAt: ''
+      }
+    ]
+    const send = vi
+      .fn()
+      .mockResolvedValue({ streamId: 's', userMessageId: 'u', assistantMessageId: 'a' })
+    Object.defineProperty(window, 'api', { configurable: true, value: { chat: { send } } })
+    return { chat, artifact, send }
+  }
+
+  it('passes the displayed version as the next edit base', async () => {
+    const { chat, send } = setup()
+    await chat.send('Edit')
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ baseArtifactId: 'old' }))
+  })
+
+  it('blocks sending while files load or the canvas belongs to another project', async () => {
+    const { chat, artifact, send } = setup()
+    artifact.loading = true
+    await chat.send('Edit')
+    artifact.loading = false
+    artifact.projectId = 'other'
+    await chat.send('Edit')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('blocks duplicate submissions before IPC returns', async () => {
+    const { chat, send } = setup()
+    let resolve!: (result: unknown) => void
+    send.mockReturnValue(
+      new Promise((r) => {
+        resolve = r
+      })
+    )
+    const first = chat.send('Edit')
+    expect(chat.sending).toBe(true)
+    await chat.send('Another edit')
+    expect(send).toHaveBeenCalledTimes(1)
+    resolve({ streamId: 's', userMessageId: 'u', assistantMessageId: 'a' })
+    await first
+    expect(chat.sending).toBe(false)
+  })
+
+  it('keeps plain chat independent of the displayed project snapshot', async () => {
+    const { chat, send } = setup()
+    chat.projectId = ''
+    await chat.send('Hello')
+    expect(send.mock.calls[0][0]).not.toHaveProperty('baseArtifactId')
   })
 })

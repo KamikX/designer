@@ -29,6 +29,12 @@ const state = vi.hoisted(() => ({
   toolCallLimit: 80,
   createArtifactVersion: vi.fn(() => ({ id: 'artifact-new' })),
   updateMessage: vi.fn(),
+  getArtifactFiles: vi.fn((id: string) => [
+    {
+      path: 'a.css',
+      content: id === 'artifact-old' ? '.hero { color: orange; }\n' : '.hero { color: red; }\n'
+    }
+  ]),
   llm: null as unknown
 }))
 
@@ -65,7 +71,9 @@ vi.mock('../db/repo/project', () => ({
 }))
 vi.mock('../db/repo/artifact', () => ({
   createArtifactVersion: state.createArtifactVersion,
-  getArtifactFiles: () => [{ path: 'a.css', content: '.hero { color: red; }\n' }],
+  getArtifactFiles: state.getArtifactFiles,
+  getArtifact: (id: string) =>
+    id === 'missing' ? null : { id, projectId: id === 'foreign' ? 'p2' : 'p1', version: 1 },
   latestArtifact: () => ({ id: 'artifact-base', version: 1 })
 }))
 vi.mock('../db/repo/message', () => ({
@@ -188,6 +196,7 @@ beforeEach(() => {
   obs.runFinishes.length = 0
   state.createArtifactVersion.mockClear()
   state.updateMessage.mockClear()
+  state.getArtifactFiles.mockClear()
 })
 
 describe('致命一致性错误', () => {
@@ -384,5 +393,80 @@ describe('localized stop notifications', () => {
     if (lang === 'en-US') expect(deltas).not.toMatch(/\p{Script=Han}/u)
     expect(JSON.stringify(state.updateMessage.mock.calls)).toContain(expected)
     expect(obs.runFinishes[0].status).toBe('aborted')
+  })
+})
+
+describe('selected base version', () => {
+  const input = {
+    conversationId: 'c1',
+    text: 'Change the color',
+    providerId: 'prov-1',
+    modelId: 'model-row-1'
+  }
+  const sender = { isDestroyed: () => false, send: () => {} } as unknown as WebContents
+
+  it.each(['missing', 'foreign', ''])(
+    'rejects invalid base %s before persisting messages',
+    (baseArtifactId) => {
+      const counter = state.msgCounter
+      expect(() => sendChat(sender, { ...input, baseArtifactId })).toThrow()
+      expect(state.msgCounter).toBe(counter)
+      expect(state.getArtifactFiles).not.toHaveBeenCalled()
+      expect(state.createArtifactVersion).not.toHaveBeenCalled()
+    }
+  )
+
+  it('edits the selected snapshot and records it as the parent', async () => {
+    let step = 0
+    const systems: string[] = []
+    state.lang = 'en-US'
+    state.llm = new MockLanguageModelV3({
+      doStream: async (request) => {
+        systems.push(
+          request.prompt
+            .filter((m) => m.role === 'system')
+            .map((m) => m.content)
+            .join('\n')
+        )
+        const chunks: V3StreamPart[] =
+          ++step === 1
+            ? [
+                { type: 'stream-start', warnings: [] },
+                {
+                  type: 'tool-call',
+                  toolCallId: 'edit-old',
+                  toolName: 'edit_file',
+                  input: JSON.stringify({
+                    path: 'a.css',
+                    old_string: 'color: orange',
+                    new_string: 'color: green'
+                  })
+                },
+                {
+                  type: 'finish',
+                  finishReason: { unified: 'tool-calls', raw: 'tool_calls' },
+                  usage: USAGE
+                }
+              ]
+            : [
+                { type: 'stream-start', warnings: [] },
+                { type: 'text-start', id: 'response' },
+                { type: 'text-delta', id: 'response', delta: 'Updated.' },
+                { type: 'text-end', id: 'response' },
+                { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: USAGE }
+              ]
+        return { stream: simulateReadableStream({ chunks }) }
+      }
+    })
+    sendChat(sender, { ...input, baseArtifactId: 'artifact-old' })
+    await vi.waitFor(() => expect(obs.runFinishes).toHaveLength(1))
+    expect(state.getArtifactFiles).toHaveBeenCalledWith('artifact-old')
+    expect(state.createArtifactVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseArtifactId: 'artifact-old',
+        writes: new Map([['a.css', '.hero { color: green; }\n']])
+      })
+    )
+    expect(systems[0]).toContain('selected version v1')
   })
 })

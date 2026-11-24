@@ -20,7 +20,12 @@ import { createMessage, listMessages, updateMessage } from '../db/repo/message'
 import { openaiCompatOptions, reasoningRequestOptions } from './provider-options'
 import { autoTitle, getConversation, touchConversation } from '../db/repo/conversation'
 import { getProject, setProjectStyleBrief, touchProject } from '../db/repo/project'
-import { createArtifactVersion, getArtifactFiles, latestArtifact } from '../db/repo/artifact'
+import {
+  createArtifactVersion,
+  getArtifact,
+  getArtifactFiles,
+  latestArtifact
+} from '../db/repo/artifact'
 import { buildHistory } from './context'
 import { buildSystemPrompt } from './prompts'
 import { lintArtifact } from './slop-lint'
@@ -141,7 +146,15 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   // 历史与当前设计稿在落库新消息之前取
   const priorMessages = listMessages(input.conversationId)
   const history = buildHistory(priorMessages, model.contextWindow)
-  const base = project ? latestArtifact(project.id) : null
+  let base = project ? latestArtifact(project.id) : null
+  if (input.baseArtifactId !== undefined) {
+    if (!project || typeof input.baseArtifactId !== 'string' || !input.baseArtifactId) {
+      throw new Error('无效的设计稿版本')
+    }
+    const selected = getArtifact(input.baseArtifactId)
+    if (!selected || selected.projectId !== project.id) throw new Error('设计稿版本不属于此项目')
+    base = selected
+  }
   const currentFiles = base ? getArtifactFiles(base.id) : []
 
   // 本轮附的参考图。没有 vision 能力就直接拒——发出去只会拿到一个
@@ -517,6 +530,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
               mode: useTools ? 'tools' : 'markers',
               localScope: localScopePrompt(userRoots, detected.missing, lang),
               previewError,
+              baseVersion: base?.version,
               slopLint,
               skillCatalog: catalog,
               styleBriefPrompt: renderStyleBriefPrompt(

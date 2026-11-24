@@ -45,6 +45,7 @@ export function buildSystemPrompt(
   currentFiles: ArtifactFile[],
   options: {
     mode?: PromptMode
+    baseVersion?: number
     localScope?: string
     /** 上一版预览的运行时错误。跑不起来比任何设计意见都优先——放尾部可变区吃 recency */
     previewError?: string
@@ -88,6 +89,9 @@ export function buildSystemPrompt(
     options.targetTemplates ?? '',
     options.localScope ?? '',
     // ---- 逐轮可变区 ----
+    options.baseVersion !== undefined
+      ? promptText(lang, 'files.baseVersion', { version: options.baseVersion })
+      : '',
     mode === 'tools' ? renderFileTree(currentFiles, lang) : renderCurrentFiles(currentFiles, lang),
     options.previewError ?? '',
     options.slopLint ?? '',

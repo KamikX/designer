@@ -3,6 +3,7 @@ import { t, uiMessage } from '@renderer/i18n'
 import { useRouter } from 'vue-router'
 import { theme } from 'antdv-next'
 import { MessageOutlined } from '@antdv-next/icons'
+import { useArtifactStore } from '@renderer/stores/artifact'
 import { useChatStore } from '@renderer/stores/chat'
 import { useProviderStore } from '@renderer/stores/provider'
 import MessageItem from './MessageItem.vue'
@@ -16,6 +17,7 @@ const props = defineProps<{ project: Project }>()
 const router = useRouter()
 const { token } = theme.useToken()
 const chatStore = useChatStore()
+const artifactStore = useArtifactStore()
 const providerStore = useProviderStore()
 
 const listEl = ref<HTMLElement | null>(null)
@@ -95,7 +97,12 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
 
     <div class="chat-composer">
       <Composer
-        :disabled="noModel"
+        :disabled="
+          noModel ||
+          chatStore.sending ||
+          artifactStore.loading ||
+          artifactStore.projectId !== project.id
+        "
         @send="(text, attachments) => chatStore.send(text, attachments)"
       />
     </div>

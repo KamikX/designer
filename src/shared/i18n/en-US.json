@@ -827,5 +827,10 @@
   "移除": "Remove",
   "组件开发": "Component development",
   "通过提示词或参考素材开发可复用组件，提供独立预览": "Reusable components from prompts or references, with an isolated preview.",
-  "设计目标（页面类型可多选；组件开发单独选择）": "Design targets (select multiple page types, or Component development alone)"
+  "设计目标（页面类型可多选；组件开发单独选择）": "Design targets (select multiple page types, or Component development alone)",
+  "版本历史": "Version history",
+  "最新版本": "Latest",
+  "下一次修改将基于 v{0}": "Next edit starts from v{0}",
+  "无效的设计稿版本": "Invalid design version",
+  "设计稿版本不属于此项目": "The design version does not belong to this project"
 }

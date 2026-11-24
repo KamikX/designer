@@ -27,7 +27,7 @@ async function doExport(): Promise<void> {
 <template>
   <a-button
     size="small"
-    :disabled="!store.currentId || store.streamingFiles"
+    :disabled="!store.currentId || store.streamingFiles || store.loading"
     :loading="store.exporting"
     @click="doExport"
   >
