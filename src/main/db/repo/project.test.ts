@@ -57,7 +57,12 @@ vi.mock('../index', () => ({
   })
 }))
 
-import { createProject, setProjectStyleBrief, setProjectVisualGuidance } from './project'
+import {
+  createProject,
+  setProjectDescription,
+  setProjectStyleBrief,
+  setProjectVisualGuidance
+} from './project'
 import { projects } from '../schema'
 
 function projectInput(styleBrief?: string): CreateProjectInput {
@@ -162,6 +167,32 @@ describe('project visual guidance persistence', () => {
     setProjectStyleBrief('project-1', 'New')
     expect(state.updates.at(-1)).not.toHaveProperty('designDocument')
     expect(state.updates.at(-1)).not.toHaveProperty('visualStylePriority')
+  })
+})
+
+describe('project description persistence', () => {
+  it('updates only the description and timestamp for the requested project, including clearing it', () => {
+    for (const description of ['  New background\nSecond line  ', '   ']) {
+      state.updateRows.length = 0
+      state.updateRows.push({ ...project('Keep style'), description: description.trim() })
+      expect(setProjectDescription('project-1', description)?.description).toBe(description.trim())
+      expect(state.updates.at(-1)).toEqual({
+        description: description.trim(),
+        updatedAt: expect.anything()
+      })
+      expect(eqSpy).toHaveBeenLastCalledWith(projects.id, 'project-1')
+    }
+  })
+
+  it('rejects invalid IPC arguments before writing and returns null for a missing project', () => {
+    const before = state.updates.length
+    expect(() => setProjectDescription('', 'Description')).toThrow('Invalid project ID')
+    expect(() => setProjectDescription('project-1', null as never)).toThrow(
+      'Invalid project description'
+    )
+    expect(state.updates).toHaveLength(before)
+    state.updateRows.length = 0
+    expect(setProjectDescription('missing', '')).toBeNull()
   })
 })
 

@@ -37,6 +37,14 @@ export const useProjectStore = defineStore('project', {
       return project
     },
 
+    async setDescription(id: string, description: string): Promise<void> {
+      const updated = await window.api.project.setDescription(id, description)
+      if (!updated) throw new Error('Project not found')
+      const at = this.projects.findIndex((p) => p.id === id)
+      if (at >= 0) this.projects[at] = updated
+      if (this.current?.id === id) this.current = updated
+    },
+
     /** 修改依赖包(创建后可改;影响预览装配与提示词,不牵动文件树) */
     async setExternalLibraries(id: string, refs: ExternalLibraryRef[]): Promise<void> {
       const updated = await window.api.project.setExternalLibraries(

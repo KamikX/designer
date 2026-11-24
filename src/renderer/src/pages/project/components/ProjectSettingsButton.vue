@@ -16,6 +16,7 @@ const store = useProjectStore()
 const open = ref(false)
 const saving = ref(false)
 const importing = ref(false)
+const description = ref('')
 const guidance = reactive<VisualGuidance>({
   styleBrief: '',
   designDocument: '',
@@ -38,6 +39,7 @@ watch(
 watch(open, async (isOpen) => {
   if (!isOpen) return
   importing.value = false
+  description.value = props.project.description
   Object.assign(guidance, {
     styleBrief: props.project.styleBrief,
     designDocument: props.project.designDocument ?? '',
@@ -67,6 +69,7 @@ async function save(): Promise<void> {
   saving.value = true
   const projectId = props.project.id
   try {
+    await store.setDescription(projectId, description.value)
     await store.setVisualGuidance(projectId, { ...guidance })
     await store.setToolCallLimit(projectId, value)
     open.value = false
@@ -95,6 +98,13 @@ async function save(): Promise<void> {
     @ok="save"
   >
     <a-form layout="vertical" class="proj-set">
+      <a-form-item :label="t('项目描述')">
+        <a-textarea
+          v-model:value="description"
+          :rows="3"
+          :placeholder="t('一句话说明这个项目要做什么,会作为 AI 的背景信息')"
+        />
+      </a-form-item>
       <VisualGuidanceFields
         v-if="open"
         v-model:style-brief="guidance.styleBrief"

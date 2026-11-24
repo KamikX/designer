@@ -46,6 +46,25 @@ describe('project store setStyleBrief', () => {
     expect(store.current).toEqual(updated)
   })
 
+  it('keeps the list and detail descriptions aligned after saving', async () => {
+    const updated = { ...project(''), description: 'New background' }
+    const setDescription = vi.fn().mockResolvedValue(updated)
+    vi.stubGlobal('window', { api: { project: { setDescription } } })
+    const store = useProjectStore()
+    store.projects = [project('')]
+    store.current = project('')
+
+    await store.setDescription('project-1', 'New background')
+
+    expect(setDescription).toHaveBeenCalledWith('project-1', 'New background')
+    expect(store.current?.description).toBe('New background')
+    expect(store.projects[0].description).toBe('New background')
+    setDescription.mockRejectedValueOnce(new Error('Save failed'))
+    await expect(store.setDescription('project-1', 'Unsaved')).rejects.toThrow('Save failed')
+    expect(store.current?.description).toBe('New background')
+    expect(store.projects[0].description).toBe('New background')
+  })
+
   it('项目不存在时保留现有快照', async () => {
     const original = project('')
     vi.stubGlobal('window', {

@@ -125,6 +125,18 @@ export function setProjectLibs(id: string, libs: PreviewLib[]): Project | null {
   return row ? toProject(row) : null
 }
 
+export function setProjectDescription(id: string, description: string): Project | null {
+  if (typeof id !== 'string' || !id) throw new Error('Invalid project ID')
+  if (typeof description !== 'string') throw new Error('Invalid project description')
+  const row = getDb()
+    .update(projects)
+    .set({ description: description.trim(), updatedAt: sql`(datetime('now'))` })
+    .where(eq(projects.id, id))
+    .returning()
+    .get()
+  return row ? toProject(row) : null
+}
+
 export function renameProject(id: string, name: string): Project | null {
   const row = getDb()
     .update(projects)
