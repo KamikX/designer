@@ -26,7 +26,7 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux",
+    "build:linux": "node scripts/build-linux.mjs",
     "db:generate": "drizzle-kit generate",
     "i18n:check": "node scripts/i18n/check.mjs"
   },

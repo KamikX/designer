@@ -1,0 +1,13 @@
+.git
+**/node_modules
+dist
+out
+.env
+.env.*
+.aws
+.codex
+.agents
+.DS_Store
+.eslintcache
+*.log*
+.capture-smoke*.cjs

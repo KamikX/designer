@@ -1,0 +1,14 @@
+FROM node:22-bookworm AS build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libopenjp2-tools \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install --global pnpm@10.32.1
+
+WORKDIR /project
+COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm build:linux
+
+FROM scratch AS artifacts
+COPY --from=build /project/dist/ /

@@ -97,6 +97,14 @@ pnpm dev
 pnpm build:mac      # or build:win / build:linux
 ```
 
+`pnpm build:linux` produces Linux amd64 (x64) AppImage and DEB packages in `dist/`.
+On macOS, Windows, or Linux ARM64, start Docker before running this command: the build runs
+in a Linux amd64 container with its own dependencies. On Linux x64 it builds directly.
+This keeps host binaries for `better-sqlite3`, `oxc-transform`, and `esbuild` out of the Linux
+packages. Snap is excluded, so Snapcraft and Multipass are not required. The container does
+not replace the host's `node_modules` or `out` directories. Apple Silicon builds use amd64
+emulation and can be slower.
+
 > Native modules (`better-sqlite3`, `oxc-transform`) are compiled during `postinstall`. If install fails
 > behind a firewall, note that `.npmrc` already points Electron downloads at the npmmirror mirrors.
 
