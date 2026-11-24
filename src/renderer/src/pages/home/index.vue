@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { t } from '@renderer/i18n'
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { AppstoreOutlined, DeleteOutlined, LoadingOutlined, PlusOutlined } from '@antdv-next/icons'
 import dayjs from 'dayjs'
@@ -12,7 +12,7 @@ import type { Project } from '@shared/types'
 
 // 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
 // 上下文,主题、语言、z-index 全用的是默认值
-const { modal } = App.useApp()
+const { modal, message } = App.useApp()
 
 const { token } = theme.useToken()
 const router = useRouter()
@@ -20,6 +20,29 @@ const store = useProjectStore()
 store.load()
 
 const createOpen = ref(false)
+const importing = ref(false)
+
+async function importProject(): Promise<void> {
+  if (importing.value) return
+  importing.value = true
+  try {
+    const result = await window.api.project.importPackage()
+    if (!result) return
+    await store.load(true)
+    if (result.warnings.length) {
+      modal.warning({
+        title: t('项目已导入，部分选择不可用'),
+        content: result.warnings.join('\n'),
+        bodyStyle: { maxHeight: '60vh', overflowY: 'auto', overscrollBehavior: 'contain' }
+      })
+    } else message.success(t('项目已导入'))
+    openProject(result.project.id)
+  } catch (error) {
+    message.error(uiMessage(error instanceof Error ? error.message : String(error)))
+  } finally {
+    importing.value = false
+  }
+}
 
 /** 正在生成中的项目集合。流状态在 chat store 里全局存着,首页也看得见 */
 const chatStore = useChatStore()
@@ -74,11 +97,15 @@ function fromNow(time: string): string {
           <template #icon><PlusOutlined /></template>
           {{ t('新建项目') }}
         </a-button>
+        <a-button :loading="importing" @click="importProject">{{ t('导入项目') }}</a-button>
       </div>
     </div>
 
     <template v-else>
       <div class="home-head">
+        <a-button style="float: right" :loading="importing" @click="importProject">{{
+          t('导入项目')
+        }}</a-button>
         <div>
           <h1 class="home-title">{{ t('项目') }}</h1>
           <div class="home-sub" :style="{ color: token.colorTextTertiary }">

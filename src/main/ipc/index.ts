@@ -84,6 +84,7 @@ import type { RootScope } from '../workspace/roots'
 import { clearPreviewError, reportPreviewError } from '../preview/errors'
 import { getArtifactFiles, listArtifacts } from '../db/repo/artifact'
 import { exportArtifact } from '../artifact-export'
+import { exportProjectPackage, openProjectPackage } from '../project-package/service'
 import { importAsset, importImage, testStorage } from '../storage/service'
 import {
   dataBackendView,
@@ -140,6 +141,9 @@ export function registerIpc(): void {
     'project:set-external-libraries',
     (_event, id: string, refs: ExternalLibraryRef[]) => setProjectExternalLibraries(id, refs)
   )
+
+  ipcMain.handle('project:export-package', (_e, input) => exportProjectPackage(input))
+  ipcMain.handle('project:import-package', () => openProjectPackage())
 
   ipcMain.handle('project:list', () => listProjects())
   ipcMain.handle('project:get', (_e, id: string) => getProject(id))

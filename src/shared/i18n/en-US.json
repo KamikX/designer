@@ -832,5 +832,12 @@
   "最新版本": "Latest",
   "下一次修改将基于 v{0}": "Next edit starts from v{0}",
   "无效的设计稿版本": "Invalid design version",
-  "设计稿版本不属于此项目": "The design version does not belong to this project"
+  "设计稿版本不属于此项目": "The design version does not belong to this project",
+  "导入项目": "Import project",
+  "导出项目": "Export project",
+  "导出源文件": "Export source files",
+  "项目包": "Project package",
+  "项目已导入": "Project imported",
+  "项目已导入，部分选择不可用": "Project imported; some selections are unavailable",
+  "项目生成中，暂时无法导出": "Wait for project generation to finish before exporting"
 }

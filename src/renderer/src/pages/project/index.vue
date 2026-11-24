@@ -54,9 +54,11 @@ watch(
         :design-mode="store.current.designMode"
         :targets="store.current.targets"
       />
-      <!-- 顶到最右:导出与项目设置都是项目级动作,和标题同级 -->
-      <ExportButton v-if="store.current" style="margin-left: auto" />
-      <ProjectSettingsButton v-if="store.current" :project="store.current" />
+      <!-- Own the alignment here because popovers do not forward layout styles to their triggers. -->
+      <div v-if="store.current" class="workbench-actions">
+        <ExportButton />
+        <ProjectSettingsButton :project="store.current" />
+      </div>
     </a-flex>
 
     <!-- flex 收在行内:<a-splitter> 的 class 同样带不上 scoped 的 data-v,
@@ -89,6 +91,14 @@ watch(
 .workbench-header {
   flex-shrink: 0;
   padding-bottom: 10px;
+}
+
+.workbench-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .workbench-title {

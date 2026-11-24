@@ -10,7 +10,7 @@ import type {
   VisualGuidance
 } from '../../../shared/types'
 import { getDb } from '../index'
-import { projects } from '../schema'
+import { projects, artifacts } from '../schema'
 import { resolveLibraries } from '../../libraries/service'
 import type { ProjectRow } from '../schema'
 
@@ -170,6 +170,15 @@ export function deleteProject(id: string): void {
 export function saveProjectSettings(id: string, patch: ProjectSettings): void {
   const current = getProject(id)
   if (!current) return
+  if (Object.hasOwn(patch, 'selectedArtifactId') && patch.selectedArtifactId !== null) {
+    if (typeof patch.selectedArtifactId !== 'string') throw new Error('Invalid selected version')
+    const artifact = getDb()
+      .select()
+      .from(artifacts)
+      .where(eq(artifacts.id, patch.selectedArtifactId))
+      .get()
+    if (!artifact || artifact.projectId !== id) throw new Error('Invalid selected project version')
+  }
   getDb()
     .update(projects)
     .set({ settings: { ...current.settings, ...patch } })

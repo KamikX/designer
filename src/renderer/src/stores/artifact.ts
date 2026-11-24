@@ -119,10 +119,14 @@ export const useArtifactStore = defineStore('artifact', {
       this.selectedPath = ''
 
       try {
-        const artifacts = await window.api.artifact.list(projectId)
+        const [artifacts, project] = await Promise.all([
+          window.api.artifact.list(projectId),
+          window.api.project.get(projectId)
+        ])
         if (this.requestId !== requestId || this.projectId !== projectId) return
         this.artifacts = artifacts
-        await this.select(artifacts[0]?.id ?? '')
+        const saved = project?.settings?.selectedArtifactId
+        await this.select(artifacts.some((a) => a.id === saved) ? saved! : (artifacts[0]?.id ?? ''))
       } catch (error) {
         if (this.requestId !== requestId || this.projectId !== projectId) return
         this.loadError = error instanceof Error ? error.message : String(error)
@@ -149,6 +153,9 @@ export const useArtifactStore = defineStore('artifact', {
         // Commit the identity and files together so preview, code and export agree.
         this.files = files
         this.currentId = artifactId
+        window.api.project
+          .saveSettings(projectId, { selectedArtifactId: artifactId })
+          .catch((error) => console.error('[artifact] Cannot save version selection:', error))
         if (!files.some((f) => f.path === this.selectedPath)) {
           this.selectedPath = files[0]?.path ?? ''
         }

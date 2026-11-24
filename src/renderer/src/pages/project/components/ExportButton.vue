@@ -1,37 +1,72 @@
 <script setup lang="ts">
-import { t } from '@renderer/i18n'
+import { t, uiMessage } from '@renderer/i18n'
 import { App } from 'antdv-next'
 import { ExportOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
+import { useProjectStore } from '@renderer/stores/project'
+import { useChatStore } from '@renderer/stores/chat'
 
-// 走 App.useApp() 而不是静态导入:静态那份取不到 ConfigProvider 的
-// 上下文,主题、语言、z-index 全用的是默认值
 const { message } = App.useApp()
-
-/**
- * 导出当前版本。
- *
- * 放在项目标题那一行,而不是预览/代码的头部:导出的是**整个项目的产物**,
- * 跟你当下在看预览还是看代码无关。挂在 tab 头上会让人以为"导出的是这个
- * tab 里的东西"。
- */
-
 const store = useArtifactStore()
+const projects = useProjectStore()
+const chat = useChatStore()
+const open = ref(false)
+const exporting = ref(false)
+const busy = computed(() =>
+  Object.values(chat.streams).some((s) => s.projectId === projects.current?.id)
+)
+const disabled = computed(
+  () =>
+    store.loading ||
+    busy.value ||
+    exporting.value ||
+    store.exporting ||
+    store.projectId !== projects.current?.id
+)
 
-async function doExport(): Promise<void> {
-  const dir = await store.exportCurrent()
-  if (dir) message.success(t('已导出到 {0}', dir))
+async function doExport(packageExport: boolean): Promise<void> {
+  const projectId = projects.current?.id
+  if (!projectId || disabled.value) return
+  const selectedArtifactId = store.currentId || null
+  open.value = false
+  exporting.value = true
+  try {
+    const path = packageExport
+      ? await window.api.project.exportPackage({ projectId, selectedArtifactId })
+      : await store.exportCurrent()
+    if (path) message.success(t('已导出到 {0}', path))
+  } catch (error) {
+    message.error(uiMessage(error instanceof Error ? error.message : String(error)))
+  } finally {
+    exporting.value = false
+  }
 }
 </script>
 
 <template>
-  <a-button
-    size="small"
-    :disabled="!store.currentId || store.streamingFiles || store.loading"
-    :loading="store.exporting"
-    @click="doExport"
-  >
-    <template #icon><ExportOutlined /></template>
-    {{ t('导出') }}
-  </a-button>
+  <a-popover v-model:open="open" trigger="click" placement="bottomRight">
+    <template #content>
+      <div class="export-options">
+        <a-button :disabled="disabled || !store.currentId" @click="doExport(false)">{{
+          t('导出源文件')
+        }}</a-button>
+        <a-button :disabled="disabled" @click="doExport(true)">{{ t('导出项目') }}</a-button>
+      </div>
+    </template>
+    <a-button size="small" :disabled="disabled" :loading="exporting || store.exporting">
+      <template #icon><ExportOutlined /></template>
+      {{ t('导出') }}
+    </a-button>
+  </a-popover>
 </template>
+
+<style scoped>
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+</style>

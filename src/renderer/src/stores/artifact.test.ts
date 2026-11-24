@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import type { Artifact, ArtifactFile, ChatStreamEvent, DesignerApi } from '@shared/types'
+import type { Artifact, ArtifactFile, ChatStreamEvent, DesignerApi, Project } from '@shared/types'
 import { useArtifactStore } from './artifact'
 
 /**
@@ -37,15 +37,22 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   return { promise, resolve }
 }
 
+const getProject = vi.fn<(id: string) => Promise<Project | null>>()
+const saveSettings = vi.fn().mockResolvedValue(undefined)
 const list = vi.fn<(projectId: string) => Promise<Artifact[]>>()
 const files = vi.fn<(artifactId: string) => Promise<ArtifactFile[]>>()
 
 beforeEach(() => {
   list.mockReset()
   files.mockReset()
+  getProject.mockReset().mockResolvedValue(null)
+  saveSettings.mockClear()
   Object.defineProperty(window, 'api', {
     configurable: true,
-    value: { artifact: { list, files } } as unknown as DesignerApi
+    value: {
+      artifact: { list, files },
+      project: { get: getProject, saveSettings }
+    } as unknown as DesignerApi
   })
   setActivePinia(createPinia())
 })
@@ -239,5 +246,29 @@ describe('version selection', () => {
     await store.select('old')
     await store.loadForProject('p')
     expect(store.currentId).toBe('new')
+  })
+})
+
+describe('persisted version selection', () => {
+  it('restores an older saved version and persists subsequent selections', async () => {
+    const store = useArtifactStore()
+    list.mockResolvedValue([artifact('new', 2), artifact('old', 1)])
+    getProject.mockResolvedValue({ settings: { selectedArtifactId: 'old' } } as Project)
+    files.mockImplementation(async (id) => [file('index.html', id)])
+    await store.loadForProject('p')
+    expect(store.currentId).toBe('old')
+    expect(store.files[0].content).toBe('old')
+    await store.select('new')
+    expect(saveSettings).toHaveBeenLastCalledWith('p', { selectedArtifactId: 'new' })
+  })
+
+  it('falls back to the latest version when a saved selection is absent from this project', async () => {
+    const store = useArtifactStore()
+    list.mockResolvedValue([artifact('new', 2)])
+    getProject.mockResolvedValue({ settings: { selectedArtifactId: 'foreign' } } as Project)
+    files.mockResolvedValue([file('index.html', 'new')])
+    await store.loadForProject('p')
+    expect(store.currentId).toBe('new')
+    expect(files).not.toHaveBeenCalledWith('foreign')
   })
 })

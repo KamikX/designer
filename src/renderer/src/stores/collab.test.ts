@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type {
   Conversation,
@@ -67,10 +67,6 @@ function prepareStore(send: DesignerApi['group']['send']): ReturnType<typeof use
   store.conversationId = group.id
   return store
 }
-
-beforeEach(() => {
-  localStorage.clear()
-})
 
 describe('collab send chain state', () => {
   it('IPC 返回前同步收到 chain-done 后保持非运行态', async () => {

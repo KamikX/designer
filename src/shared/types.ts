@@ -127,6 +127,7 @@ export type PreviewLib = 'antdv-next' | '@antdv-next/icons'
  * ——两者混为一谈会让"全部取消勾选"这个操作在重启后失效。
  */
 export interface SessionSettings {
+  selectedArtifactId?: string | null
   providerId?: string
   modelId?: string
   /** 勾选的文件技能**名字**(技能的身份就是目录名,没有数据库 id) */
@@ -1066,6 +1067,16 @@ export interface ImportImageInput {
  * 只有领域方法，没有原始 SQL、没有文件路径——渲染进程不需要知道
  * 底下是 SQLite 还是别的。
  */
+export interface ProjectPackageExportInput {
+  projectId: string
+  selectedArtifactId: string | null
+}
+
+export interface ProjectPackageImportResult {
+  project: Project
+  warnings: string[]
+}
+
 export interface DesignerApi {
   /** preload 同步取到的初始配置，供首帧使用 */
   initialConfig: AppConfig
@@ -1084,6 +1095,8 @@ export interface DesignerApi {
     onProgress: (callback: (progress: LibraryProgress) => void) => () => void
   }
   project: {
+    exportPackage: (input: ProjectPackageExportInput) => Promise<string | null>
+    importPackage: () => Promise<ProjectPackageImportResult | null>
     setExternalLibraries: (id: string, libraries: ExternalLibraryRef[]) => Promise<Project | null>
     list: () => Promise<Project[]>
     get: (id: string) => Promise<Project | null>

@@ -24,6 +24,18 @@ vi.mock('../config', () => ({
   })
 }))
 vi.mock('../db/repo/model', () => ({ getModel: () => state.modelRow }))
+// Keep provider lookup and diagnostics isolated from the user's application database.
+vi.mock('../db/repo/provider', () => ({
+  getProviderRowById: (id: string) => ({ id, slug: 'test', adapter: 'openai' })
+}))
+vi.mock('./run-trace', () => ({
+  RunTraceCollector: class {
+    start = vi.fn()
+    finish = vi.fn()
+    modelCallStart = vi.fn()
+    stepEnd = vi.fn()
+  }
+}))
 vi.mock('./registry', () => ({ getLanguageModel: () => ({}) as never }))
 vi.mock('ai', () => ({ generateText: (...args: unknown[]) => state.generate(...args) }))
 

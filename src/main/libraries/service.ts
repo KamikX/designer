@@ -1,6 +1,6 @@
 import { promptText } from '../ai/prompts/i18n'
 import type { PromptLanguage } from '../ai/prompts/i18n'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -35,6 +35,7 @@ const relativePath = z
   .max(300)
   .refine(
     (p) =>
+      Array.from(p).every((c) => c.charCodeAt(0) > 31) &&
       !p.includes('\\') &&
       !p.split('/').some((v) => !v || v === '.' || v === '..') &&
       !p.includes(':')
@@ -55,7 +56,7 @@ export const installSchema = z
   .refine((v) => v.subpaths.every((p) => p.startsWith(`${v.name}/`)), {
     error: 'Subpaths must start with the package name.'
   })
-const metadataSchema = installSchema.safeExtend({
+export const metadataSchema = installSchema.safeExtend({
   id: z.string().regex(/^[a-f0-9]{64}$/),
   installedAt: z.iso.datetime(),
   entries: z.record(z.string(), relativePath),
@@ -420,4 +421,62 @@ export function libraryPrompt(
       )
       .join('\n\n')
   )
+}
+
+/** Bundles are transferred as prepared files so importing never runs package scripts. */
+export function exportLibraryFiles(lib: InstalledLibrary): Map<string, Buffer> {
+  const root = realpathSync(join(directory(lib), 'dist'))
+  return new Map(
+    lib.files.map((file) => {
+      const path = realpathSync(libraryFile(lib, file))
+      if (!path.startsWith(root + sep)) throw new Error('Library file escapes its directory')
+      return [file, readFileSync(path)]
+    })
+  )
+}
+
+/** Rollback owns only directories created by this import, never an existing installation. */
+export function importPreparedLibrary(value: unknown, files: Map<string, Buffer>): () => void {
+  const metadata = metadataSchema.parse(value)
+  if (metadata.id !== libraryId(metadata) || active.has(metadata.id))
+    throw new Error('Invalid or busy library')
+  if (
+    files.size !== metadata.files.length ||
+    metadata.files.some((p) => !files.has(p)) ||
+    Object.values(metadata.entries).some((p) => !files.has(p)) ||
+    metadata.styles.some((p) => !files.has(p))
+  ) {
+    throw new Error('Incomplete prepared library')
+  }
+  const target = directory(metadata)
+  if (existsSync(target)) {
+    const existing = readLibrary(metadata)
+    const comparable = (value: unknown): object => ({
+      ...metadataSchema.strip().parse(value),
+      installedAt: undefined
+    })
+    const sameMetadata =
+      JSON.stringify(comparable(existing)) === JSON.stringify(comparable(metadata))
+    const oldFiles = exportLibraryFiles(existing)
+    if (!sameMetadata || [...files].some(([path, bytes]) => !oldFiles.get(path)?.equals(bytes))) {
+      throw new Error(`Library content conflict: ${metadata.name}@${metadata.version}`)
+    }
+    return () => {}
+  }
+  mkdirSync(ROOT, { recursive: true })
+  const staging = join(ROOT, `.import-${metadata.id}-${randomUUID()}`)
+  try {
+    mkdirSync(staging)
+    for (const [path, bytes] of files) {
+      const dest = join(staging, 'dist', path)
+      mkdirSync(dirname(dest), { recursive: true })
+      writeFileSync(dest, bytes, { flag: 'wx' })
+    }
+    writeFileSync(join(staging, 'library.json'), JSON.stringify(metadata))
+    renameSync(staging, target)
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true })
+    throw error
+  }
+  return () => rmSync(target, { recursive: true, force: true })
 }

@@ -31,6 +31,8 @@ const api: DesignerApi = {
     }
   },
   project: {
+    exportPackage: (input) => ipcRenderer.invoke('project:export-package', input),
+    importPackage: () => ipcRenderer.invoke('project:import-package'),
     setExternalLibraries: (id, refs) =>
       ipcRenderer.invoke('project:set-external-libraries', id, refs),
     list: () => ipcRenderer.invoke('project:list'),
