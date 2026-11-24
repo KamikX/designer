@@ -5,7 +5,8 @@ import type {
   DesignTarget,
   ExternalLibraryRef,
   PreviewLib,
-  SessionSettings
+  SessionSettings,
+  VisualStylePriority
 } from '../../shared/types'
 
 /**
@@ -57,6 +58,11 @@ export const projects = sqliteTable(
     description: text('description').notNull().default(''),
     /** 项目的视觉方向；空字符串表示用户尚未定义 */
     styleBrief: text('style_brief').notNull().default(''),
+    designDocument: text('design_document').notNull().default(''),
+    visualStylePriority: text('visual_style_priority')
+      .$type<VisualStylePriority>()
+      .notNull()
+      .default('styleBrief'),
     /**
      * 工作台的"上次选了什么":模型、技能、MCP。
      *

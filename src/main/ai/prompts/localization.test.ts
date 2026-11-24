@@ -29,6 +29,8 @@ const project = {
   designMode: 'design',
   description: 'A dashboard',
   styleBrief: '',
+  designDocument: '',
+  visualStylePriority: 'styleBrief',
   libs: [],
   settings: null,
   targets: ['web', 'mobile'],

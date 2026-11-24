@@ -281,6 +281,14 @@ export interface LibraryProgress {
   message: string
 }
 
+export type VisualStylePriority = 'styleBrief' | 'designDocument'
+
+export interface VisualGuidance {
+  styleBrief: string
+  designDocument: string
+  visualStylePriority: VisualStylePriority
+}
+
 export interface Project {
   id: string
   name: string
@@ -294,6 +302,8 @@ export interface Project {
   description: string
   /** 用户定义的视觉方向；空字符串表示尚未定义 */
   styleBrief: string
+  designDocument: string
+  visualStylePriority: VisualStylePriority
   settings: SessionSettings | null
   createdAt: string
   updatedAt: string
@@ -308,6 +318,8 @@ export interface CreateProjectInput {
   externalLibraries?: ExternalLibraryRef[]
   description?: string
   styleBrief?: string
+  designDocument?: string
+  visualStylePriority?: VisualStylePriority
 }
 
 export interface Conversation {
@@ -1078,6 +1090,7 @@ export interface DesignerApi {
     setLibs: (id: string, libs: PreviewLib[]) => Promise<Project | null>
     /** 覆盖保存项目级视觉方向；空字符串表示清除 */
     setStyleBrief: (id: string, styleBrief: string) => Promise<Project | null>
+    setVisualGuidance: (id: string, guidance: VisualGuidance) => Promise<Project | null>
     remove: (id: string) => Promise<void>
     /** 合并保存工作台选择(模型/技能/MCP),只覆盖传进来的字段 */
     saveSettings: (id: string, patch: SessionSettings) => Promise<void>

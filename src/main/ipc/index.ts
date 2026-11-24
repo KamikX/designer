@@ -28,7 +28,8 @@ import type {
   ModelSelection,
   PreviewLib,
   SessionSettings,
-  Provider
+  Provider,
+  VisualGuidance
 } from '../../shared/types'
 import {
   createProject,
@@ -39,7 +40,8 @@ import {
   saveProjectSettings,
   setProjectLibs,
   setProjectExternalLibraries,
-  setProjectStyleBrief
+  setProjectStyleBrief,
+  setProjectVisualGuidance
 } from '../db/repo/project'
 import {
   createChat,
@@ -152,6 +154,9 @@ export function registerIpc(): void {
   )
   ipcMain.handle('project:set-style-brief', (_e, id: string, styleBrief: string) =>
     setProjectStyleBrief(id, styleBrief)
+  )
+  ipcMain.handle('project:set-visual-guidance', (_e, id: string, guidance: VisualGuidance) =>
+    setProjectVisualGuidance(id, guidance)
   )
   ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
   ipcMain.handle('project:save-settings', (_e, id: string, patch: SessionSettings) =>

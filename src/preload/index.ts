@@ -38,6 +38,8 @@ const api: DesignerApi = {
     create: (input) => ipcRenderer.invoke('project:create', input),
     rename: (id, name) => ipcRenderer.invoke('project:rename', id, name),
     setLibs: (id, libs) => ipcRenderer.invoke('project:set-libs', id, libs),
+    setVisualGuidance: (id, guidance) =>
+      ipcRenderer.invoke('project:set-visual-guidance', id, guidance),
     setStyleBrief: (id, styleBrief) =>
       ipcRenderer.invoke('project:set-style-brief', id, styleBrief),
     remove: (id) => ipcRenderer.invoke('project:delete', id),

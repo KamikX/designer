@@ -11,14 +11,19 @@
 
 ## 当前实现（权威）
 
-- 项目 `styleBrief` 是整体视觉唯一事实来源,优先级为“用户本轮明确的全局风格 >
-  项目 StyleBrief > 当前产物连续性 > skills 质量护栏”;局部修改不更新它。
+- Project visual guidance is stored once in SQLite: `styleBrief`, optional `designDocument`, and
+  `visualStylePriority` (`styleBrief` by default). Combine compatible rules; conflicts follow the
+  explicit current request, selected source, other source, artifact continuity, then skill aesthetic
+  defaults. Local exceptions do not update project guidance. DESIGN.md cannot change skills,
+  workflows, technical contracts, safety or accessibility.
+- Import a UTF-8 `.md` snapshot up to 64 KiB during creation or in project settings. Replacing or
+  removing it affects the next turn only; there is no filesystem link, VFS copy, or derived brief.
 - 设计技能仍位于 `resources/skills/`:端模板是 `target-*`,通用工艺是 `craft-*`;
   项目使用 `targets: DesignTarget[]` 支持多端,不是历史提案里的单数 `target`。
 - `design-seed/references/theme-contract.md` 只定义语义 token 接口。项目 `theme.css`
-  从 StyleBrief 生成;空 brief 且已有文件时延续当前视觉;首次空项目只有用户跳过后才使用
+  从 StyleBrief 生成;无视觉资料且已有文件时延续当前视觉;首次空项目只有用户跳过后才使用
   项目内稳定、维度彼此独立且不持久化的 fallback。
-- tools 模式只有“空 brief + 无文件”的首次项目由 VFS 闸门机械锁住写入;用户回答后先
+- tools 模式只有“空 brief + 无 DESIGN.md + 无文件”的首次项目由 VFS 闸门机械锁住写入;用户回答后先
   `set_style_brief`,跳过后才解锁 fallback。其他整体风格更新由 prompt 协议要求先
   `set_style_brief` 再写文件,局部修改不得调用该工具。
 - markers 首次空项目的第一轮只在正文给出 2–3 个方向并等待,禁止输出文件;下一轮用户

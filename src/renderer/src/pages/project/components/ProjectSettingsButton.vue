@@ -1,18 +1,11 @@
 <script setup lang="ts">
-import { t } from '@renderer/i18n'
+import VisualGuidanceFields from '@renderer/components/project/VisualGuidanceFields.vue'
+import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { SettingOutlined } from '@antdv-next/icons'
 import { useProjectStore } from '@renderer/stores/project'
 import { DEFAULT_TOOL_CALL_LIMIT } from '@shared/limits'
-import type { Project } from '@shared/types'
-
-/**
- * 项目级运行设置。
- *
- * 目前只有一项:单轮工具调用上限。它是项目属性而不是会话属性——"改一版
- * 落地页"和"重构一个后台管理系统"需要的次数差一个数量级,而同一个项目
- * 的每一轮大体是同一个量级。
- */
+import type { Project, VisualGuidance } from '@shared/types'
 
 const props = defineProps<{ project: Project }>()
 
@@ -21,6 +14,13 @@ const { message } = App.useApp()
 const store = useProjectStore()
 
 const open = ref(false)
+const saving = ref(false)
+const importing = ref(false)
+const guidance = reactive<VisualGuidance>({
+  styleBrief: '',
+  designDocument: '',
+  visualStylePriority: 'styleBrief'
+})
 /** 空串 = 跟随全局。用 string 而不是 number|null:输入框清空时要能表达"没设" */
 const draft = ref('')
 const globalLimit = ref(window.api.initialConfig.toolCallLimit ?? DEFAULT_TOOL_CALL_LIMIT)
@@ -28,14 +28,22 @@ const globalLimit = ref(window.api.initialConfig.toolCallLimit ?? DEFAULT_TOOL_C
 const saved = computed(() => props.project.settings?.toolCallLimit)
 
 watch(
-  () => saved.value,
-  (value) => (draft.value = typeof value === 'number' ? String(value) : ''),
-  { immediate: true }
+  () => props.project.id,
+  () => {
+    open.value = false
+  }
 )
 
 // 全局值可能在设置页刚被改过,每次打开弹层重新取一遍再显示"跟随全局(N)"
 watch(open, async (isOpen) => {
   if (!isOpen) return
+  importing.value = false
+  Object.assign(guidance, {
+    styleBrief: props.project.styleBrief,
+    designDocument: props.project.designDocument ?? '',
+    visualStylePriority: props.project.visualStylePriority ?? 'styleBrief'
+  })
+  draft.value = typeof saved.value === 'number' ? String(saved.value) : ''
   globalLimit.value = (await window.api.config.read()).toolCallLimit ?? DEFAULT_TOOL_CALL_LIMIT
 })
 
@@ -55,60 +63,60 @@ async function save(): Promise<void> {
     message.warning(t('请填 0 或正整数,留空表示跟随全局'))
     return
   }
-  await store.setToolCallLimit(props.project.id, value)
-  open.value = false
-  message.success(t('已保存,下一轮对话生效'))
+  if (saving.value || importing.value) return
+  saving.value = true
+  const projectId = props.project.id
+  try {
+    await store.setVisualGuidance(projectId, { ...guidance })
+    await store.setToolCallLimit(projectId, value)
+    open.value = false
+    message.success(t('已保存,下一轮对话生效'))
+  } catch (error) {
+    message.error(uiMessage((error as Error).message))
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
 <template>
-  <a-popover v-model:open="open" trigger="click" placement="bottomRight">
-    <template #content>
-      <div class="proj-set">
-        <div class="proj-set-title">{{ t('单轮工具调用上限') }}</div>
-        <a-space-compact>
-          <a-input
-            v-model:value="draft"
-            size="small"
-            style="width: 132px"
-            :placeholder="t('留空跟随全局')"
-            @press-enter="save"
-          />
-          <a-button size="small" type="primary" @click="save">{{ t('保存') }}</a-button>
-        </a-space-compact>
-        <div class="proj-set-hint" :style="{ color: token.colorTextTertiary }">{{ hint }}</div>
-        <div class="proj-set-hint" :style="{ color: token.colorTextTertiary }">
+  <a-tooltip :title="t('项目设置')">
+    <a-button type="text" size="small" @click="open = true">
+      <template #icon><SettingOutlined /></template>
+    </a-button>
+  </a-tooltip>
+  <a-modal
+    v-model:open="open"
+    :title="t('项目设置')"
+    :width="600"
+    :confirm-loading="saving"
+    :ok-button-props="{ disabled: importing }"
+    :ok-text="t('保存')"
+    @ok="save"
+  >
+    <a-form layout="vertical" class="proj-set">
+      <VisualGuidanceFields
+        v-if="open"
+        v-model:style-brief="guidance.styleBrief"
+        v-model:design-document="guidance.designDocument"
+        v-model:priority="guidance.visualStylePriority"
+        @loading="importing = $event"
+      />
+      <a-form-item :label="t('单轮工具调用上限')" :extra="hint">
+        <a-input v-model:value="draft" :placeholder="t('留空跟随全局')" />
+        <div :style="{ color: token.colorTextTertiary }">
           {{ t('复杂改动需要更多次数;填 0 不限,单轮会更慢更贵。') }}
         </div>
-      </div>
-    </template>
-    <a-tooltip :title="t('项目设置')">
-      <a-button type="text" size="small">
-        <template #icon><SettingOutlined /></template>
-      </a-button>
-    </a-tooltip>
-  </a-popover>
+      </a-form-item>
+    </a-form>
+  </a-modal>
 </template>
 
 <style scoped>
-/* 弹层封顶高度内部滚动:硬约定,别把页面顶出滚动条 */
 .proj-set {
-  width: 240px;
-  max-height: 60vh;
+  max-height: calc(80vh - 120px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.proj-set-title {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.proj-set-hint {
-  font-size: 12px;
-  line-height: 1.5;
+  padding: 8px 6px 0 2px;
 }
 </style>

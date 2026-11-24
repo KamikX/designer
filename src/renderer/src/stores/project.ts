@@ -1,5 +1,11 @@
-import { defineStore } from 'pinia'
-import type { CreateProjectInput, ExternalLibraryRef, PreviewLib, Project } from '@shared/types'
+import { acceptHMRUpdate, defineStore } from 'pinia'
+import type {
+  CreateProjectInput,
+  ExternalLibraryRef,
+  PreviewLib,
+  Project,
+  VisualGuidance
+} from '@shared/types'
 
 export const useProjectStore = defineStore('project', {
   state: () => ({
@@ -50,7 +56,15 @@ export const useProjectStore = defineStore('project', {
       if (this.current?.id === id) this.current = updated
     },
 
-    /** 修改项目级视觉方向，并同步列表与当前工作台中的项目快照。 */
+    /** Keep both project snapshots aligned with the persisted visual guidance. */
+    async setVisualGuidance(id: string, guidance: VisualGuidance): Promise<void> {
+      const updated = await window.api.project.setVisualGuidance(id, { ...guidance })
+      if (!updated) throw new Error('Project not found')
+      const at = this.projects.findIndex((p) => p.id === id)
+      if (at >= 0) this.projects[at] = updated
+      if (this.current?.id === id) this.current = updated
+    },
+
     async setStyleBrief(id: string, styleBrief: string): Promise<void> {
       const updated = await window.api.project.setStyleBrief(id, styleBrief)
       if (!updated) return
@@ -83,3 +97,8 @@ export const useProjectStore = defineStore('project', {
     }
   }
 })
+
+// Preserve project state while adding updated actions to stores already used by mounted components.
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useProjectStore, import.meta.hot))
+}

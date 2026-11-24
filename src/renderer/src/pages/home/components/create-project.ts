@@ -4,7 +4,8 @@ import type {
   DesignTarget,
   ExternalLibraryRef,
   PreviewLib,
-  Stack
+  Stack,
+  VisualStylePriority
 } from '@shared/types'
 
 export const STYLE_BRIEF_FIELD_LABEL = '视觉风格（可选）'
@@ -18,6 +19,8 @@ export interface CreateProjectForm {
   libs: PreviewLib[]
   description: string
   styleBrief: string
+  designDocument: string
+  visualStylePriority: VisualStylePriority
 }
 
 export function createDefaultProjectForm(): CreateProjectForm {
@@ -31,7 +34,9 @@ export function createDefaultProjectForm(): CreateProjectForm {
     libs: [],
     externalLibraries: [],
     description: '',
-    styleBrief: ''
+    styleBrief: '',
+    designDocument: '',
+    visualStylePriority: 'styleBrief'
   }
 }
 
@@ -54,6 +59,8 @@ export function buildCreateProjectInput(form: CreateProjectForm): CreateProjectI
         : form.externalLibraries.map((ref) => ({ name: ref.name, version: ref.version })),
     libs: form.stack === 'vue3' ? [...form.libs] : [],
     description: form.description.trim(),
-    styleBrief: form.styleBrief.trim()
+    styleBrief: form.styleBrief.trim(),
+    designDocument: form.designDocument,
+    visualStylePriority: form.visualStylePriority
   }
 }

@@ -23,6 +23,7 @@ export interface StyleBriefToolContext {
   projectId: string
   /** 回合开始时是否已有设计稿；清空无文件项目的方向后，本轮必须重新上锁。 */
   initialHasFiles?: boolean
+  designDocument?: string
   vfs: SessionVfs
   save: (styleBrief: string) => Project | null | Promise<Project | null>
   /** 保存成功后的事务记账，不负责持久化。 */
@@ -37,6 +38,7 @@ export interface StyleBriefToolContext {
  */
 export function createInitialStyleWriteGate(input: {
   styleBrief: string
+  designDocument?: string
   hasFiles: boolean
   /** markers 协议没有 set_style_brief/ask_user 的解锁路径，不使用此工具专属闸门。 */
   useTools?: boolean
@@ -44,7 +46,11 @@ export function createInitialStyleWriteGate(input: {
   isLocked: () => boolean
   onStyleQuestionAnswered: (ask: AskUserInput, answer: AskUserAnswer) => void
 } {
-  let locked = (input.useTools ?? true) && !input.styleBrief.trim() && !input.hasFiles
+  let locked =
+    (input.useTools ?? true) &&
+    !input.styleBrief.trim() &&
+    !input.designDocument?.trim() &&
+    !input.hasFiles
   return {
     isLocked: () => locked,
     onStyleQuestionAnswered: (ask, answer) => {
@@ -99,6 +105,7 @@ export async function commitMarkerStyleBrief(input: {
   parser: FileStreamParser
   vfs: SessionVfs
   initialStyleBrief: string
+  designDocument?: string
   initialHasFiles: boolean
   outcome: 'complete' | 'aborted' | 'error'
   save: (styleBrief: string) => Project | null | Promise<Project | null>
@@ -130,7 +137,8 @@ export async function commitMarkerStyleBrief(input: {
   if (hasStyleProtocol) vfs.validateIngestPaths(parser.files, parser.deleted)
 
   const hasFileOutput = result.hasFileOutput
-  const isInitialProject = !input.initialStyleBrief.trim() && !input.initialHasFiles
+  const isInitialProject =
+    !input.initialStyleBrief.trim() && !input.designDocument?.trim() && !input.initialHasFiles
   const hasNonemptyStyleBrief = Boolean(parser.pendingStyleBrief)
   const clearsStyleBrief = hasStyleMarker && !hasNonemptyStyleBrief
 
@@ -142,6 +150,7 @@ export async function commitMarkerStyleBrief(input: {
     clearsStyleBrief &&
     Boolean(input.initialStyleBrief.trim()) &&
     !input.initialHasFiles &&
+    !input.designDocument?.trim() &&
     hasFileOutput
   ) {
     throw new Error('清除视觉方向后必须在下一轮重新确认，已拒绝同轮文件改动。')
@@ -205,7 +214,7 @@ export function buildStyleBriefTools(
           return '错误:未能保存项目视觉方向，本轮文件改动已丢弃，后续写入已拒绝。'
         }
 
-        if (!styleBrief && context.initialHasFiles === false) {
+        if (!styleBrief && !context.designDocument?.trim() && context.initialHasFiles === false) {
           const changes = context.vfs.changes()
           context.vfs.blockWrites(
             '视觉方向已清除且项目尚无设计稿；请在下一轮重新确认后再写文件。',
@@ -217,9 +226,11 @@ export function buildStyleBriefTools(
         }
         return styleBrief
           ? `已更新视觉方向，本轮立即生效：${styleBrief}`
-          : context.initialHasFiles === false
-            ? '已清除项目视觉方向；项目尚无设计稿，请在下一轮重新确认整体方向后再生成首稿。'
-            : '已清除项目视觉方向，本轮立即生效：后续将按当前设计稿处理。'
+          : context.designDocument?.trim()
+            ? '已清除 Visual style；继续使用 DESIGN.md 的视觉规则。'
+            : context.initialHasFiles === false
+              ? '已清除项目视觉方向；项目尚无设计稿，请在下一轮重新确认整体方向后再生成首稿。'
+              : '已清除项目视觉方向，本轮立即生效：后续将按当前设计稿处理。'
       }
     })
   }
@@ -319,6 +330,14 @@ export function renderStyleBriefPrompt(
   lang: PromptLanguage = 'zh-CN'
 ): string {
   const styleBrief = project.styleBrief?.trim() ?? ''
+  const designDocument = project.designDocument?.trim() ?? ''
+  if (designDocument) {
+    return promptText(lang, 'style.guidance', {
+      styleBrief: escapeMarkdownFence(styleBrief),
+      designDocument: escapeMarkdownFence(designDocument),
+      priority: project.visualStylePriority === 'designDocument' ? 'DESIGN.md' : 'Visual style'
+    })
+  }
   if (styleBrief) {
     return promptText(lang, 'style.direction', { styleBrief: escapeMarkdownFence(styleBrief) })
   }

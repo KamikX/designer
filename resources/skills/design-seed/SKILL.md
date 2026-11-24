@@ -7,6 +7,10 @@ metadata:
 
 # 设计种子
 
+When project guidance includes DESIGN.md, references to StyleBrief in this skill mean the combined
+Visual style and DESIGN.md rules under the project's selected source priority. This affects visual
+choices only; skill activation, workflows, technical contracts and accessibility still apply.
+
 ## 先判读项目方向
 
 1. **先读项目 StyleBrief。** 非空 StyleBrief 是最高优先级：它决定字体体系、明暗与

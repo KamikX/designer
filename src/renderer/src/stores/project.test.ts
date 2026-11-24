@@ -1,4 +1,5 @@
-import { createPinia, setActivePinia } from 'pinia'
+import { reactive } from 'vue'
+import { acceptHMRUpdate, createPinia, defineStore, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@shared/types'
 import { useProjectStore } from './project'
@@ -13,6 +14,8 @@ function project(styleBrief: string): Project {
     libs: ['antdv-next'],
     description: '',
     styleBrief,
+    designDocument: '',
+    visualStylePriority: 'styleBrief',
     settings: null,
     createdAt: '2026-07-26T00:00:00.000Z',
     updatedAt: '2026-07-26T00:00:00.000Z'
@@ -56,5 +59,55 @@ describe('project store setStyleBrief', () => {
 
     expect(store.projects[0]?.styleBrief).toBe('')
     expect(store.current?.styleBrief).toBe('')
+  })
+  it('saves cloneable visual guidance and updates project snapshots', async () => {
+    const guidance = reactive({
+      styleBrief: '',
+      designDocument: '# Brand',
+      visualStylePriority: 'designDocument' as const
+    })
+    const updated = { ...project(''), ...guidance }
+    const setVisualGuidance = vi.fn(async (_id, payload) => {
+      structuredClone(payload)
+      return updated
+    })
+    vi.stubGlobal('window', { api: { project: { setVisualGuidance } } })
+    const store = useProjectStore()
+    store.projects = [project('')]
+    store.current = project('')
+    await store.setVisualGuidance('project-1', guidance)
+    expect(store.current).toEqual(updated)
+    expect(store.projects[0]).toEqual(updated)
+  })
+  it('adds visual guidance actions to an existing store during hot reload without losing state', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const usePreviousProjectStore = defineStore('project', {
+      state: () => ({ projects: [project('Blue')], loaded: true, current: project('Blue') })
+    })
+    const existing = usePreviousProjectStore(pinia)
+    expect(existing).not.toHaveProperty('setVisualGuidance')
+    const hot = { data: { pinia }, invalidate: vi.fn() }
+    acceptHMRUpdate(
+      usePreviousProjectStore,
+      hot as unknown as NonNullable<ImportMeta['hot']>
+    )({ useProjectStore })
+
+    const store = useProjectStore(pinia)
+    expect(store).toBe(existing)
+    expect(store.loaded).toBe(true)
+    expect(store.current?.styleBrief).toBe('Blue')
+    const guidance = {
+      styleBrief: 'Blue',
+      designDocument: '# Green',
+      visualStylePriority: 'designDocument' as const
+    }
+    const updated = { ...project('Blue'), ...guidance }
+    const setVisualGuidance = vi.fn().mockResolvedValue(updated)
+    vi.stubGlobal('window', { api: { project: { setVisualGuidance } } })
+    await store.setVisualGuidance('project-1', guidance)
+    expect(setVisualGuidance).toHaveBeenCalledWith('project-1', guidance)
+    expect(store.current?.designDocument).toBe('# Green')
+    expect(hot.invalidate).not.toHaveBeenCalled()
   })
 })

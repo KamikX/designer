@@ -1,10 +1,12 @@
+import { validateVisualGuidance } from '../../../shared/visual-guidance'
 import { desc, eq, sql } from 'drizzle-orm'
 import type {
   CreateProjectInput,
   ExternalLibraryRef,
   PreviewLib,
   Project,
-  ProjectSettings
+  ProjectSettings,
+  VisualGuidance
 } from '../../../shared/types'
 import { getDb } from '../index'
 import { projects } from '../schema'
@@ -39,6 +41,12 @@ export function getProject(id: string): Project | null {
 }
 
 export function createProject(input: CreateProjectInput): Project {
+  const guidance = validateVisualGuidance({
+    styleBrief: input.styleBrief === undefined ? '' : input.styleBrief,
+    designDocument: input.designDocument === undefined ? '' : input.designDocument,
+    visualStylePriority:
+      input.visualStylePriority === undefined ? 'styleBrief' : input.visualStylePriority
+  })
   resolveLibraries(input.externalLibraries ?? [], input.stack, input.libs ?? [])
   return toProject(
     getDb()
@@ -52,18 +60,28 @@ export function createProject(input: CreateProjectInput): Project {
         targets: input.targets?.length ? input.targets : null,
         libs: input.libs?.length ? input.libs : null,
         description: input.description ?? '',
-        styleBrief: (input.styleBrief ?? '').trim()
+        ...guidance
       })
       .returning()
       .get()
   )
 }
 
-/**
- * 覆盖保存项目视觉方向。它会影响后续生成结果，因此和改名一样更新项目时间，
- * 让用户能在项目列表里看到这次有意义的修改。
- */
+/** Keep visual sources and their precedence atomic so subsequent turns never see a mixed draft. */
+export function setProjectVisualGuidance(id: string, guidance: VisualGuidance): Project | null {
+  if (typeof id !== 'string' || !id) throw new Error('Invalid project ID')
+  const validated = validateVisualGuidance(guidance)
+  const row = getDb()
+    .update(projects)
+    .set({ ...validated, updatedAt: sql`(datetime('now'))` })
+    .where(eq(projects.id, id))
+    .returning()
+    .get()
+  return row ? toProject(row) : null
+}
+
 export function setProjectStyleBrief(id: string, styleBrief: string): Project | null {
+  if (typeof styleBrief !== 'string') throw new Error('Invalid visual style')
   const row = getDb()
     .update(projects)
     .set({ styleBrief: styleBrief.trim(), updatedAt: sql`(datetime('now'))` })

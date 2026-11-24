@@ -808,5 +808,21 @@
   "支持的技术栈": "Supported stacks",
   "给 AI 的使用说明和示例": "Instructions and examples for AI",
   "额外 import 路径，每行一个（可选）": "Additional import paths, one per line (optional)",
-  "包内 CSS 路径，每行一个（可选）": "Package CSS paths, one per line (optional)"
+  "包内 CSS 路径，每行一个（可选）": "Package CSS paths, one per line (optional)",
+  "视觉设置无效": "Invalid visual guidance settings",
+  "DESIGN.md 不能超过 64 KiB": "DESIGN.md must not exceed 64 KiB",
+  "请选择有效的 UTF-8 Markdown 文件": "Choose a valid UTF-8 Markdown file",
+  "请选择 .md 文件": "Choose a .md file",
+  "Markdown 文件不能为空": "The Markdown file must not be empty",
+  "可描述色彩、明暗、信息密度、字体、圆角、动效等；无视觉资料时，AI 会在首次生成前询问。": "Describe colors, light/dark mode, density, typography, corners or motion. Without visual guidance, AI will ask before the first generation.",
+  "DESIGN.md（可选）": "DESIGN.md (optional)",
+  "仅用于视觉规则，不改变技能选择、工作流程或技术与可访问性要求。支持 UTF-8 .md，最大 64 KiB。": "Visual rules only; skill selection, workflows, technical and accessibility requirements still apply. UTF-8 .md, up to 64 KiB.",
+  "替换文件": "Replace file",
+  "导入 DESIGN.md": "Import DESIGN.md",
+  "视觉规则冲突时优先使用": "When visual rules conflict, prefer",
+  "无冲突的规则会合并使用；当前对话中的明确要求优先。": "Compatible rules are combined. Explicit requests in the current turn take precedence.",
+  "Visual style 优先": "Visual style first",
+  "DESIGN.md 优先": "DESIGN.md first",
+  "已清除 Visual style；继续使用 DESIGN.md 的视觉规则。": "Visual style cleared; continue using the visual rules in DESIGN.md.",
+  "移除": "Remove"
 }

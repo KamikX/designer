@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import VisualGuidanceFields from '@renderer/components/project/VisualGuidanceFields.vue'
 import LibraryPicker from '@renderer/components/libraries/LibraryPicker.vue'
 import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
@@ -109,8 +110,13 @@ const MODE_OPTIONS = computed(() => [
 ])
 
 const creating = ref(false)
+const importing = ref(false)
+watch(open, () => {
+  importing.value = false
+})
 
 async function submit(): Promise<void> {
+  if (importing.value || creating.value) return
   if (!form.name.trim()) {
     message.warning(t('请输入项目名称'))
     return
@@ -134,6 +140,7 @@ async function submit(): Promise<void> {
     v-model:open="open"
     :title="t('新建项目')"
     :confirm-loading="creating"
+    :ok-button-props="{ disabled: importing }"
     :width="520"
     centered
     :ok-text="t('创建项目')"
@@ -260,18 +267,13 @@ async function submit(): Promise<void> {
           />
         </a-form-item>
 
-        <a-form-item
-          :label="t('视觉风格（可选）')"
-          :extra="
-            t('可描述色彩、明暗、信息密度、字体、圆角、动效等；留空时，AI 会在首次生成前询问。')
-          "
-        >
-          <a-textarea
-            v-model:value="form.styleBrief"
-            :rows="4"
-            :placeholder="t('如：深色工业感，高信息密度，紧凑无衬线字体，卡片近直角，动效克制')"
-          />
-        </a-form-item>
+        <VisualGuidanceFields
+          v-if="open"
+          v-model:style-brief="form.styleBrief"
+          v-model:design-document="form.designDocument"
+          v-model:priority="form.visualStylePriority"
+          @loading="importing = $event"
+        />
       </a-form>
     </div>
   </a-modal>

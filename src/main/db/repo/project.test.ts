@@ -57,7 +57,7 @@ vi.mock('../index', () => ({
   })
 }))
 
-import { createProject, setProjectStyleBrief } from './project'
+import { createProject, setProjectStyleBrief, setProjectVisualGuidance } from './project'
 import { projects } from '../schema'
 
 function projectInput(styleBrief?: string): CreateProjectInput {
@@ -79,6 +79,8 @@ function project(styleBrief: string): Project {
     libs: null,
     description: '',
     styleBrief,
+    designDocument: '',
+    visualStylePriority: 'styleBrief',
     settings: null,
     createdAt: '2026-07-26 00:00:00',
     updatedAt: '2026-07-26 00:00:00'
@@ -126,5 +128,39 @@ describe('项目视觉方向', () => {
     expect(setProjectStyleBrief('missing', '任意方向')).toBeNull()
     expect(eqSpy).toHaveBeenCalledWith(projects.id, 'missing')
     expect(state.whereClauses).toEqual([eqSpy.mock.results[0].value])
+  })
+})
+
+describe('project visual guidance persistence', () => {
+  it('saves the two sources and priority in one update', () => {
+    const start = state.updates.length
+    const guidance = {
+      styleBrief: ' Blue ',
+      designDocument: '# Green\n',
+      visualStylePriority: 'designDocument' as const
+    }
+    state.updateRows.push({ ...project('Blue'), ...guidance })
+    setProjectVisualGuidance('project-1', guidance)
+    expect(state.updates.slice(start)).toEqual([
+      expect.objectContaining({ ...guidance, styleBrief: 'Blue', updatedAt: expect.anything() })
+    ])
+  })
+  it('rejects invalid IPC guidance without writing', () => {
+    const before = state.updates.length
+    expect(() =>
+      setProjectVisualGuidance('project-1', {
+        styleBrief: '',
+        designDocument: '',
+        visualStylePriority: 'skills'
+      } as never)
+    ).toThrow()
+    expect(state.updates).toHaveLength(before)
+    expect(() => createProject({ ...projectInput(), designDocument: null } as never)).toThrow()
+  })
+  it('does not update document or priority through the agent brief setter', () => {
+    state.updateRows.push(project('New'))
+    setProjectStyleBrief('project-1', 'New')
+    expect(state.updates.at(-1)).not.toHaveProperty('designDocument')
+    expect(state.updates.at(-1)).not.toHaveProperty('visualStylePriority')
   })
 })

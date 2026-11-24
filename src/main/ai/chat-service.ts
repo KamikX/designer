@@ -273,6 +273,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   const initialStyleGate = project
     ? createInitialStyleWriteGate({
         styleBrief: project.styleBrief ?? '',
+        designDocument: project.designDocument,
         hasFiles: currentFiles.length > 0,
         useTools
       })
@@ -397,6 +398,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
                 ? {
                     projectId: project.id,
                     initialHasFiles: currentFiles.length > 0,
+                    designDocument: project.designDocument,
                     vfs,
                     save: (styleBrief) => setProjectStyleBrief(project.id, styleBrief),
                     onSaved: () => {
@@ -866,6 +868,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       parser,
       vfs,
       initialStyleBrief: project.styleBrief ?? '',
+      designDocument: project.designDocument,
       initialHasFiles: currentFiles.length > 0,
       outcome,
       save: (styleBrief) => setProjectStyleBrief(project.id, styleBrief)
@@ -937,9 +940,9 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
        * 是事实,绕不过去。这条回流是我们相对纯提示词方案唯一的结构性优势。
        */
       // StyleBrief 从库里重取:本轮 set_style_brief 更新过的话,内存里的 project 是旧的
-      const freshBrief = getProject(project!.id)?.styleBrief ?? project!.styleBrief ?? ''
+      const freshProject = getProject(project!.id) ?? project!
       const findings = [...writes].flatMap(([path, content]) =>
-        lintArtifact(path, content, freshBrief)
+        lintArtifact(path, content, freshProject.styleBrief, freshProject.designDocument)
       )
       // 编译错误也走 lint 回流。tools 模式写入时已经当轮提醒过,这里是最后防线;
       // markers 模式(单发无工具)则只有这一条路能在下一轮把"预览白屏"讲给模型听

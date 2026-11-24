@@ -70,7 +70,13 @@ const FILLER = /(lorem ipsum|placeholder text|sample content|功能[一二三四
 const REMOTE_PLACEHOLDER =
   /(unsplash\.com|placehold\.co|placekitten|picsum\.photos|via\.placeholder)/i
 
-export function lintArtifact(path: string, source: string, styleBrief = ''): Finding[] {
+export function lintArtifact(
+  path: string,
+  source: string,
+  styleBrief = '',
+  designDocument = ''
+): Finding[] {
+  const visualGuidance = [styleBrief, designDocument].filter(Boolean).join('\n')
   // 只查前端产物。theme.css 里出现色值是正常的
   if (!/\.(html|vue|tsx|jsx|css)$/.test(path)) return []
 
@@ -82,7 +88,7 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
     if (m) findings.push({ ...f, snippet: clip(m[0]) })
   }
 
-  if (!BRIEF_INDIGO.test(styleBrief)) {
+  if (!BRIEF_INDIGO.test(visualGuidance)) {
     hit(AI_INDIGO, {
       rule: 'ai-indigo',
       severity: 'P0',
@@ -91,7 +97,7 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
     })
   }
 
-  if (!BRIEF_GRADIENT.test(styleBrief)) {
+  if (!BRIEF_GRADIENT.test(visualGuidance)) {
     hit(TRUST_GRADIENT, {
       rule: 'trust-gradient',
       severity: 'P0',
@@ -115,7 +121,7 @@ export function lintArtifact(path: string, source: string, styleBrief = ''): Fin
   })
 
   // emoji 只在当图标用时才算问题,正文里出现无所谓
-  if (!BRIEF_EMOJI.test(styleBrief)) {
+  if (!BRIEF_EMOJI.test(visualGuidance)) {
     const emojiAsIcon = /<(h[1-6]|button|li)[^>]*>[^<]{0,40}/gi
     for (const m of source.matchAll(emojiAsIcon)) {
       if (SLOP_EMOJI.test(m[0])) {

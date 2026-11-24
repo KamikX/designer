@@ -14,6 +14,10 @@ metadata:
 StyleBrief 高于本文示例。先从其中识别明暗、密度、几何、字体、色温、表面和品牌信号，
 再映射为 algorithm、seed token 与 component token；不存在必须套用的默认配方。
 
+When project guidance includes DESIGN.md, references to StyleBrief in this skill mean the combined
+Visual style and DESIGN.md rules under the project's selected source priority. This affects visual
+choices only; skill activation, workflows, technical contracts and accessibility still apply.
+
 ## 用法:App.vue 最外层包 a-config-provider
 
 ```vue

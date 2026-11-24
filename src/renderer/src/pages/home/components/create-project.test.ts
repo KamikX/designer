@@ -18,7 +18,9 @@ describe('buildCreateProjectInput', () => {
         libs: ['antdv-next'],
         externalLibraries: [],
         description: '  管理订单  ',
-        styleBrief: '  深色工业感，高密度，直角卡片  '
+        styleBrief: '  深色工业感，高密度，直角卡片  ',
+        designDocument: '',
+        visualStylePriority: 'styleBrief'
       })
     ).toEqual({
       name: '运营后台',
@@ -28,7 +30,9 @@ describe('buildCreateProjectInput', () => {
       libs: ['antdv-next'],
       externalLibraries: [],
       description: '管理订单',
-      styleBrief: '深色工业感，高密度，直角卡片'
+      styleBrief: '深色工业感，高密度，直角卡片',
+      designDocument: '',
+      visualStylePriority: 'styleBrief'
     })
   })
 
@@ -42,7 +46,9 @@ describe('buildCreateProjectInput', () => {
         libs: ['antdv-next'],
         externalLibraries: [],
         description: '',
-        styleBrief: '   '
+        styleBrief: '   ',
+        designDocument: '',
+        visualStylePriority: 'styleBrief'
       })
     ).toMatchObject({ libs: [], styleBrief: '' })
   })
@@ -66,6 +72,8 @@ describe('resetProjectForm', () => {
     form.libs = ['antdv-next']
     form.description = '订单管理'
     form.styleBrief = '深色工业风'
+    form.designDocument = '# Brand'
+    form.visualStylePriority = 'designDocument'
     const original = form
 
     resetProjectForm(form)
@@ -80,7 +88,9 @@ describe('resetProjectForm', () => {
       libs: [],
       externalLibraries: [],
       description: '',
-      styleBrief: ''
+      styleBrief: '',
+      designDocument: '',
+      visualStylePriority: 'styleBrief'
     })
   })
 })

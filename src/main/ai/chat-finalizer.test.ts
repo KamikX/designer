@@ -12,6 +12,8 @@ function project(styleBrief: string): Project {
     libs: null,
     description: '',
     styleBrief,
+    designDocument: '',
+    visualStylePriority: 'styleBrief',
     settings: null,
     createdAt: '',
     updatedAt: ''

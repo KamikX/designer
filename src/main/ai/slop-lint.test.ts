@@ -225,3 +225,18 @@ describe('给模型的措辞', () => {
     expect(out).toMatch(/\d+ 条必须修/)
   })
 })
+
+it('uses document-named aesthetic exemptions without disabling content checks', () => {
+  const source =
+    '<button>🚀</button><div style="background: linear-gradient(90deg, #6366f1, #3b82f6)">lorem ipsum</div>'
+  const rules = lintArtifact(
+    'index.html',
+    source,
+    '',
+    '# Brand\nUse indigo gradients and emoji icons.'
+  ).map((finding) => finding.rule)
+  expect(rules).not.toContain('ai-indigo')
+  expect(rules).not.toContain('trust-gradient')
+  expect(rules).not.toContain('emoji-icon')
+  expect(rules).toContain('filler-copy')
+})

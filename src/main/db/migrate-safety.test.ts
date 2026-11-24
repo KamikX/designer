@@ -203,3 +203,23 @@ describe('external library migration', () => {
     }
   })
 })
+
+it('upgrades existing projects with optional document defaults without losing their brief', () => {
+  const db = new Database(':memory:')
+  try {
+    for (const migration of MIGRATIONS.slice(0, 16)) db.exec(migration)
+    db.prepare(
+      "INSERT INTO projects (id, name, style_brief) VALUES ('legacy', 'Legacy', 'Blue')"
+    ).run()
+    for (const migration of MIGRATIONS.slice(16)) db.exec(migration)
+    expect(
+      db
+        .prepare(
+          "SELECT style_brief, design_document, visual_style_priority FROM projects WHERE id = 'legacy'"
+        )
+        .get()
+    ).toEqual({ style_brief: 'Blue', design_document: '', visual_style_priority: 'styleBrief' })
+  } finally {
+    db.close()
+  }
+})
