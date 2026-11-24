@@ -87,7 +87,7 @@ pane runs the compiled result. Switch to **代码 / Code** to read the file it j
 ## Quick start
 
 ```bash
-# 1. install (postinstall rebuilds native modules and prepares preview vendor files)
+# 1. install (postinstall downloads Electron, rebuilds native modules and prepares preview vendor files)
 pnpm install
 
 # 2. run in development
@@ -99,6 +99,16 @@ pnpm build:mac      # or build:win / build:linux
 
 > Native modules (`better-sqlite3`, `oxc-transform`) are compiled during `postinstall`. If install fails
 > behind a firewall, note that `.npmrc` already points Electron downloads at the npmmirror mirrors.
+
+Electron 42+ downloads its binary on demand instead of during its own `postinstall`.
+The project explicitly runs `install-electron --no` during installation and before `dev` / `start`
+because the current electron-vite launcher expects the binary to exist already. This command reuses
+a complete installation. On an older checkout, repair `Error: Electron uninstall` with:
+
+```bash
+pnpm exec install-electron --no
+pnpm dev
+```
 
 ## Usage
 
