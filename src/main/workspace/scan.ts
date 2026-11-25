@@ -1,3 +1,4 @@
+import { aiText, text as appText } from '../i18n'
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'fs'
 import { extname, join, relative, sep } from 'path'
 import { decode, sniff, SNIFF_BYTES } from './text'
@@ -258,7 +259,9 @@ export function probeReadable(path: string): {
 }
 
 export function clip(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max)}…(本行还有 ${text.length - max} 字符)`
+  return text.length <= max
+    ? text
+    : aiText('ai.textOutline.moreCharactersOnThisLine', text.slice(0, max), text.length - max)
 }
 
 /** 按行区间读本地文本文件,语义与 SessionVfs.read 保持一致 */
@@ -270,11 +273,15 @@ export function readTextRange(
   const stat = statSync(path)
   if (stat.size > LIMITS.readFileBytes) {
     throw new Error(
-      `文件 ${Math.round(stat.size / 1024)}KB,超过 ${LIMITS.readFileBytes / 1024 / 1024}MB 上限。请用 search_local 定位后按区间读。`
+      appText(
+        'messages.theFileIsKbExceedingTheMbLimitUseSearchLocalAndReadSelectedRanges',
+        Math.round(stat.size / 1024),
+        LIMITS.readFileBytes / 1024 / 1024
+      )
     )
   }
   if (stat.size === 0) {
-    return { body: '(空文件)', total: 0, from: 0, to: 0 }
+    return { body: aiText('ai.sessionVfs.emptyFile'), total: 0, from: 0, to: 0 }
   }
 
   const buffer = readFileSync(path)
@@ -282,8 +289,10 @@ export function readTextRange(
   if (!probe.ok) {
     // 关键:不要把乱码当内容返回。Node 读非 UTF-8 不会抛错,只会静默
     // 替换成 U+FFFD,模型收到一屏垃圾却以为那就是文件内容
-    const hint = probe.format?.readableAsDocument ? ' 请改用 read_local_document。' : ''
-    throw new Error(`这个文件读不了——${probe.reason}${hint}`)
+    const hint = probe.format?.readableAsDocument
+      ? appText('workspace.scan.useReadLocalDocumentInstead')
+      : ''
+    throw new Error(appText('messages.cannotReadThisFile', probe.reason, hint))
   }
 
   const raw = decode(buffer, probe.encoding, probe.bomBytes)
@@ -291,9 +300,10 @@ export function readTextRange(
   if (lines[lines.length - 1] === '') lines.pop()
 
   const total = lines.length
-  if (total === 0) return { body: '(空文件)', total: 0, from: 0, to: 0 }
+  if (total === 0) return { body: aiText('ai.sessionVfs.emptyFile'), total: 0, from: 0, to: 0 }
   const from = Math.max(1, startLine ?? 1)
-  if (from > total) throw new Error(`起始行 ${from} 超出文件范围(共 ${total} 行)。`)
+  if (from > total)
+    throw new Error(appText('messages.startingLineExceedsTheFileLengthLines', from, total))
   const to = Math.min(total, Math.min(endLine ?? total, from + LIMITS.readLines - 1))
 
   const width = String(to).length

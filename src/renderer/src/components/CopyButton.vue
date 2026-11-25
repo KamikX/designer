@@ -26,11 +26,11 @@ const { copy, copied } = useClipboard({ legacy: true, copiedDuring: 1500 })
 </script>
 
 <template>
-  <a-tooltip :title="copied ? t('已复制') : (props.label ?? t('复制'))">
+  <a-tooltip :title="copied ? t('common.copied') : (props.label ?? t('common.copy'))">
     <button
       class="copy-btn"
       type="button"
-      :aria-label="props.label ?? t('复制')"
+      :aria-label="props.label ?? t('common.copy')"
       :disabled="!props.text"
       @click="copy(props.text)"
     >

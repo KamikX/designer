@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 /**
  * 判断从文档里抽出来的文字到底能不能用。
  *
@@ -51,8 +52,8 @@ export function assessExtraction(text: string, pageCount = 1): ExtractionVerdict
       kind: 'scanned',
       reason:
         trimmed.length === 0
-          ? '没有抽到任何文字,整份文档多半是扫描件或纯图片。'
-          : `${pages} 页只抽到 ${trimmed.length} 个字符,多半是扫描件或纯图片。`
+          ? appText('messages.noTextWasExtractedTheDocumentIsProbablyScannedOrImageOnly')
+          : appText('messages.onlyCharactersWereExtractedFromPages', pages, trimmed.length)
     }
   }
 
@@ -61,7 +62,10 @@ export function assessExtraction(text: string, pageCount = 1): ExtractionVerdict
     return {
       usable: false,
       kind: 'garbled',
-      reason: `抽出的内容里有 ${cids} 处 (cid:N) 占位符,说明字体映射缺失,文字取不出来。`
+      reason: appText(
+        'messages.extractedContentContainsCidNPlaceholdersIndicatingMissingFontMappings',
+        cids
+      )
     }
   }
 
@@ -70,7 +74,7 @@ export function assessExtraction(text: string, pageCount = 1): ExtractionVerdict
     return {
       usable: false,
       kind: 'garbled',
-      reason: '抽出的内容里大量字符无法解码,是乱码。'
+      reason: appText('messages.manyExtractedCharactersCouldNotBeDecodedTheTextIsGarbled')
     }
   }
 
@@ -78,7 +82,7 @@ export function assessExtraction(text: string, pageCount = 1): ExtractionVerdict
     return {
       usable: false,
       kind: 'garbled',
-      reason: '抽出的内容里几乎没有可识别的文字,是乱码。'
+      reason: appText('messages.theExtractedContentContainsAlmostNoRecognizableText')
     }
   }
 

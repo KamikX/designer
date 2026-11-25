@@ -57,12 +57,12 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
         v-if="noModel"
         type="warning"
         show-icon
-        :message="t('还没有可用的模型')"
+        :message="t('common.noModelsAvailable')"
         style="margin-bottom: 12px"
       >
         <template #description>
-          {{ t('先到设置里添加供应商、录入 API Key 并启用模型。') }}
-          <a @click="router.push('/settings')">{{ t('前往设置') }}</a>
+          {{ t('messages.addAProviderInSettingsEnterAnApiKeyAndEnableAModelFirst') }}
+          <a @click="router.push('/settings')">{{ t('common.openSettings') }}</a>
         </template>
       </a-alert>
 
@@ -75,11 +75,11 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
       <div v-if="chatStore.messages.length === 0 && !noModel" class="chat-empty">
         <div class="chat-empty-inner">
           <MessageOutlined class="chat-empty-icon" :style="{ color: token.colorTextQuaternary }" />
-          <h2 class="chat-empty-title">{{ t('开始你的设计') }}</h2>
+          <h2 class="chat-empty-title">{{ t('common.startYourDesign') }}</h2>
           <div class="chat-empty-sub" :style="{ color: token.colorTextTertiary }">
-            {{ t('描述页面、风格、内容,AI 会生成可预览的多文件设计稿;') }}
+            {{ t('messages.describeThePageStyleAndContent') }}
             <br />
-            {{ t('后续可以继续对话逐步调整') }}
+            {{ t('messages.continueTheConversationToRefineIt') }}
           </div>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { text as appText, aiText } from '../i18n'
 import { promptText } from '../ai/prompts/i18n'
 import type { PromptLanguage } from '../ai/prompts/i18n'
 import { tool } from 'ai'
@@ -61,7 +63,7 @@ export function buildInstallTools(
           ]
         })
 
-        if (answer.skipped) return '用户取消了安装。'
+        if (answer.skipped) return appText('messages.theUserCanceledInstallation')
         const picked = answer.selections[0]?.[0] ?? ''
         const scope = picked.startsWith(
           promptText(lang, 'install.skill.global').split('(')[0].trim()
@@ -70,10 +72,13 @@ export function buildInstallTools(
           : 'app'
 
         const result = installSkill(input.content, scope)
-        if (!result.ok) return `错误:${result.error}`
+        if (!result.ok) return aiText('ai.imageTools.error', result.error)
 
         context.onChanged()
-        return `已安装到 ${result.dir}。下一轮对话就能在 available_skills 里看到它。`
+        return appText(
+          'messages.installedToItWillAppearInAvailableSkillsFromTheNextTurn',
+          result.dir
+        )
       }
     }),
 
@@ -98,7 +103,7 @@ export function buildInstallTools(
       }),
       execute: async (input) => {
         if (!input.command && !input.url) {
-          return '错误:stdio 类要给 command,http/sse 类要给 url,二者必居其一。'
+          return appText('messages.errorStdioRequiresACommandHttpSseRequiresAUrlOneMustBeSpecified')
         }
 
         const shown = input.url ?? [input.command, ...(input.args ?? [])].join(' ')
@@ -131,7 +136,7 @@ export function buildInstallTools(
           answer.skipped ||
           answer.selections[0]?.[0] === promptText(lang, 'install.mcp.cancel')
         ) {
-          return '用户取消了安装,没有做任何改动。'
+          return appText('messages.theUserCanceledInstallationNoChangesWereMade')
         }
 
         // 配置里只写占位符,真值在加密存储里
@@ -149,14 +154,22 @@ export function buildInstallTools(
         if (!probe.ok) {
           // **保留配置**:让用户能自己去 mcp.json 里改,而不是从头再来一遍
           return (
-            `已写入配置,但连接测试失败:${probe.error}\n\n` +
-            `配置保留在 mcp.json 里(服务名:${input.name}),用户可以自己修正。` +
-            `请把这个错误如实告诉用户,不要声称安装成功。`
+            appText('messages.configurationSavedButTheConnectionTestFailed', probe.error) +
+            appText(
+              'messages.theConfigurationRemainsInMcpJsonServiceNameAndCanBeCorrectedManually',
+              input.name
+            ) +
+            appText('messages.reportThisErrorAccuratelyToTheUserDoNotClaimInstallationSucceeded')
           )
         }
-        return `安装成功。${input.name} 提供了 ${probe.tools?.length ?? 0} 个工具:${(probe.tools ?? []).join('、')}`
+        return appText(
+          'messages.installedSuccessfullyProvidesTools',
+          input.name,
+          probe.tools?.length ?? 0,
+          (probe.tools ?? []).join('、')
+        )
       }
     })
   }
-  return tools
+  return localizedTools(tools, lang)
 }

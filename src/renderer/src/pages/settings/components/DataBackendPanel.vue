@@ -53,7 +53,7 @@ const saving = ref(false)
 
 async function save(): Promise<void> {
   if (mode.value === 'self-hosted' && (!form.host.trim() || !form.database.trim())) {
-    message.warning(t('主机和数据库名必填'))
+    message.warning(t('messages.hostAndDatabaseNameAreRequired'))
     return
   }
   saving.value = true
@@ -75,7 +75,7 @@ async function save(): Promise<void> {
     })
     hasPassword.value = next.selfHosted?.hasPassword ?? false
     form.password = ''
-    message.success(t('已保存。增量同步功能将在后续版本开放,连接参数已就绪'))
+    message.success(t('messages.savedIncrementalSyncWillBeAvailable'))
   } finally {
     saving.value = false
   }
@@ -85,25 +85,25 @@ async function save(): Promise<void> {
 <template>
   <div style="max-width: 560px">
     <a-form layout="vertical">
-      <a-form-item :label="t('数据后端')">
+      <a-form-item :label="t('common.dataBackend')">
         <a-segmented
           v-model:value="mode"
           :options="[
             {
               get label() {
-                return t('本地(默认)')
+                return t('common.localDefault')
               },
               value: 'local'
             },
             {
               get label() {
-                return t('自建数据库同步')
+                return t('common.selfHostedDatabaseSync')
               },
               value: 'self-hosted'
             },
             {
               get label() {
-                return t('官方云服务(敬请期待)')
+                return t('messages.officialCloudServiceComingSoon')
               },
               value: 'cloud',
               disabled: true
@@ -111,16 +111,12 @@ async function save(): Promise<void> {
           ]"
         />
         <div style="margin-top: 4px; font-size: 12px; opacity: 0.65">
-          {{
-            t(
-              '所有数据始终保存在本机 SQLite;配置自建 MySQL / PostgreSQL 后可将数据同步到你自己的服务器,实现多设备与备份。'
-            )
-          }}
+          {{ t('messages.allDataIsStoredLocallyIn') }}
         </div>
       </a-form-item>
 
       <template v-if="mode === 'self-hosted'">
-        <a-form-item :label="t('数据库类型')">
+        <a-form-item :label="t('common.databaseType')">
           <a-segmented
             v-model:value="form.dialect"
             :options="[
@@ -130,33 +126,35 @@ async function save(): Promise<void> {
           />
         </a-form-item>
         <a-flex :gap="12">
-          <a-form-item :label="t('主机')" required style="flex: 2">
+          <a-form-item :label="t('common.host')" required style="flex: 2">
             <a-input v-model:value="form.host" placeholder="db.example.com" />
           </a-form-item>
-          <a-form-item :label="t('端口')" style="flex: 1">
+          <a-form-item :label="t('common.port')" style="flex: 1">
             <a-input-number v-model:value="form.port" :min="1" :max="65535" style="width: 100%" />
           </a-form-item>
         </a-flex>
         <a-flex :gap="12">
-          <a-form-item :label="t('数据库名')" required style="flex: 1">
+          <a-form-item :label="t('common.databaseName')" required style="flex: 1">
             <a-input v-model:value="form.database" />
           </a-form-item>
-          <a-form-item :label="t('用户名')" style="flex: 1">
+          <a-form-item :label="t('common.username')" style="flex: 1">
             <a-input v-model:value="form.user" autocomplete="off" />
           </a-form-item>
         </a-flex>
-        <a-form-item :label="hasPassword ? t('密码(已保存,留空沿用)') : t('密码')">
+        <a-form-item
+          :label="hasPassword ? t('messages.passwordSavedLeaveBlankToKeep') : t('common.password')"
+        >
           <a-input-password v-model:value="form.password" autocomplete="off" />
         </a-form-item>
         <a-form-item>
           <a-space>
             <a-switch v-model:checked="form.ssl" size="small" />
-            <span>{{ t('SSL 连接') }}</span>
+            <span>{{ t('common.sslConnection') }}</span>
           </a-space>
         </a-form-item>
       </template>
 
-      <a-button type="primary" :loading="saving" @click="save">{{ t('保存') }}</a-button>
+      <a-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</a-button>
     </a-form>
   </div>
 </template>

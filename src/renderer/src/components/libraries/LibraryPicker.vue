@@ -40,7 +40,9 @@ function toggle(lib: ExternalLibraryRef): void {
   <div class="library-picker">
     <a-spin v-if="loading" size="small" />
     <a-alert v-if="error" type="error" :message="error" />
-    <p v-if="!loading && !available.length">{{ t('请先在设置的依赖库中安装 npm 包。') }}</p>
+    <p v-if="!loading && !available.length">
+      {{ t('messages.installNpmPackagesInSettingsLibrariesFirst') }}
+    </p>
     <label v-for="lib in available" :key="lib.id" class="library-option">
       <a-checkbox
         :checked="selected(lib)"
@@ -49,13 +51,16 @@ function toggle(lib: ExternalLibraryRef): void {
       />
       <span
         ><strong>{{ lib.name }}</strong> @{{ lib.version }}<br /><small>{{
-          lib.ready ? lib.description : t('文件缺失，请重新安装')
+          lib.ready ? lib.description : t('messages.filesMissingReinstallThisVersion')
         }}</small></span
       >
     </label>
     <label v-for="lib in missing" :key="lib.name + lib.version" class="library-option">
       <a-checkbox checked :disabled="disabled" @change="toggle(lib)" />
-      <span>{{ lib.name }}@{{ lib.version }} — {{ t('未安装或不兼容，可取消选择') }}</span>
+      <span
+        >{{ lib.name }}@{{ lib.version }} —
+        {{ t('messages.notInstalledOrIncompatibleDeselectToRemove') }}</span
+      >
     </label>
   </div>
 </template>

@@ -1,3 +1,6 @@
+import { text as appText } from '../i18n'
+import { currentLanguage, withLanguage } from '../i18n'
+import { aiText } from '../i18n'
 import { streamText } from 'ai'
 import type { WebContents } from 'electron'
 import type {
@@ -94,10 +97,15 @@ export function isGroupChainRunning(conversationId: string): boolean {
 }
 
 export function sendGroupMessage(sender: WebContents, input: GroupSendInput): void {
+  return withLanguage(readConfig().lang, () => sendGroupMessageInLanguage(sender, input))
+}
+
+function sendGroupMessageInLanguage(sender: WebContents, input: GroupSendInput): void {
   const conversation = getConversation(input.conversationId)
-  if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')
+  if (!conversation || conversation.kind !== 'group')
+    throw new Error(aiText('ai.groupService.groupNotFound'))
   if (running.has(input.conversationId))
-    throw new Error('上一条接力还在进行中,先等它结束或点停止。')
+    throw new Error(aiText('ai.groupService.aRelayIsAlreadyRunningWaitForItToFinishOrStop'))
 
   const members = resolveStoredMembers(conversation.settings?.members)
   const mentionMembers = members.map(memberMention)
@@ -203,7 +211,7 @@ async function runFanOut(
     ctx,
     assignments.map((assignment) =>
       runBranch(ctx, assignment, root.fork(), {
-        from: '用户',
+        from: appText('common.user'),
         instruction: assignment.instruction,
         peers: peerNames(ctx, assignments, assignment.memberId)
       })
@@ -342,7 +350,7 @@ async function runHop(
       agent = resolveGroupAgent(source, getModel)
       const provider = getProviderRowById(agent.model.providerId)
       if (!provider) {
-        throw new Error(`成员“${source.name}”使用的供应商不存在`)
+        throw new Error(aiText('ai.groupService.theProviderUsedByDoesNotExist', source.name))
       }
       providerSlug = provider.slug
       providerAdapter = provider.adapter as AdapterType
@@ -364,14 +372,17 @@ async function runHop(
     let trace: RunTraceCollector | null = null
     try {
       if (resolutionError) throw resolutionError
-      if (!agent) throw resolutionError ?? new Error(`成员“${source.name}”解析失败`)
+      if (!agent)
+        throw (
+          resolutionError ?? new Error(aiText('ai.groupService.couldNotResolveMember', source.name))
+        )
       // 与重试无关的一次性准备。群组里没有"自动内置"的技能:builtin 设计
       // 技能也只在被显式勾选时生效
       const wantedSkills = new Set(agent.skillIds)
       const selectedSkills = installedSkills.filter((skill) => wantedSkills.has(skill.name))
       const userRoots = listRoots({ conversationId })
       const roots = [...userRoots, ...skillRoots(selectedSkills)]
-      const catalog = skillCatalog(selectedSkills, agent.model.contextWindow)
+      const catalog = skillCatalog(selectedSkills, agent.model.contextWindow, currentLanguage())
       const system = buildAgentSystem(
         agent,
         members,
@@ -455,15 +466,20 @@ async function runHop(
             // 调用原地拒绝,不产生副作用
             tools: wrapToolsWithBudget(
               {
-                ...buildTimeTools(),
+                ...buildTimeTools(currentLanguage()),
                 ...buildGroupHistoryTools(conversationId, mentionMembers),
-                ...buildLocalTools(roots, {
-                  canSeeImages: agent.model.abilities.includes('vision'),
-                  intent: ctx.userText
-                }),
-                ...buildSkillTools(selectedSkills)
+                ...buildLocalTools(
+                  roots,
+                  {
+                    canSeeImages: agent.model.abilities.includes('vision'),
+                    intent: ctx.userText
+                  },
+                  currentLanguage()
+                ),
+                ...buildSkillTools(selectedSkills, currentLanguage())
               },
-              new ToolBudgetGate(toolCallLimit)
+              new ToolBudgetGate(toolCallLimit),
+              currentLanguage()
             ),
             stopWhen: ({ steps }) =>
               steps.reduce((n, s) => n + s.toolCalls.length, 0) >= toolCallLimit
@@ -586,15 +602,22 @@ async function runHop(
  * 剩 ≤2 棒时把话说死:不许再交接。这是**给模型的**硬规则,guard 那道闸照旧兜底。
  */
 function budgetSection(budget: HopBudget): string {
-  const head = `## 本轮接力预算\n\n这是第 ${budget.hop} 棒,整轮最多 ${budget.totalLimit} 棒,**你之后还剩 ${budget.remaining} 棒**。`
+  const head = aiText(
+    'ai.groupService.handoffBudgetThisIsHopOfAtMostHopsRemainAfterYours',
+    budget.hop,
+    budget.totalLimit,
+    budget.remaining
+  )
   if (budget.remaining <= 2) {
-    return `${head}
-
-**预算见底了,这一棒必须收口**:把当前结论整理成可交付的样子,末尾写「@用户 一句话总结 + 未决事项清单」。不要再 @ 任何成员——再交接会被系统拦停,用户只会拿到一份半成品。`
+    return aiText(
+      'ai.groupService.theBudgetIsNearlyExhaustedCloseOutThisHopMakeYourConclusions',
+      head
+    )
   }
-  return `${head}
-
-按剩余棒数安排:剩得多可以把事情做透,剩得少就先保证手上这份文档是完整可交付的。每一棒都要有实质推进——如果你发现只剩下"还可以再优化"这类建议,那就是该收口了,直接 @用户。`
+  return aiText(
+    'ai.groupService.planAroundTheRemainingHopsWithFewHopsLeftPrioritizeAComplete',
+    head
+  )
 }
 
 /**
@@ -606,19 +629,10 @@ function budgetSection(budget: HopBudget): string {
  * (谁和谁打架、还缺什么),不在再生产。
  */
 function mergeSection(branches: readonly string[]): string {
-  return `## 这一棒是汇合
-
-你之前派出去的并行分支都回来了:${branches.map((name) => `@${name}`).join('、')}。他们的产出就在上面的群聊记录里,现在由你收口。
-
-要做的三件事:
-1. **对照**:他们的结论有没有互相打架(同一张表两种字段、同一个接口两种签名、同一个假设两种取值)。有冲突就逐条列出来,并给出你的裁决和理由。
-2. **补缺**:对着当初派活的目标看还缺什么。缺的那块具体是什么、该谁做,写清楚。
-3. **定去向**:够交付了就写「@用户 一句话总结」;确实还缺一块才 @ 对应的成员,并说清要什么。
-
-三条硬规则:
-- **不要重写他们的文档**。你的产出是一份**汇总**:冲突清单 + 裁决 + 缺口 + 去向。要引用就用「见【角色名】的 xx 小节」,不要把原文抄进来。
-- **用二级标题开头**(如「## 汇总:xxx」),不要用一级标题。一级标题是各成员**交付物**的标记,汇总不是一份新交付物——写成一级标题会把你自己那份专业文档从交付清单里挤掉。
-- **没有冲突、也没有缺口,就直接 @用户 收口**。"再打磨一下"不是缺口。`
+  return aiText(
+    'ai.groupService.convergenceHopYourParallelBranchesHaveReturnedTheirWorkIsInThe',
+    branches.map((name) => `@${name}`).join('、')
+  )
 }
 
 /**
@@ -635,14 +649,20 @@ function checklistSection(entries: readonly DeliverableEntry[]): string {
   const { delivered, total } = deliverableProgress(entries)
   const lines = entries.map((entry) =>
     entry.status === 'delivered'
-      ? `- 已交 ${entry.deliverable}(@${entry.memberName}):《${entry.title}》`
-      : `- **未交** ${entry.deliverable}(@${entry.memberName})`
+      ? aiText('ai.groupService.delivered', entry.deliverable, entry.memberName, entry.title)
+      : aiText('ai.groupService.missing', entry.deliverable, entry.memberName)
   )
   const tail =
     delivered === total
-      ? '清单已经齐了。除非你手上这份还没写完,否则该收口了:@用户 一句话总结。'
-      : '还有未交的项。你要么补上属于你的那份,要么 @ 该交的那位——不要开新的话题。'
-  return `## 本轮交付清单(${delivered}/${total})\n\n${lines.join('\n')}\n\n${tail}\n\n交付物的标记是**一级标题**:你这份文档要以「# 标题」开头才会被算作交付。`
+      ? aiText('ai.groupService.allDeliverablesArePresentUnlessYour')
+      : aiText('ai.groupService.someDeliverablesAreMissingCompleteYour')
+  return aiText(
+    'ai.groupService.deliverablesForThisTurnADeliverableMustBeginWithALevelOne',
+    delivered,
+    total,
+    lines.join('\n'),
+    tail
+  )
 }
 
 function buildAgentSystem(
@@ -659,40 +679,22 @@ function buildAgentSystem(
 
   return [
     agent.persona,
-    `## 协作协议
-
-你在一个多角色协作群里。成员:${roster},以及 @用户(发起人,最终验收者)。
-
-- **只产出 markdown 文档**,不写实现代码(字段表、结构树、伪代码可以)。文档以一级标题开头(如「# 需求文档:xxx」)。
-- 直接输出文档本身,不要客套与自我介绍。
-- 群聊记录里【角色名】开头的是各成员的发言,你自己的历史发言也在其中,不要重复已有内容,在其基础上推进。
-- 记录过长时较早的发言会被折叠成「结构存根 + 前情纪要」;需要逐字引用被折叠的原文时,用 read_group_message 按存根标注的消息 id 取回,长文档按行区间分段读。
-- 完成后在消息**末尾**决定下一棒:还需要谁接力就每人一行写「@角色名 一句话交代要做什么」,**可以 @ 多位,他们会同时开跑**;整条链路完成或需要用户决策时写「@用户 一句话总结」。
-
-**什么时候可以交接、什么时候必须收口**
-
-- 交接的理由只能是「有一件具体的、你做不了的事要别人做」。写不出这件具体的事,就是收口的时候。
-- **只是"还可以再优化"不构成交接理由。** 优化建议是无限的,把它写进你自己文档的「后续可优化」小节,然后 @用户。
-- 评审 / 验证 / 复核类的产出,末尾必须给**二元结论**:「结论:通过」或「结论:不通过」,后面跟**阻断性问题清单**(阻断 = 不改就没法继续往下做的问题,可以是 0 条)。
-  - 0 条阻断性问题 → 必须 @用户 收口,不许因为"还有改进空间"再起一棒;
-  - 有阻断性问题 → @ 能改的那位,并把问题逐条列清楚。
-- 同一份交付物的返工最多一轮。第二次评审还不通过,把分歧点写清楚交给 @用户 定夺,不要继续在成员之间来回。`,
+    aiText(
+      'ai.groupService.collaborationProtocolYouAreInAGroupOfSpecialistsMembersPlusUser',
+      roster
+    ),
     mergeOf?.length ? mergeSection(mergeOf) : '',
     checklistSection(checklist),
     budget ? budgetSection(budget) : '',
     peers.length > 0
-      ? `## 你不是一个人在跑
-
-本轮和你**同时**开跑的还有:${peers.map((name) => `@${name}`).join('、')}。
-
-- 你们是并行的,**看不到彼此本轮的产出**——群聊记录里只有已经完成的发言,他们此刻写的东西你现在读不到。
-- 所以:只做你自己职责内的那部分,不要替他们把活干了,也不要假装引用他们"刚写的"内容。
-- 确实需要他们的结果才能往下走,就在末尾 @ 对方并说清要什么;对方接棒时能看到你这篇文档。
-- 你产出的东西如果和他们的可能冲突(同一张表、同一个接口),把你的假设明确写出来,让后面的人有据可依。`
+      ? aiText(
+          'ai.groupService.youAreNotRunningAloneTheseMembersStartedConcurrentlyWithYouYou',
+          peers.map((name) => `@${name}`).join('、')
+        )
       : '',
     hasRoots
-      ? '- 用户授权了本地目录:先用 list_local / read_local_file 读里面的文档定位背景,再动笔。'
-      : '- 用户没有授权本地目录,基于群聊内容做合理假设,并把关键假设写在文档开头。',
+      ? aiText('ai.groupService.localDirectoriesAreAuthorizedReadTheir')
+      : aiText('ai.groupService.noLocalDirectoriesAreAuthorizedMake'),
     catalog
   ].join('\n\n')
 }

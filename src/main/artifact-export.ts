@@ -1,3 +1,4 @@
+import { text as appText } from './i18n'
 import { LIB_VERSIONS } from './preview/lib-setup'
 import { resolveLibraries } from './libraries/service'
 import { translate } from '../shared/i18n'
@@ -14,11 +15,11 @@ import { exportDirName } from '../shared/export-name'
  */
 export async function exportArtifact(artifactId: string): Promise<string | null> {
   const artifact = getArtifact(artifactId)
-  if (!artifact) throw new Error('设计稿版本不存在')
+  if (!artifact) throw new Error(appText('messages.designVersionNotFound'))
   const project = getProject(artifact.projectId)
 
   const result = await dialog.showOpenDialog({
-    title: translate((await import('./config')).readConfig().lang, '选择导出目录'),
+    title: translate((await import('./config')).readConfig().lang, 'common.selectExportDirectory'),
     properties: ['openDirectory', 'createDirectory']
   })
   if (result.canceled || result.filePaths.length === 0) return null
@@ -70,7 +71,7 @@ export async function exportArtifact(artifactId: string): Promise<string | null>
 function safeJoin(base: string, relative: string): string {
   const target = normalize(join(base, relative))
   if (target !== base && !target.startsWith(base + sep)) {
-    throw new Error(`非法文件路径:${relative}`)
+    throw new Error(appText('messages.invalidFilePath', relative))
   }
   return target
 }

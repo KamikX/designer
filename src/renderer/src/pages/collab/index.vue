@@ -55,9 +55,9 @@ async function open(id: string): Promise<void> {
 function remove(group: Conversation): void {
   modal.confirm({
     get title() {
-      return t('删除「{0}」?', group.title)
+      return t('common.delete', group.title)
     },
-    content: t('群里的全部消息和授权过的本地目录都会一起删除。'),
+    content: t('messages.allGroupMessagesAndAccessToLocalDirectoriesWillBeDeleted'),
     okType: 'danger',
     onOk: async () => {
       await collab.removeGroup(group.id)
@@ -94,7 +94,7 @@ function scrollToBottom(smooth: boolean): void {
     <div class="collab-sider" :style="{ borderColor: token.colorBorderSecondary }">
       <a-button block size="small" style="margin-bottom: 10px" @click="openCreate">
         <template #icon><PlusOutlined /></template>
-        {{ t('新建群组') }}
+        {{ t('common.newGroup') }}
       </a-button>
 
       <div
@@ -102,7 +102,7 @@ function scrollToBottom(smooth: boolean): void {
         class="collab-sider-empty"
         :style="{ color: token.colorTextQuaternary }"
       >
-        {{ t('还没有群组') }}
+        {{ t('common.noGroupsYet') }}
       </div>
 
       <div
@@ -134,7 +134,7 @@ function scrollToBottom(smooth: boolean): void {
         <button
           class="collab-item-action"
           type="button"
-          :aria-label="t('群组设置 {0}', group.title)"
+          :aria-label="t('common.groupSettingsLabel', group.title)"
           :disabled="collab.chaining[group.id]"
           @click="openEdit(group)"
         >
@@ -143,7 +143,7 @@ function scrollToBottom(smooth: boolean): void {
         <button
           class="collab-item-action"
           type="button"
-          :aria-label="t('删除群组 {0}', group.title)"
+          :aria-label="t('common.deleteGroup', group.title)"
           @click="remove(group)"
         >
           <DeleteOutlined />
@@ -156,15 +156,16 @@ function scrollToBottom(smooth: boolean): void {
       <div class="collab-empty-inner">
         <!-- 装饰性图标不上品牌色:颜色留给状态和行动,这里只是个标记 -->
         <TeamOutlined class="collab-empty-icon" :style="{ color: token.colorTextQuaternary }" />
-        <h2 class="collab-empty-title">{{ t('让一组 AI 角色接力干活') }}</h2>
+        <h2 class="collab-empty-title">{{ t('messages.letATeamOfAiRolesWorkTogether') }}</h2>
         <div class="collab-empty-steps" :style="{ color: token.colorTextTertiary }">
-          {{ t('1. 新建一个群组,勾选需要的角色') }}<br />
-          {{ t('2. (可选)授权本地目录,让它们参考你的真实项目') }}<br />
-          {{ t('3. @产品经理 说你要做什么——它产出文档后会 @下一位,链条自动接力') }}
+          {{ t('messages.1CreateAGroupAndSelectTheRolesYouNeed') }}<br />
+          {{ t('messages.2OptionallyGrantAccessToLocalDirectoriesSoTheyCanReferenceYourProject')
+          }}<br />
+          {{ t('messages.3MentionAMemberToStart') }}
         </div>
         <a-button type="primary" @click="openCreate">
           <template #icon><PlusOutlined /></template>
-          {{ t('新建群组') }}
+          {{ t('common.newGroup') }}
         </a-button>
       </div>
     </div>
@@ -186,7 +187,8 @@ function scrollToBottom(smooth: boolean): void {
           <template v-if="collab.resumeMember" #action>
             <!-- 拦停是有界循环的检查点:一键续棒 = 发一条 @成员 的新消息开新链 -->
             <a-button size="small" :loading="collab.chainingHere" @click="resumeChain">
-              {{ t('让「') }}{{ collab.resumeMember.name }}{{ t('」继续接力') }}
+              {{ t('common.let') }}{{ collab.resumeMember.name
+              }}{{ t('messages.continueTheRelay') }}
             </a-button>
           </template>
         </a-alert>

@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 /**
  * 行级 unified diff。
  *
@@ -77,7 +78,13 @@ export function unifiedDiff(path: string, beforeText: string, afterText: string)
   const after = splitLines(afterText)
 
   if (before.length > MAX_DIFF_LINES || after.length > MAX_DIFF_LINES) {
-    return `--- ${path}\n+++ ${path}\n(文件过大,略过逐行 diff:${before.length} 行 → ${after.length} 行)`
+    return aiText(
+      'ai.textDiff.fileTooLargeForALineByLineDiffLinesLines',
+      path,
+      path,
+      before.length,
+      after.length
+    )
   }
 
   const script = diffLines(before, after)

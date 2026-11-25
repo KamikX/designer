@@ -1,3 +1,5 @@
+import type { Lang } from './types'
+import { translate } from './i18n'
 export interface GroupMentionMember {
   id: string
   name: string
@@ -412,9 +414,10 @@ function hasUserMention(text: string, startAt: number): boolean {
   for (const range of proseRanges(text)) {
     let index = Math.max(range.start, startAt)
     while (index < range.end) {
-      const end = index + '@用户'.length
+      const userMention = ['@user', '@用户'].find((label) => text.startsWith(label, index))
+      const end = index + (userMention?.length ?? 0)
       if (
-        text.startsWith('@用户', index) &&
+        userMention &&
         hasStartBoundary(text, index) &&
         end <= range.end &&
         hasEndBoundary(text, end)
@@ -427,11 +430,11 @@ function hasUserMention(text: string, startAt: number): boolean {
   return false
 }
 
-export function createGroupMention(member: GroupMentionMember): string {
+export function createGroupMention(member: GroupMentionMember, lang: Lang = 'zh-CN'): string {
   if (isGroupMemberId(member.id)) {
     return `@[${escapeCanonicalLabel(member.name)}](member:${member.id})`
   }
-  throw new Error('群组成员 ID 必须是 ULID')
+  throw new Error(translate(lang, 'validation.groupMentions.groupMemberIdMustBeAUlid'))
 }
 
 export function tokenizeGroupMentions(

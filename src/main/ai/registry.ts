@@ -1,3 +1,4 @@
+import { aiText, text as appText } from '../i18n'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createDeepSeek } from '@ai-sdk/deepseek'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -32,16 +33,18 @@ const cache = new Map<string, (modelId: string) => LanguageModel>()
 
 export function getLanguageModel(providerId: string, modelId: string): LanguageModel {
   const row = getProviderRowById(providerId)
-  if (!row) throw new Error('供应商不存在')
-  if (!row.enabled) throw new Error(`供应商「${row.name}」已停用`)
+  if (!row) throw new Error(aiText('ai.chatService.providerNotFound'))
+  if (!row.enabled) throw new Error(appText('messages.providerIsDisabled', row.name))
 
   const cacheKey = `${row.id}:${row.updatedAt}`
   let factory = cache.get(cacheKey)
   if (!factory) {
-    if (!row.apiKeyCipher) throw new Error(`供应商「${row.name}」未配置 API Key`)
+    if (!row.apiKeyCipher) throw new Error(appText('messages.providerHasNoApiKey', row.name))
     const apiKey = decryptSecret(row.apiKeyCipher, row.keyStorage as KeyStorage)
     if (apiKey == null) {
-      throw new Error(`供应商「${row.name}」的密钥无法解密(可能是换了机器),请重新录入`)
+      throw new Error(
+        appText('messages.couldNotDecryptTheKeyForTheMachineMayHaveChangedEnterItAgain', row.name)
+      )
     }
 
     const baseURL = row.baseUrl ?? undefined
@@ -67,7 +70,7 @@ export function getLanguageModel(providerId: string, modelId: string): LanguageM
         break
       }
       default: {
-        if (!baseURL) throw new Error(`供应商「${row.name}」缺少 Base URL`)
+        if (!baseURL) throw new Error(appText('messages.providerHasNoBaseUrl', row.name))
         const p = createOpenAICompatible({ name: row.slug, apiKey, baseURL })
         factory = (m) => p(m)
       }
@@ -93,7 +96,8 @@ export async function testProvider(
   try {
     const target =
       modelId ?? listModels(providerId).find((m) => m.enabled && m.type === 'chat')?.modelId
-    if (!target) return { ok: false, error: '该供应商下没有可用的对话模型' }
+    if (!target)
+      return { ok: false, error: appText('messages.thisProviderHasNoAvailableChatModels') }
 
     // 连通性测试是真实计费请求,计入长期用量;用量页可按场景排除
     const row = getProviderRowById(providerId)

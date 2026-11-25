@@ -37,7 +37,7 @@ const pane = ref<'skills' | 'mcp'>('skills')
 const PANES = [
   {
     get label() {
-      return t('技能')
+      return t('common.skills')
     },
     value: 'skills'
   },
@@ -105,7 +105,7 @@ const creating = ref(false)
 async function submitCreate(): Promise<void> {
   const name = createName.value.trim()
   if (!name) {
-    message.warning(t('请输入技能名字(会成为目录名)'))
+    message.warning(t('messages.enterASkillNameUsedAsItsDirectoryName'))
     return
   }
   creating.value = true
@@ -127,7 +127,7 @@ async function importZip(): Promise<void> {
     const skill = await window.api.skill.importPackage()
     if (!skill) return // 用户在文件框里取消了,不是错误
     await reload()
-    message.success(t('已导入「{0}」', skill.name))
+    message.success(t('common.imported', skill.name))
   } catch (err) {
     message.error(errText(err))
   }
@@ -140,12 +140,12 @@ function editSkill(s: InstalledSkill): void {
 function removeSkill(s: InstalledSkill): void {
   modal.confirm({
     get title() {
-      return t('删除「{0}」?', s.name)
+      return t('common.delete', s.name)
     },
-    content: t('整个技能目录会被删除,不可恢复。'),
-    okText: t('删除'),
+    content: t('messages.theEntireSkillDirectoryWillBePermanentlyDeleted'),
+    okText: t('common.deleteLabel'),
     okButtonProps: { danger: true },
-    cancelText: t('取消'),
+    cancelText: t('common.cancel'),
     onOk: async () => {
       await window.api.skill.remove(s.name)
       await reload()
@@ -157,7 +157,7 @@ async function installSkill(s: MarketSkill): Promise<void> {
   try {
     await window.api.skill.installMarket(s.id)
     await reload()
-    message.success(t('已安装「{0}」,可以在输入框的技能里勾选', s.name))
+    message.success(t('messages.installedSelectItInTheComposerSSkillsMenuToUseIt', s.name))
   } catch (err) {
     message.error(errText(err))
   }
@@ -185,12 +185,12 @@ async function toggleMcp(s: McpServerView, enabled: boolean): Promise<void> {
 function removeMcp(s: McpServerView): void {
   modal.confirm({
     get title() {
-      return t('删除「{0}」?', s.name)
+      return t('common.delete', s.name)
     },
-    content: t('会从 mcp.json 里移除这条配置。'),
-    okText: t('删除'),
+    content: t('messages.thisConfigurationWillBeRemovedFromMcpJson'),
+    okText: t('common.deleteLabel'),
     okButtonProps: { danger: true },
-    cancelText: t('取消'),
+    cancelText: t('common.cancel'),
     onOk: async () => {
       await window.api.mcp.remove(s.name)
       await reload()
@@ -204,7 +204,7 @@ const importingJson = ref(false)
 
 async function submitImportJson(): Promise<void> {
   if (!jsonText.value.trim()) {
-    message.warning(t('请粘贴 JSON 配置'))
+    message.warning(t('messages.pasteAJsonConfiguration'))
     return
   }
   importingJson.value = true
@@ -213,7 +213,7 @@ async function submitImportJson(): Promise<void> {
     jsonOpen.value = false
     jsonText.value = ''
     await reload()
-    message.success(t('已导入 {0} 个 MCP 服务', imported.length))
+    message.success(t('messages.importedMcpServices', imported.length))
   } catch (err) {
     // importJson 抛出来的 message 是主进程写好的人话,原样给用户
     message.error(errText(err))
@@ -227,13 +227,13 @@ function installMcp(m: MarketMcp): void {
 
   modal.confirm({
     get title() {
-      return t('安装「{0}」?', m.name)
+      return t('common.install', m.name)
     },
     width: 520,
-    okText: t('我知道,安装'),
-    cancelText: t('取消'),
+    okText: t('common.installLabel'),
+    cancelText: t('common.cancel'),
     content: h('div', { style: 'font-size:13px;line-height:1.8' }, [
-      h('p', { style: 'margin:0 0 8px' }, t('它会在你的机器上执行:')),
+      h('p', { style: 'margin:0 0 8px' }, t('messages.itWillRunTheFollowingCommandOnYourMachine')),
       h(
         'pre',
         {
@@ -245,14 +245,17 @@ function installMcp(m: MarketMcp): void {
       h(
         'p',
         { style: `margin:0;color:${token.value.colorTextTertiary}` },
-        t('首次运行会从 npm 下载。进程以你的身份运行,能做的事和你在终端里一样。')
+        t('messages.theFirstRunDownloadsFromNpm')
       ),
       ...(m.envHints?.length
         ? [
             h(
               'p',
               { style: `margin:8px 0 0;color:${token.value.colorTextTertiary}` },
-              t('装好后还需要补环境变量:{0}', m.envHints.map((e) => e.key).join('、'))
+              t(
+                'messages.afterInstallationConfigureTheseEnvironmentVariables',
+                m.envHints.map((e) => e.key).join('、')
+              )
             )
           ]
         : [])
@@ -265,7 +268,7 @@ function installMcp(m: MarketMcp): void {
         ...(m.url ? { url: m.url } : {})
       })
       await reload()
-      message.success(t('已安装「{0}」', m.name))
+      message.success(t('common.installed', m.name))
     }
   })
 }
@@ -274,9 +277,9 @@ function installMcp(m: MarketMcp): void {
 <template>
   <div class="market">
     <div class="market-head">
-      <div class="market-title">{{ t('技能与 MCP') }}</div>
+      <div class="market-title">{{ t('common.skillsAndMcp') }}</div>
       <div class="market-sub" :style="{ color: token.colorTextTertiary }">
-        {{ t('技能是文件目录,MCP 是 mcp.json。市场清单来自你配置的市场源') }}
+        {{ t('messages.skillsAreFileDirectoriesMcpUses') }}
       </div>
     </div>
 
@@ -295,19 +298,19 @@ function installMcp(m: MarketMcp): void {
       <div class="market-actions">
         <a-button type="primary" @click="createOpen = true">
           <template #icon><PlusOutlined /></template>
-          {{ t('新建技能') }}
+          {{ t('common.newSkill') }}
         </a-button>
         <a-button @click="importZip">
           <template #icon><ImportOutlined /></template>
-          {{ t('导入 zip') }}
+          {{ t('common.importZip') }}
         </a-button>
       </div>
 
       <div v-if="mySkills.length" class="market-group">
         <div class="market-group-head">
-          <span class="market-group-title">{{ t('我的技能') }}</span>
+          <span class="market-group-title">{{ t('common.mySkills') }}</span>
           <span class="market-group-hint" :style="{ color: token.colorTextTertiary }">
-            {{ t('~/.antd-designer/skills · 可编辑,只在本应用生效') }}
+            {{ t('messages.antdDesignerSkillsEditableAvailableOnlyInThisApplication') }}
           </span>
         </div>
         <div class="market-grid">
@@ -319,7 +322,7 @@ function installMcp(m: MarketMcp): void {
           >
             <div class="market-card-head">
               <span class="market-card-name">{{ s.name }}</span>
-              <a-tag v-if="s.warning" color="warning">{{ t('格式问题') }}</a-tag>
+              <a-tag v-if="s.warning" color="warning">{{ t('common.formatIssue') }}</a-tag>
             </div>
             <div class="market-card-desc" :style="{ color: token.colorTextSecondary }">
               {{ s.description }}
@@ -330,11 +333,11 @@ function installMcp(m: MarketMcp): void {
             <div class="market-card-ops">
               <a-button size="small" @click="editSkill(s)">
                 <template #icon><EditOutlined /></template>
-                {{ t('编辑') }}
+                {{ t('common.edit') }}
               </a-button>
               <a-button size="small" danger @click="removeSkill(s)">
                 <template #icon><DeleteOutlined /></template>
-                {{ t('删除') }}
+                {{ t('common.deleteLabel') }}
               </a-button>
             </div>
           </div>
@@ -343,9 +346,9 @@ function installMcp(m: MarketMcp): void {
 
       <div v-if="builtinSkills.length" class="market-group">
         <div class="market-group-head">
-          <span class="market-group-title">{{ t('内置技能') }}</span>
+          <span class="market-group-title">{{ t('common.builtInSkills') }}</span>
           <span class="market-group-hint" :style="{ color: token.colorTextTertiary }">
-            {{ t('随应用发布 · 设计会话按项目勾选的端自动生效') }}
+            {{ t('messages.bundledWithTheApplicationEnabledFor') }}
           </span>
         </div>
         <div class="market-grid">
@@ -357,7 +360,7 @@ function installMcp(m: MarketMcp): void {
           >
             <div class="market-card-head">
               <span class="market-card-name">{{ s.name }}</span>
-              <a-tag v-if="s.warning" color="warning">{{ t('格式问题') }}</a-tag>
+              <a-tag v-if="s.warning" color="warning">{{ t('common.formatIssue') }}</a-tag>
             </div>
             <div class="market-card-desc" :style="{ color: token.colorTextSecondary }">
               {{ s.description }}
@@ -371,9 +374,9 @@ function installMcp(m: MarketMcp): void {
 
       <div v-if="globalSkills.length" class="market-group">
         <div class="market-group-head">
-          <span class="market-group-title">{{ t('全局技能') }}</span>
+          <span class="market-group-title">{{ t('common.globalSkills') }}</span>
           <span class="market-group-hint" :style="{ color: token.colorTextTertiary }">
-            {{ t('~/.agents/skills、~/.claude/skills · 跨 AI 工具共享,这里只读') }}
+            {{ t('messages.agentsSkillsClaudeSkillsSharedAcrossAiToolsReadOnlyHere') }}
           </span>
         </div>
         <div class="market-grid">
@@ -385,7 +388,7 @@ function installMcp(m: MarketMcp): void {
           >
             <div class="market-card-head">
               <span class="market-card-name">{{ s.name }}</span>
-              <a-tag v-if="s.warning" color="warning">{{ t('格式问题') }}</a-tag>
+              <a-tag v-if="s.warning" color="warning">{{ t('common.formatIssue') }}</a-tag>
             </div>
             <div class="market-card-desc" :style="{ color: token.colorTextSecondary }">
               {{ s.description }}
@@ -399,23 +402,23 @@ function installMcp(m: MarketMcp): void {
 
       <div class="market-group">
         <div class="market-group-head">
-          <span class="market-group-title">{{ t('技能市场') }}</span>
+          <span class="market-group-title">{{ t('common.skillMarketplace') }}</span>
           <span class="market-group-hint" :style="{ color: token.colorTextTertiary }">
-            {{ t('安装到「我的技能」,装完可编辑') }}
+            {{ t('messages.installToMySkillsEditableAfterInstallation') }}
           </span>
         </div>
         <a-empty
           v-if="!marketSource.url"
-          :description="t('还没有配置市场源')"
+          :description="t('messages.noMarketplaceSourceConfigured')"
           :image-style="{ height: '48px' }"
         >
           <a-button size="small" @click="router.push('/settings')">{{
-            t('去设置里填市场地址')
+            t('messages.setTheMarketplaceUrlInSettings')
           }}</a-button>
         </a-empty>
         <a-empty
           v-else-if="marketSkills.length === 0"
-          :description="t('市场源里没有技能')"
+          :description="t('messages.noSkillsInThisMarketplace')"
           :image-style="{ height: '48px' }"
         />
         <div v-else class="market-grid">
@@ -434,7 +437,7 @@ function installMcp(m: MarketMcp): void {
                 @click="installSkill(s)"
               >
                 <template v-if="skillInstalled(s)" #icon><CheckOutlined /></template>
-                {{ skillInstalled(s) ? t('已安装') : t('安装') }}
+                {{ skillInstalled(s) ? t('common.installedLabel') : t('common.installLabelText') }}
               </a-button>
             </div>
             <div class="market-card-desc" :style="{ color: token.colorTextSecondary }">
@@ -460,18 +463,18 @@ function installMcp(m: MarketMcp): void {
 
       <div class="market-group">
         <div class="market-group-head">
-          <span class="market-group-title">{{ t('我的 MCP') }}</span>
+          <span class="market-group-title">{{ t('common.myMcpServices') }}</span>
           <span class="market-group-hint" :style="{ color: token.colorTextTertiary }">
-            {{ t('~/.antd-designer/mcp.json · 勾选的会话才连接') }}
+            {{ t('messages.antdDesignerMcpJsonConnectedOnlyInSessionsWhereSelected') }}
           </span>
           <a-button size="small" style="margin-left: auto" @click="jsonOpen = true">
             <template #icon><ImportOutlined /></template>
-            {{ t('从 JSON 导入') }}
+            {{ t('common.importJson') }}
           </a-button>
         </div>
         <a-empty
           v-if="servers.length === 0"
-          :description="t('还没有 MCP 服务。从下面的市场安装,或粘贴 JSON 导入')"
+          :description="t('messages.noMcpServicesYetInstallFromTheMarketplaceBelowOrImportJson')"
           style="margin: 24px 0"
         />
         <div v-else class="market-grid">
@@ -504,12 +507,12 @@ function installMcp(m: MarketMcp): void {
               class="market-card-warn"
               :style="{ color: token.colorWarning }"
             >
-              {{ t('缺环境变量') }} {{ s.missingEnv.join('、') }}
+              {{ t('common.missingEnvironmentVariables') }} {{ s.missingEnv.join('、') }}
             </div>
             <div class="market-card-ops">
               <a-button size="small" danger @click="removeMcp(s)">
                 <template #icon><DeleteOutlined /></template>
-                {{ t('删除') }}
+                {{ t('common.deleteLabel') }}
               </a-button>
             </div>
           </div>
@@ -518,23 +521,23 @@ function installMcp(m: MarketMcp): void {
 
       <div class="market-group">
         <div class="market-group-head">
-          <span class="market-group-title">{{ t('MCP 市场') }}</span>
+          <span class="market-group-title">{{ t('common.mcpMarketplace') }}</span>
           <span class="market-group-hint" :style="{ color: token.colorTextTertiary }">
-            {{ t('安装前会原样展示要执行的命令') }}
+            {{ t('messages.theExactCommandIsShownBeforeInstallation') }}
           </span>
         </div>
         <a-empty
           v-if="!marketSource.url"
-          :description="t('还没有配置市场源')"
+          :description="t('messages.noMarketplaceSourceConfigured')"
           :image-style="{ height: '48px' }"
         >
           <a-button size="small" @click="router.push('/settings')">{{
-            t('去设置里填市场地址')
+            t('messages.setTheMarketplaceUrlInSettings')
           }}</a-button>
         </a-empty>
         <a-empty
           v-else-if="marketMcp.length === 0"
-          :description="t('市场源里没有 MCP 服务')"
+          :description="t('messages.noMcpServicesInThisMarketplace')"
           :image-style="{ height: '48px' }"
         />
         <div v-else class="market-grid">
@@ -553,7 +556,7 @@ function installMcp(m: MarketMcp): void {
                 @click="installMcp(m)"
               >
                 <template v-if="mcpInstalled(m)" #icon><CheckOutlined /></template>
-                {{ mcpInstalled(m) ? t('已安装') : t('安装') }}
+                {{ mcpInstalled(m) ? t('common.installedLabel') : t('common.installLabelText') }}
               </a-button>
             </div>
             <div class="market-card-desc" :style="{ color: token.colorTextSecondary }">
@@ -566,7 +569,7 @@ function installMcp(m: MarketMcp): void {
             <div class="market-card-tags">
               <a-tag v-for="tag in m.tags" :key="tag">{{ tag }}</a-tag>
               <a v-if="m.homepage" :href="m.homepage" target="_blank" class="market-card-link">
-                <LinkOutlined /> {{ t('主页') }}
+                <LinkOutlined /> {{ t('common.website') }}
               </a>
             </div>
           </div>
@@ -577,16 +580,16 @@ function installMcp(m: MarketMcp): void {
     <!-- 新建技能:只要一个名字。名字就是目录名,也是技能的身份 -->
     <a-modal
       v-model:open="createOpen"
-      :title="t('新建技能')"
+      :title="t('common.newSkill')"
       :confirm-loading="creating"
-      :ok-text="t('创建并编辑')"
+      :ok-text="t('common.createAndEdit')"
       @ok="submitCreate"
     >
       <a-form layout="vertical" style="margin-top: 8px">
-        <a-form-item :label="t('技能名字(会成为目录名)')" required>
+        <a-form-item :label="t('messages.skillNameUsedAsItsDirectoryName')" required>
           <a-input
             v-model:value="createName"
-            :placeholder="t('如 my-design-rules')"
+            :placeholder="t('common.eGMyDesignRules')"
             @press-enter="submitCreate"
           />
         </a-form-item>
@@ -596,21 +599,17 @@ function installMcp(m: MarketMcp): void {
     <!-- 从 JSON 导入 MCP:兼容各家工具的 mcpServers 方言,解析在主进程做 -->
     <a-modal
       v-model:open="jsonOpen"
-      :title="t('从 JSON 导入 MCP')"
+      :title="t('messages.importMcpFromJson')"
       :confirm-loading="importingJson"
       :width="560"
-      :ok-text="t('导入')"
+      :ok-text="t('common.import')"
       @ok="submitImportJson"
     >
       <a-textarea
         v-model:value="jsonText"
         :rows="10"
         style="margin-top: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace"
-        :placeholder="
-          t(
-            '支持 Claude Desktop / Cursor / VS Code 的 mcpServers JSON,如:\n{\n  &quot;mcpServers&quot;: {\n    &quot;context7&quot;: { &quot;command&quot;: &quot;npx&quot;, &quot;args&quot;: [&quot;-y&quot;, &quot;@upstash/context7-mcp&quot;] }\n  }\n}'
-          )
-        "
+        :placeholder="t('messages.supportsClaudeDesktopCursorVsCode')"
       />
     </a-modal>
   </div>

@@ -79,7 +79,7 @@ async function save(): Promise<void> {
       })
     await load()
     open.value = false
-    message.success(t('依赖库已保存'))
+    message.success(t('common.librarySaved'))
   } catch (e) {
     error.value = uiMessage(String(e))
   } finally {
@@ -98,33 +98,33 @@ async function remove(lib: InstalledLibrary): Promise<void> {
 
 <template>
   <div class="libraries-panel">
-    <p>{{ t('全局安装，按项目选择。安装后可离线使用；每个项目固定使用所选版本。') }}</p>
-    <a-button type="primary" @click="edit(null)">{{ t('安装 npm 包') }}</a-button>
+    <p>{{ t('messages.installGloballyAndSelectPerProject') }}</p>
+    <a-button type="primary" @click="edit(null)">{{ t('common.installNpmPackage') }}</a-button>
     <a-alert v-if="error && !open" type="error" :message="error" />
     <div class="library-card">
       <strong>antdv-next · @antdv-next/icons</strong>
-      <a-tag>{{ t('内置') }}</a-tag>
-      <p>{{ t('Vue 3 组件库，沿用现有 CDN 加载方式。') }}</p>
+      <a-tag>{{ t('common.builtIn') }}</a-tag>
+      <p>{{ t('messages.vue3LibrariesUsingTheExistingCdnLoader') }}</p>
     </div>
     <div v-for="lib in libraries" :key="lib.id" class="library-card">
       <a-space wrap
         ><strong>{{ lib.name }}@{{ lib.version }}</strong
         ><a-tag>{{ lib.stacks.join(' / ') }}</a-tag
         ><a-tag :color="lib.ready ? 'green' : 'red'">{{
-          lib.ready ? t('已安装') : t('文件缺失，请重新安装')
+          lib.ready ? t('common.installedLabel') : t('messages.filesMissingReinstallThisVersion')
         }}</a-tag></a-space
       >
       <p>{{ lib.description }}</p>
       <a-space
-        ><a-button size="small" @click="edit(lib)">{{ t('编辑说明') }}</a-button>
-        <a-popconfirm :title="t('卸载此版本？')" @confirm="remove(lib)"
-          ><a-button size="small" danger>{{ t('卸载') }}</a-button></a-popconfirm
+        ><a-button size="small" @click="edit(lib)">{{ t('common.editInstructions') }}</a-button>
+        <a-popconfirm :title="t('common.uninstallThisVersion')" @confirm="remove(lib)"
+          ><a-button size="small" danger>{{ t('common.uninstall') }}</a-button></a-popconfirm
         >
       </a-space>
     </div>
     <a-modal
       v-model:open="open"
-      :title="editing ? t('编辑说明') : t('安装 npm 包')"
+      :title="editing ? t('common.editInstructions') : t('common.installNpmPackage')"
       :confirm-loading="busy"
       :closable="!busy"
       :mask-closable="!busy"
@@ -133,32 +133,32 @@ async function remove(lib: InstalledLibrary): Promise<void> {
       @ok="save"
     >
       <a-form layout="vertical" class="library-form">
-        <a-form-item :label="t('npm 包名')"
+        <a-form-item :label="t('common.npmPackageName')"
           ><a-input v-model:value="form.name" :disabled="!!editing || busy" placeholder="zod"
         /></a-form-item>
-        <a-form-item :label="t('精确版本')"
+        <a-form-item :label="t('common.exactVersion')"
           ><a-input v-model:value="form.version" :disabled="!!editing || busy" placeholder="4.4.3"
         /></a-form-item>
-        <a-form-item :label="t('支持的技术栈')"
+        <a-form-item :label="t('common.supportedStacks')"
           ><a-checkbox-group
             v-model:value="form.stacks"
             :disabled="!!editing || busy"
             :options="stackOptions"
         /></a-form-item>
-        <a-form-item :label="t('描述')"
+        <a-form-item :label="t('common.description')"
           ><a-input v-model:value="form.description" :disabled="busy"
         /></a-form-item>
-        <a-form-item :label="t('给 AI 的使用说明和示例')"
+        <a-form-item :label="t('messages.instructionsAndExamplesForAi')"
           ><a-textarea v-model:value="form.instructions" :rows="5" :disabled="busy"
         /></a-form-item>
-        <a-form-item :label="t('额外 import 路径，每行一个（可选）')"
+        <a-form-item :label="t('messages.additionalImportPathsOnePerLineOptional')"
           ><a-textarea
             v-model:value="subpaths"
             :rows="2"
             placeholder="zod/v4"
             :disabled="!!editing || busy"
         /></a-form-item>
-        <a-form-item :label="t('包内 CSS 路径，每行一个（可选）')"
+        <a-form-item :label="t('messages.packageCssPathsOnePerLineOptional')"
           ><a-textarea
             v-model:value="css"
             :rows="2"

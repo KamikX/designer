@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { aiText } from '../i18n'
 import { promptText } from './prompts/i18n'
 import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
@@ -51,7 +53,11 @@ const MAX_RESULT_CHARS = 12000
 
 function capped(text: string): string {
   if (text.length <= MAX_RESULT_CHARS) return text
-  return `${text.slice(0, MAX_RESULT_CHARS)}\n\n…结果过长已截断(共 ${text.length} 字符)。请缩小范围重试。`
+  return aiText(
+    'ai.tools.resultTruncatedCharactersNarrowTheRangeAndTryAgain',
+    text.slice(0, MAX_RESULT_CHARS),
+    text.length
+  )
 }
 
 export interface FileToolSink {
@@ -72,7 +78,7 @@ export interface FileToolOptions {
 }
 
 function renderHits(hits: (SearchHit & { matchId?: string })[], withContext: boolean): string {
-  if (hits.length === 0) return '没有匹配。可以放宽关键词,或用 list_files 确认文件范围。'
+  if (hits.length === 0) return aiText('ai.tools.noMatchesBroadenTheQueryOrUseListFilesToCheckThe')
   const truncated = hits.some((hit) => hit.text.length >= 800)
   const blocks = hits.map((hit) => {
     const id = hit.matchId ? ` [matchId: ${hit.matchId}]` : ''
@@ -83,9 +89,9 @@ function renderHits(hits: (SearchHit & { matchId?: string })[], withContext: boo
     return [head, ...before, `> ${hit.line}  ${hit.text}`, ...after].join('\n')
   })
   const note = truncated
-    ? '\n\n注意:预览行有截断,**不可**把预览当 old_string 抄写;编辑请用 matchId 走 apply_string_edits。'
+    ? aiText('ai.tools.notePreviewLinesAreTruncatedDoNotCopyPreviewsIntoOldString')
     : ''
-  return `${hits.length} 处匹配:\n\n${blocks.join(withContext ? '\n\n' : '\n')}${note}`
+  return aiText('ai.tools.matches', hits.length, blocks.join(withContext ? '\n\n' : '\n'), note)
 }
 
 /** 工具按职责分类,写入闸门与补丁降级只对相应类别生效 */
@@ -122,14 +128,17 @@ export function buildFileTools(
       const fatal = ledger.fatalLockReason()
       if (fatal) {
         return renderToolResult(
-          toolError('TOOL_EXECUTION_FAILED', `写入已锁定(${fatal}),本轮不能再修改文件。`)
+          toolError(
+            'TOOL_EXECUTION_FAILED',
+            aiText('ai.tools.writingIsLockedFilesCannotBeChangedInThisTurn', fatal)
+          )
         )
       }
       if (ledger.writesPaused()) {
         return renderToolResult(
           toolError(
             'TOOL_EXECUTION_FAILED',
-            '连续 3 次写入失败,已暂停写入。先用 search_files / read_file / capture_range 重新定位,再继续修改。'
+            aiText('ai.tools.writingPausedAfter3ConsecutiveFailuresLocateTheTargetAgainWithSearch')
           )
         )
       }
@@ -137,7 +146,7 @@ export function buildFileTools(
         return renderToolResult(
           toolError(
             'MATCH_NOT_FOUND',
-            `${path} 的文本补丁在本轮已两次失败,该文件不再接受文本补丁。`,
+            aiText('ai.tools.textPatchesForHaveFailedTwiceInThisTurnFurtherTextPatches', path),
             ANCHORED_EDIT_RECOVERY
           )
         )
@@ -155,7 +164,7 @@ export function buildFileTools(
       return renderToolResult(
         toolError(
           'TOOL_EXECUTION_FAILED',
-          `重复调用:同参数的 ${name} 刚执行过且目标未变化。直接使用上次结果,不要原样重试。`
+          aiText('ai.tools.duplicateCallJustRanWithTheSameArgumentsAndTheTargetHas', name)
         )
       )
     }
@@ -186,7 +195,7 @@ export function buildFileTools(
         })
         if (failures.length) {
           result.message +=
-            `\n\n⚠ 改动已保存,但以下文件真编译不通过,预览会白屏——交付前必须修复:\n` +
+            aiText('ai.tools.warningChangesWereSavedButTheseFilesFailCompilationAndLeaveThe') +
             failures.join('\n')
         }
       }
@@ -199,7 +208,7 @@ export function buildFileTools(
       ) {
         // 非预期异常是程序缺陷或本地一致性坏了:锁死后续写入并禁止产出
         // 新版本——带着未知状态继续写,只会让 artifact 与 VFS 不一致
-        ledger.lockFatal(`工具 ${name} 发生非预期错误`)
+        ledger.lockFatal(aiText('ai.tools.unexpectedErrorInTool', name))
         throw err
       }
       const result = classifyError(err)
@@ -224,9 +233,13 @@ export function buildFileTools(
         run('list_files', 'read', input, null, () => {
           const stats = vfs.stats(input.glob)
           if (stats.length === 0) {
-            return toolOk(input.glob ? `没有匹配 ${input.glob} 的文件。` : '(设计稿还没有任何文件)')
+            return toolOk(
+              input.glob
+                ? aiText('ai.localTools.noFilesMatch', input.glob)
+                : aiText('ai.tools.theDesignHasNoFilesYet')
+            )
           }
-          return toolOk(stats.map((s) => `${s.path}\t${s.lines} 行`).join('\n'))
+          return toolOk(stats.map((s) => aiText('ai.tools.lines', s.path, s.lines)).join('\n'))
         })
     }),
 
@@ -337,7 +350,8 @@ export function buildFileTools(
       execute: async (input) =>
         run('capture_range', 'locate', input, input.path, () => {
           const revision = vfs.revisionOf(input.path)
-          if (revision === null) throw new VfsError(`文件不存在:${input.path}。`)
+          if (revision === null)
+            throw new VfsError(aiText('ai.tools.fileDoesNotExist', input.path), 'FILE_NOT_FOUND')
           const { anchor, text } = registry.capture(
             input.path,
             revision,
@@ -433,7 +447,10 @@ export function buildFileTools(
           const operations: StringEditOperation[] = input.operations.map((op, index) => {
             if (op.type === 'remove') return { type: 'remove', anchorId: op.anchor_id }
             if (op.content === undefined) {
-              throw new VfsError(`第 ${index + 1} 个操作(${op.type})缺少 content。`)
+              throw new VfsError(
+                aiText('ai.tools.operationIsMissingContent', index + 1, op.type),
+                'TOOL_EXECUTION_FAILED'
+              )
             }
             return { type: op.type, anchorId: op.anchor_id, content: op.content }
           })
@@ -449,7 +466,7 @@ export function buildFileTools(
             )
           }
           const paths = applied.map((a) => a.path)
-          return toolOk(`已按锚点完成编辑:${paths.join('、')}`, paths)
+          return toolOk(aiText('ai.tools.completedAnchorEdits', paths.join('、')), paths)
         })
     }),
 
@@ -475,7 +492,7 @@ export function buildFileTools(
             'edit_file',
             input.new_string.length
           )
-          return toolOk(`已编辑 ${patch.path}`, [patch.path])
+          return toolOk(aiText('ai.tools.edited', patch.path), [patch.path])
         })
     }),
 
@@ -511,7 +528,9 @@ export function buildFileTools(
             'multi_edit_file',
             input.edits.reduce((n, e) => n + e.new_string.length, 0)
           )
-          return toolOk(`已在 ${input.path} 完成 ${patches.length} 处编辑`, [input.path])
+          return toolOk(aiText('ai.tools.completedEditsIn', input.path, patches.length), [
+            input.path
+          ])
         })
     }),
 
@@ -528,7 +547,10 @@ export function buildFileTools(
             if (op.kind === 'update' && ledger.textPatchDisabled(op.path)) {
               return toolError(
                 'MATCH_NOT_FOUND',
-                `${op.path} 的文本补丁在本轮已两次失败,该文件不再接受文本补丁。`,
+                aiText(
+                  'ai.tools.textPatchesForHaveFailedTwiceInThisTurnFurtherTextPatches',
+                  op.path
+                ),
                 ANCHORED_EDIT_RECOVERY
               )
             }
@@ -544,15 +566,18 @@ export function buildFileTools(
               if (op.kind === 'delete') {
                 const key = vfs.remove(op.path)
                 removed.push(key)
-                log.push(`删除 ${key}`)
+                log.push(aiText('ai.tools.delete', key))
                 continue
               }
               if (op.kind === 'add') {
                 if (vfs.has(op.path)) {
-                  throw new VfsError(`${op.path} 已存在,不能用 Add File;改用 Update File。`)
+                  throw new VfsError(
+                    aiText('ai.tools.alreadyExistsUseUpdateFileInsteadOfAddFile', op.path),
+                    'FILE_ALREADY_EXISTS'
+                  )
                 }
                 patches.push(vfs.write(op.path, op.content))
-                log.push(`新建 ${op.path}`)
+                log.push(aiText('ai.tools.create', op.path))
                 continue
               }
               const applied = vfs.multiEdit(
@@ -560,7 +585,7 @@ export function buildFileTools(
                 op.hunks.map((h) => ({ oldText: h.before, newText: h.after }))
               )
               patches.push(...applied)
-              log.push(`更新 ${op.path}(${applied.length} 处)`)
+              log.push(aiText('ai.tools.updateChanges', op.path, applied.length))
             }
             return log
           })
@@ -571,7 +596,7 @@ export function buildFileTools(
           for (const path of affected) {
             ledger.noteWriteSuccess(path, vfs.revisionOf(path) ?? 0, 'apply_patch', 0)
           }
-          return toolOk(`补丁已应用:\n${done.join('\n')}`, affected)
+          return toolOk(aiText('ai.tools.patchApplied', done.join('\n')), affected)
         })
     }),
 
@@ -591,7 +616,7 @@ export function buildFileTools(
             'write_file',
             input.content.length
           )
-          return toolOk(`已写入 ${patch.path}`, [patch.path])
+          return toolOk(aiText('ai.tools.wrote', patch.path), [patch.path])
         })
     }),
 
@@ -612,7 +637,7 @@ export function buildFileTools(
             'move_file',
             0
           )
-          return toolOk(`已把 ${result.removed} 移到 ${result.patch.path}`, [
+          return toolOk(aiText('ai.tools.movedTo', result.removed, result.patch.path), [
             result.removed,
             result.patch.path
           ])
@@ -627,7 +652,7 @@ export function buildFileTools(
           const patch = vfs.copy(input.from, input.to)
           emitPatch(patch)
           ledger.noteWriteSuccess(patch.path, vfs.revisionOf(patch.path) ?? 0, 'copy_file', 0)
-          return toolOk(`已把 ${input.from} 复制为 ${patch.path}`, [patch.path])
+          return toolOk(aiText('ai.tools.copiedTo', input.from, patch.path), [patch.path])
         })
     }),
 
@@ -639,7 +664,7 @@ export function buildFileTools(
           const key = vfs.remove(input.path)
           sink.onDelete(key)
           ledger.noteWriteSuccess(key, 0, 'delete_file', 0)
-          return toolOk(`已删除 ${key}`, [key])
+          return toolOk(aiText('ai.tools.deleted', key), [key])
         })
     }),
 
@@ -651,13 +676,15 @@ export function buildFileTools(
       execute: async (input) =>
         run('diff_changes', 'neutral', input, null, () => {
           const changes = vfs.changes()
-          if (changes.length === 0) return toolOk('本回合还没有任何改动。')
+          if (changes.length === 0) return toolOk(aiText('ai.tools.noChangesInThisTurnYet'))
           return toolOk(
             changes
               .map((c) => {
-                if (c.after === null) return `--- ${c.path}\n+++ /dev/null\n(整份删除)`
-                if (c.before === '') return `--- /dev/null\n+++ ${c.path}\n(新建文件)`
-                return unifiedDiff(c.path, c.before, c.after) || `(${c.path} 内容未变)`
+                if (c.after === null) return aiText('ai.tools.devNullEntireFileDeleted', c.path)
+                if (c.before === '') return aiText('ai.tools.devNullNewFile', c.path)
+                return (
+                  unifiedDiff(c.path, c.before, c.after) || aiText('ai.tools.isUnchanged', c.path)
+                )
               })
               .join('\n\n')
           )
@@ -678,19 +705,22 @@ export function buildFileTools(
                 .filter((c) => c.after !== null)
                 .map((c) => ({ path: c.path, content: c.after! }))
 
-          if (targets.length === 0) return toolOk('本回合还没有改动过任何文件,没什么可检查的。')
+          if (targets.length === 0)
+            return toolOk(aiText('ai.tools.noFilesHaveChangedInThisTurnThereIsNothingToCheck'))
 
           const report = targets.map((file) => {
             const problems = checkSyntax(file.path, file.content)
             const parts: string[] = []
             // 真编译走在结构检查前面:编译器的报错比括号计数具体得多
             const compileError = compileProbe(file.path, file.content)
-            if (compileError) parts.push(`${file.path}:真编译失败\n  ${compileError}`)
+            if (compileError)
+              parts.push(aiText('ai.tools.compilationFailed', file.path, compileError))
             if (problems.length === 0) {
-              if (!compileError) parts.push(`${file.path}:结构与编译都没发现问题`)
+              if (!compileError)
+                parts.push(aiText('ai.tools.noStructuralOrCompilationIssuesFound', file.path))
             } else {
               const lines = problems.map((p) => `  ${p.line}:${p.column} ${p.message}`)
-              parts.push(`${file.path}:${problems.length} 个问题\n${lines.join('\n')}`)
+              parts.push(aiText('ai.tools.issues', file.path, problems.length, lines.join('\n')))
             }
             // 可编辑性警告:超过 800 字符的单行下次编辑几乎必然截断失败。
             // 只提醒,不阻止保存
@@ -701,11 +731,13 @@ export function buildFileTools(
             if (longLines.length) {
               const detail = longLines
                 .slice(0, 5)
-                .map((l) => `第 ${l.line} 行 ${l.chars} 字符`)
+                .map((l) => aiText('ai.tools.lineCharacters', l.line, l.chars))
                 .join('、')
               parts.push(
-                `  可编辑性警告:${detail}。建议把大型数组 / columns / options 多行格式化;` +
-                  '如需修改这些行,用 capture_range + apply_string_edits。'
+                aiText(
+                  'ai.tools.editabilityWarningFormatLargeArraysColumnsOptionsAcrossMultipleLines',
+                  detail
+                ) + aiText('ai.tools.useCaptureRangeApplyStringEditsToEditTheseLines')
               )
             }
             return parts.join('\n')
@@ -723,7 +755,9 @@ export function buildFileTools(
           if (result.deleted) {
             sink.onDelete(result.deleted)
             ledger.noteWriteSuccess(result.deleted, 0, 'revert_file', 0)
-            return toolOk(`${result.deleted} 是本回合新建的,已撤销(文件不再存在)`)
+            return toolOk(
+              aiText('ai.tools.wasCreatedInThisTurnAndHasBeenRevertedTheFileNo', result.deleted)
+            )
           }
           emitPatch(result.patch!)
           ledger.noteWriteSuccess(
@@ -732,9 +766,11 @@ export function buildFileTools(
             'revert_file',
             0
           )
-          return toolOk(`${result.patch!.path} 已回到本回合开始时的内容`)
+          return toolOk(
+            aiText('ai.tools.wasRestoredToItsContentAtTheStartOfThisTurn', result.patch!.path)
+          )
         })
     })
   }
-  return tools
+  return localizedTools(tools, lang)
 }

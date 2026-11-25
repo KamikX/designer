@@ -61,7 +61,7 @@ watchEffect(() => {
     size="small"
     class="model-select"
     style="min-width: 128px; max-width: 200px"
-    :placeholder="t('选择模型')"
+    :placeholder="t('common.selectModel')"
     variant="borderless"
     :popup-match-select-width="false"
   />

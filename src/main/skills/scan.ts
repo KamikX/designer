@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -199,8 +200,9 @@ function readSkill(
   if (!description) return null
 
   const warnings: string[] = []
-  if (!name) warnings.push('缺少 name,用目录名代替')
-  else if (name !== dirName) warnings.push(`name(${name})与目录名(${dirName})不一致`)
+  if (!name) warnings.push(appText('messages.missingNameUsingDirectoryName'))
+  else if (name !== dirName)
+    warnings.push(appText('messages.nameDiffersFromDirectoryName', name, dirName))
 
   return {
     // 规范要求 name 与目录名一致。不一致时**以目录名为准**——激活时是按名字

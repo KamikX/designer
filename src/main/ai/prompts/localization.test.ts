@@ -237,7 +237,9 @@ describe('localized installation questions', () => {
       expect(questions).toHaveLength(1)
       expect(han.test(JSON.stringify(questions[0]))).toBe(lang === 'zh-CN')
       expect(changed).toBe(false)
-      expect(result).toContain('用户取消了安装')
+      expect(result).toContain(
+        lang === 'zh-CN' ? '用户取消了安装' : 'The user canceled installation'
+      )
     }
   )
 })

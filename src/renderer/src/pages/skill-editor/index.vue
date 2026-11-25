@@ -148,14 +148,14 @@ onBeforeUnmount(() => {
     <div class="skill-editor-bar" :style="{ borderColor: token.colorBorderSecondary }">
       <a-button size="small" type="text" @click="router.back()">
         <template #icon><ArrowLeftOutlined /></template>
-        {{ t('返回') }}
+        {{ t('common.back') }}
       </a-button>
       <span class="skill-editor-name">{{ skillName }}</span>
       <span
         class="skill-editor-status"
         :style="{ color: dirty ? token.colorWarning : token.colorTextTertiary }"
       >
-        {{ dirty ? t('未保存 · {0} 保存', saveHint) : t('已保存') }}
+        {{ dirty ? t('messages.unsavedToSave', saveHint) : t('common.saved') }}
       </span>
     </div>
 

@@ -1,3 +1,5 @@
+import { currentLanguage } from '../i18n'
+import { text as appText } from '../i18n'
 import { and, asc, eq, inArray, gt, sql } from 'drizzle-orm'
 import { dialog } from 'electron'
 import {
@@ -17,8 +19,6 @@ import type {
   ProjectPackageImportResult,
   SessionSettings
 } from '../../shared/types'
-import { translate } from '../../shared/i18n'
-import { readConfig } from '../config'
 import { getDb } from '../db'
 import {
   projects,
@@ -111,7 +111,8 @@ export async function buildProjectPackage(input: ProjectPackageExportInput): Pro
             .orderBy(asc(messages.createdAt), asc(messages.id))
             .all()
         : []
-      if (ms.some((m) => m.status === 'streaming')) throw new Error('项目生成中，暂时无法导出')
+      if (ms.some((m) => m.status === 'streaming'))
+        throw new Error(appText('messages.waitForProjectGenerationToFinishBeforeExporting'))
       const versions = tx
         .select()
         .from(artifacts)
@@ -290,7 +291,7 @@ function restoreSettings(
 
 /** All IDs are fresh; imported identities are lookup keys and never update targets. */
 export function importProjectPackage(data: Buffer): ProjectPackageImportResult {
-  const { manifest: m, readPayload, readText } = readPackage(data)
+  const { manifest: m, readPayload, readText } = readPackage(data, currentLanguage())
   const db = getDb()
   const warnings = new Set<string>()
   const nextId = monotonicFactory()
@@ -462,14 +463,13 @@ export function importProjectPackage(data: Buffer): ProjectPackageImportResult {
   }
 }
 
-const label = (source: string): string => translate(readConfig().lang, source)
 export async function exportProjectPackage(
   input: ProjectPackageExportInput
 ): Promise<string | null> {
   const result = await dialog.showSaveDialog({
-    title: label('导出项目'),
+    title: appText('common.exportProject'),
     defaultPath: 'project.designer.zip',
-    filters: [{ name: label('项目包'), extensions: ['zip'] }]
+    filters: [{ name: appText('common.projectPackage'), extensions: ['zip'] }]
   })
   if (result.canceled || !result.filePath) return null
   const data = await buildProjectPackage(input)
@@ -486,8 +486,8 @@ export async function exportProjectPackage(
 
 export async function openProjectPackage(): Promise<ProjectPackageImportResult | null> {
   const result = await dialog.showOpenDialog({
-    title: label('导入项目'),
-    filters: [{ name: label('项目包'), extensions: ['zip'] }],
+    title: appText('common.importProject'),
+    filters: [{ name: appText('common.projectPackage'), extensions: ['zip'] }],
     properties: ['openFile']
   })
   if (result.canceled || !result.filePaths.length) return null

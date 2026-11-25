@@ -42,7 +42,7 @@ async function doExport(): Promise<void> {
   exporting.value = true
   try {
     const file = await collab.exportDeliverables()
-    if (file) message.success(t('已导出到 {0}', file))
+    if (file) message.success(t('common.exportedTo', file))
   } catch (err) {
     message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   } finally {
@@ -52,7 +52,9 @@ async function doExport(): Promise<void> {
 </script>
 
 <template>
-  <a-tooltip :title="progress.total ? t('本轮交付物') : t('本轮还没有交付物')">
+  <a-tooltip
+    :title="progress.total ? t('messages.deliverablesForThisRound') : t('common.noDeliverablesYet')"
+  >
     <button
       class="dlv-btn"
       type="button"
@@ -65,11 +67,11 @@ async function doExport(): Promise<void> {
     </button>
   </a-tooltip>
 
-  <a-drawer v-model:open="open" :title="t('本轮交付物')" size="default">
+  <a-drawer v-model:open="open" :title="t('messages.deliverablesForThisRound')" size="default">
     <template #extra>
       <a-button size="small" :loading="exporting" :disabled="!progress.delivered" @click="doExport">
         <template #icon><ExportOutlined /></template>
-        {{ t('导出一份') }}
+        {{ t('common.export') }}
       </a-button>
     </template>
 
@@ -94,18 +96,14 @@ async function doExport(): Promise<void> {
           </span>
           <span class="dlv-meta" :style="{ color: token.colorTextTertiary }">
             {{ entry.memberName }}
-            <template v-if="entry.status !== 'delivered'"> {{ t('· 未交付') }}</template>
+            <template v-if="entry.status !== 'delivered'"> {{ t('common.notDelivered') }}</template>
           </span>
         </span>
       </button>
     </div>
 
     <div class="dlv-hint" :style="{ color: token.colorTextTertiary }">
-      {{
-        t(
-          '清单按成员建群时定义的产出物生成;每人取最新一份以一级标题开头的文档, 返工版本自动覆盖旧版。导出会剥掉文档末尾的交接行。'
-        )
-      }}
+      {{ t('messages.deliverablesFollowTheOutputsDefinedFor') }}
     </div>
   </a-drawer>
 </template>

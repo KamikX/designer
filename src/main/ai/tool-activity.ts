@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 /**
  * 工具调用的人话标签。
  *
@@ -20,48 +21,128 @@
 
 /** 每个工具的通用动词:入参还没到齐时先用它 */
 const VERB: Record<string, string> = {
-  list_files: '列出文件',
-  outline_file: '查看结构',
-  read_file: '读取',
-  get_range: '取原文',
-  capture_range: '取锚点',
-  apply_string_edits: '锚点编辑',
-  search_files: '搜索',
-  edit_file: '编辑',
-  multi_edit_file: '批量编辑',
-  apply_patch: '应用补丁',
-  write_file: '写入',
-  move_file: '移动',
-  copy_file: '复制',
-  delete_file: '删除',
-  diff_changes: '查看本轮改动',
-  check_syntax: '结构自检',
-  revert_file: '撤销修改',
-  set_style_brief: '更新视觉方向',
-  ask_user: '向你提问',
-  view_image: '查看参考图',
-  note_image: '记录参考图要点',
-  get_current_time: '查看当前时间',
-  activate_skill: '加载技能',
-  install_skill: '安装技能',
-  install_mcp: '安装 MCP 服务',
+  get list_files() {
+    return appText('common.listFiles')
+  },
+  get outline_file() {
+    return appText('common.viewStructure')
+  },
+  get read_file() {
+    return appText('common.read')
+  },
+  get get_range() {
+    return appText('common.getSourceText')
+  },
+  get capture_range() {
+    return appText('common.captureAnchor')
+  },
+  get apply_string_edits() {
+    return appText('common.editAnchors')
+  },
+  get search_files() {
+    return appText('common.search')
+  },
+  get edit_file() {
+    return appText('common.edit')
+  },
+  get multi_edit_file() {
+    return appText('common.batchEdit')
+  },
+  get apply_patch() {
+    return appText('common.applyPatch')
+  },
+  get write_file() {
+    return appText('common.write')
+  },
+  get move_file() {
+    return appText('common.move')
+  },
+  get copy_file() {
+    return appText('common.copy')
+  },
+  get delete_file() {
+    return appText('common.deleteLabel')
+  },
+  get diff_changes() {
+    return appText('messages.viewChangesFromThisTurn')
+  },
+  get check_syntax() {
+    return appText('common.checkStructure')
+  },
+  get revert_file() {
+    return appText('common.revertChanges')
+  },
+  get set_style_brief() {
+    return appText('common.updateVisualDirection')
+  },
+  get ask_user() {
+    return appText('messages.askYouAQuestion')
+  },
+  get view_image() {
+    return appText('common.viewReferenceImage')
+  },
+  get note_image() {
+    return appText('messages.recordReferenceImageNotes')
+  },
+  get get_current_time() {
+    return appText('common.getCurrentTime')
+  },
+  get activate_skill() {
+    return appText('common.loadSkill')
+  },
+  get install_skill() {
+    return appText('common.installSkill')
+  },
+  get install_mcp() {
+    return appText('common.installMcpService')
+  },
   // 本地文件
-  list_local_dir: '浏览目录',
-  check_local_path: '检查路径',
-  find_local_files: '查找文件',
-  search_local: '搜索本地',
-  read_local_file: '读取本地文件',
-  read_local_document: '解析文档',
-  read_document_images: '看文档图片',
+  get list_local_dir() {
+    return appText('common.browseDirectory')
+  },
+  get check_local_path() {
+    return appText('common.checkPath')
+  },
+  get find_local_files() {
+    return appText('common.findFiles')
+  },
+  get search_local() {
+    return appText('common.searchLocalFiles')
+  },
+  get read_local_file() {
+    return appText('common.readLocalFile')
+  },
+  get read_local_document() {
+    return appText('common.parseDocument')
+  },
+  get read_document_images() {
+    return appText('common.viewDocumentImages')
+  },
   // 联网
-  web_search: '联网搜索',
-  web_fetch: '打开网页',
-  browser_open: '打开网页',
-  browser_snapshot: '查看页面',
-  browser_click: '点击',
-  browser_fill_form: '填写表单',
-  browser_press_key: '按键',
-  browser_scroll: '滚动页面'
+  get web_search() {
+    return appText('common.searchWeb')
+  },
+  get web_fetch() {
+    return appText('common.openWebPage')
+  },
+  get browser_open() {
+    return appText('common.openWebPage')
+  },
+  get browser_snapshot() {
+    return appText('common.inspectPage')
+  },
+  get browser_click() {
+    return appText('common.click')
+  },
+  get browser_fill_form() {
+    return appText('common.fillForm')
+  },
+  get browser_press_key() {
+    return appText('common.pressKey')
+  },
+  get browser_scroll() {
+    return appText('common.scrollPage')
+  }
 }
 
 export function verbOf(toolName: string): string {
@@ -77,19 +158,39 @@ export function verbOf(toolName: string): string {
  * 才允许说"执行"。
  */
 const PREPARING_VERB: Record<string, string> = {
-  apply_patch: '准备补丁',
-  edit_file: '准备编辑',
-  multi_edit_file: '准备编辑',
-  apply_string_edits: '准备编辑',
-  write_file: '准备写入'
+  get apply_patch() {
+    return appText('common.preparePatch')
+  },
+  get edit_file() {
+    return appText('common.prepareEdit')
+  },
+  get multi_edit_file() {
+    return appText('common.prepareEdit')
+  },
+  get apply_string_edits() {
+    return appText('common.prepareEdit')
+  },
+  get write_file() {
+    return appText('common.prepareWrite')
+  }
 }
 
 const EXECUTING_VERB: Record<string, string> = {
-  apply_patch: '执行补丁',
-  edit_file: '执行编辑',
-  multi_edit_file: '执行编辑',
-  apply_string_edits: '执行编辑',
-  write_file: '执行写入'
+  get apply_patch() {
+    return appText('common.executePatch')
+  },
+  get edit_file() {
+    return appText('common.executeEdit')
+  },
+  get multi_edit_file() {
+    return appText('common.executeEdit')
+  },
+  get apply_string_edits() {
+    return appText('common.executeEdit')
+  },
+  get write_file() {
+    return appText('common.executeWrite')
+  }
 }
 
 /** 把「动词 目标」换相位动词;已带任一相位动词的也能换。非编辑族原样返回 */
@@ -167,8 +268,8 @@ export function labelFor(toolName: string, input: PartialInput): string {
       if (!path) return verb
       const from = num(input, 'start_line')
       const to = num(input, 'end_line')
-      if (from && to) return `${verb} ${path} ${from}-${to} 行`
-      if (from) return `${verb} ${path} 第 ${from} 行起`
+      if (from && to) return appText('messages.lines', verb, path, from, to)
+      if (from) return appText('messages.fromLine', verb, path, from)
       return `${verb} ${path}`
     }
     case 'get_range': {
@@ -190,7 +291,7 @@ export function labelFor(toolName: string, input: PartialInput): string {
       if (!path) return verb
       const edits = input?.edits
       const count = Array.isArray(edits) ? edits.length : 0
-      return count ? `${verb} ${path}(${count} 处)` : `${verb} ${path}`
+      return count ? appText('messages.changes', verb, path, count) : `${verb} ${path}`
     }
     case 'move_file':
     case 'copy_file': {
@@ -204,10 +305,10 @@ export function labelFor(toolName: string, input: PartialInput): string {
       const patch = str(input, 'patch')
       if (!patch) return verb
       const files = patch.match(/^\*\*\* (?:Update|Add|Delete) File:/gm)?.length ?? 0
-      return files ? `${verb}(${files} 个文件)` : verb
+      return files ? appText('common.files', verb, files) : verb
     }
     case 'check_syntax':
-      return path ? `${verb} ${path}` : `${verb}(本轮改动)`
+      return path ? `${verb} ${path}` : appText('messages.changesFromThisTurn', verb)
     case 'view_image':
     case 'note_image':
       return verb
@@ -227,26 +328,36 @@ export function summarize(toolName: string, output: unknown): { ok: boolean; sum
     // view_image 之类返回结构化内容的,没什么好总结
     return { ok: true }
   }
-  if (output.startsWith('错误:')) {
+  if (output.startsWith(appText('common.errorLabel'))) {
     return { ok: false, summary: output.slice(0, 120) }
   }
 
   switch (toolName) {
     case 'search_files': {
-      const hit = /^(\d+) 处匹配/.exec(output)
-      if (hit) return { ok: true, summary: `${hit[1]} 处匹配` }
-      return { ok: true, summary: output.startsWith('没有匹配') ? '没有匹配' : undefined }
+      const hit = /^(\d+) (?:处匹配|matches)/.exec(output)
+      if (hit) return { ok: true, summary: appText('common.matches', hit[1]) }
+      return {
+        ok: true,
+        summary: output.startsWith(appText('common.noMatches'))
+          ? appText('common.noMatches')
+          : undefined
+      }
     }
     case 'read_file':
     case 'get_range':
     case 'outline_file': {
       const lines = output.split('\n').length
-      return { ok: true, summary: `${lines} 行` }
+      return { ok: true, summary: appText('common.lines', lines) }
     }
     case 'list_files':
-      return { ok: true, summary: `${output.split('\n').length} 个文件` }
+      return { ok: true, summary: appText('common.filesLabel', output.split('\n').length) }
     case 'check_syntax':
-      return { ok: true, summary: output.includes('没发现结构问题') ? '没问题' : '发现问题' }
+      return {
+        ok: true,
+        summary: output.includes(appText('messages.noStructuralIssuesFound'))
+          ? appText('common.noIssues')
+          : appText('common.issuesFound')
+      }
     case 'diff_changes':
       return { ok: true }
     default: {
@@ -257,7 +368,8 @@ export function summarize(toolName: string, output: unknown): { ok: boolean; sum
        * 成功与否由行首的 ✓ 表示,不需要再用文字说一遍。所以"动词 + 单个路径"
        * 这种形状直接不给摘要;带额外信息的(如「已编辑 3 处」)照常保留。
        */
-      if (/^已[\u4e00-\u9fa5]{1,3}\s+\S+$/.test(output)) return { ok: true }
+      if (/^(?:已[\u4e00-\u9fa5]{1,3}|Written|Edited|Deleted|Created)\s+\S+$/.test(output))
+        return { ok: true }
       return { ok: true, summary: output.length <= 60 ? output : undefined }
     }
   }

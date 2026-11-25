@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { extname } from 'path'
 
 /**
@@ -63,7 +64,7 @@ export async function renderPdfPages(
           images: pages.map((page) => ({
             data: page.data,
             mime: page.mime,
-            label: `第 ${page.page} 页`
+            label: appText('workspace.docImages.page', page.page)
           })),
           totalPages: await countPdfPages(path),
           renderer: 'chromium'
@@ -79,7 +80,7 @@ export async function renderPdfPages(
     images: pages.map((page) => ({
       data: page.data,
       mime: page.mime,
-      label: `第 ${page.page} 页`
+      label: appText('workspace.docImages.page', page.page)
     })),
     totalPages: pageCount,
     renderer: 'wasm'
@@ -121,7 +122,7 @@ export async function extractEmbeddedImages(
   const images = media.slice(from - 1, from - 1 + count).map((entry, index) => ({
     data: entry.getData(),
     mime: MEDIA_MIME[extname(entry.entryName).toLowerCase()],
-    label: `第 ${from + index} 张图(${entry.entryName.split('/').pop()})`
+    label: appText('workspace.docImages.image', from + index, entry.entryName.split('/').pop())
   }))
 
   return { images, total: media.length }

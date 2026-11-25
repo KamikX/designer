@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { readFileSync } from 'fs'
 import { bgraToPng } from './png'
 
@@ -56,7 +57,7 @@ export async function extractPdfText(path: string): Promise<PdfText> {
     let pageCount = 0
     for (const page of doc.pages()) {
       pageCount++
-      parts.push(`--- 第 ${pageCount} 页 ---\n${page.getText().trim()}`)
+      parts.push(appText('workspace.pdf.page', pageCount, page.getText().trim()))
     }
     return { text: parts.join('\n\n'), pageCount }
   } finally {

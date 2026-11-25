@@ -1,3 +1,4 @@
+import { text as appText } from '../../i18n'
 import type { StorageBackend } from '../types'
 
 /**
@@ -11,5 +12,5 @@ import type { StorageBackend } from '../types'
  *   dataBackend.mode === 'cloud' 分派即可,其余代码零改动。
  */
 export function createCloudBackend(): StorageBackend {
-  throw new Error('官方云存储尚未上线')
+  throw new Error(appText('messages.officialCloudStorageIsNotAvailableYet'))
 }

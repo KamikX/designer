@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 import { AnchorError } from './anchor-registry'
 import { StringEditError } from './string-edits'
 import { VfsError } from './vfs-error'
@@ -53,7 +54,9 @@ export function toolError(
 /** 锚点编辑是截断行/复述失败的标准出路,恢复建议统一指向它 */
 export const ANCHORED_EDIT_RECOVERY: ToolRecovery = {
   nextTool: 'capture_range + apply_string_edits',
-  reason: '让服务端持有精确区间,不再复述可能被截断的原文'
+  get reason() {
+    return aiText('ai.toolResult.keepTheExactRangeOnTheServerInsteadOfRepeatingPossiblyTruncated')
+  }
 }
 
 /**
@@ -82,6 +85,15 @@ export function classifyError(err: unknown): ToolResult {
     )
   }
   if (err instanceof VfsError) {
+    if (err.code) {
+      return toolError(
+        err.code,
+        err.message,
+        err.code === 'MATCH_NOT_FOUND' || err.code === 'MATCH_AMBIGUOUS'
+          ? ANCHORED_EDIT_RECOVERY
+          : undefined
+      )
+    }
     for (const [pattern, code] of VFS_MESSAGE_RULES) {
       if (pattern.test(err.message)) {
         return toolError(
@@ -97,7 +109,10 @@ export function classifyError(err: unknown): ToolResult {
     return toolError('TOOL_EXECUTION_FAILED', err.message)
   }
   // 非预期异常:原始 message 可能含敏感内容,给模型固定文案(遥测另有脱敏)
-  return toolError('TOOL_EXECUTION_FAILED', '工具执行失败,请换一种方式重试。')
+  return toolError(
+    'TOOL_EXECUTION_FAILED',
+    aiText('ai.toolResult.toolExecutionFailedTryAnotherApproach')
+  )
 }
 
 /**
@@ -144,9 +159,11 @@ export function contentAwareModelOutput({
 /** 结构化结果 → 给模型的文本。失败保持「错误:」前缀 */
 export function renderToolResult(result: ToolResult): string {
   if (result.ok) return result.message
-  const lines = [`错误:${result.message}`]
+  const lines = [aiText('ai.imageTools.error', result.message)]
   if (result.code) lines.push(`[code: ${result.code}]`)
   if (result.recovery)
-    lines.push(`下一步:用 ${result.recovery.nextTool}(${result.recovery.reason})。`)
+    lines.push(
+      aiText('ai.toolResult.nextStepUse', result.recovery.nextTool, result.recovery.reason)
+    )
   return lines.join('\n')
 }

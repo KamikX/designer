@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { readFileSync, statSync } from 'fs'
 import { basename, extname } from 'path'
 import { assessExtraction } from './extract-quality'
@@ -77,7 +78,11 @@ export async function extractDocument(path: string): Promise<ExtractedDocument> 
   const stat = statSync(path)
   if (stat.size > MAX_BYTES) {
     throw new Error(
-      `文件 ${Math.round(stat.size / 1024 / 1024)}MB,超过 ${MAX_BYTES / 1024 / 1024}MB 上限。`
+      appText(
+        'messages.theFileIsMbExceedingTheMbLimit',
+        Math.round(stat.size / 1024 / 1024),
+        MAX_BYTES / 1024 / 1024
+      )
     )
   }
 
@@ -99,7 +104,10 @@ export async function extractDocument(path: string): Promise<ExtractedDocument> 
     default:
       if (!TEXT_EXT.has(ext)) {
         throw new Error(
-          `不支持的文件类型 ${ext || '(无后缀)'}。支持 pdf / docx / xlsx / csv 与常见文本。`
+          appText(
+            'messages.unsupportedFileTypeSupportedPdfDocxXlsxCsvAndCommonTextFiles',
+            ext || appText('common.noExtension')
+          )
         )
       }
       return cap({ text: readFileSync(path, 'utf-8'), note: '' }, name)
@@ -116,11 +124,22 @@ function cap(
   const verdict = assessExtraction(text, pageCount)
 
   if (text.length <= MAX_CHARS) {
-    return { text, note: input.note || `${name},${text.length} 字符`, verdict, pageCount }
+    return {
+      text,
+      note: input.note || appText('workspace.documents.characters', name, text.length),
+      verdict,
+      pageCount
+    }
   }
   return {
     text: text.slice(0, MAX_CHARS),
-    note: `${name},共 ${text.length} 字符,已截断到前 ${MAX_CHARS} 字符${input.note ? `(${input.note})` : ''}`,
+    note: appText(
+      'workspace.documents.charactersTotalTruncatedToTheFirstCharacters',
+      name,
+      text.length,
+      MAX_CHARS,
+      input.note ? `(${input.note})` : ''
+    ),
     verdict,
     pageCount
   }
@@ -129,7 +148,7 @@ function cap(
 async function fromPdf(path: string): Promise<{ text: string; note: string; pageCount: number }> {
   const { extractPdfText } = await import('./pdf')
   const { text, pageCount } = await extractPdfText(path)
-  return { text, note: `共 ${pageCount} 页`, pageCount }
+  return { text, note: appText('workspace.documents.pagesTotal', pageCount), pageCount }
 }
 
 async function fromDocx(path: string): Promise<{ text: string; note: string }> {
@@ -154,11 +173,22 @@ async function fromSpreadsheet(path: string): Promise<{ text: string; note: stri
       rows.push(values.map((v) => cellText(v)))
     })
     if (rows.length === 0) continue
-    sheets.push(`### 工作表:${sheet.name}(${sheet.rowCount} 行)\n\n${toMarkdownTable(rows)}`)
+    sheets.push(
+      appText(
+        'workspace.documents.worksheetRows',
+        sheet.name,
+        sheet.rowCount,
+        toMarkdownTable(rows)
+      )
+    )
   }
   return {
     text: sheets.join('\n\n'),
-    note: `${book.worksheets.length} 个工作表,每表最多取 ${MAX_ROWS} 行`
+    note: appText(
+      'workspace.documents.worksheetsAtMostRowsPerSheet',
+      book.worksheets.length,
+      MAX_ROWS
+    )
   }
 }
 
@@ -166,7 +196,10 @@ function fromCsv(path: string): { text: string; note: string } {
   const raw = readFileSync(path, 'utf-8')
   const lines = raw.split(/\r?\n/).filter((l) => l.trim())
   const rows = lines.slice(0, MAX_ROWS).map(splitCsvLine)
-  return { text: toMarkdownTable(rows), note: `共 ${lines.length} 行` }
+  return {
+    text: toMarkdownTable(rows),
+    note: appText('workspace.documents.rowsTotal', lines.length)
+  }
 }
 
 /** 够用的 CSV 拆分:处理双引号包裹与转义的双引号 */
@@ -256,7 +289,7 @@ function cellText(value: unknown): string {
 }
 
 function toMarkdownTable(rows: string[][]): string {
-  if (rows.length === 0) return '(空)'
+  if (rows.length === 0) return appText('workspace.documents.empty')
   const width = Math.max(...rows.map((r) => r.length))
   const norm = rows.map((r) => {
     const padded = [...r]

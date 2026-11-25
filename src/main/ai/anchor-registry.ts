@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { createHash, randomUUID } from 'node:crypto'
 
 /**
@@ -100,12 +101,15 @@ export class AnchorRegistry {
     const startLine = range.startLine
     const endLine = range.endLine ?? startLine
     if (!Number.isInteger(startLine) || startLine < 1 || startLine > total) {
-      throw new AnchorError('INVALID_RANGE', `起始行 ${startLine} 超出文件范围(共 ${total} 行)。`)
+      throw new AnchorError(
+        'INVALID_RANGE',
+        appText('messages.startingLineExceedsTheFileLengthLines', startLine, total)
+      )
     }
     if (!Number.isInteger(endLine) || endLine < startLine || endLine > total) {
       throw new AnchorError(
         'INVALID_RANGE',
-        `结束行 ${endLine} 无效(须在 ${startLine}-${total} 之间)。`
+        appText('ai.anchorRegistry.endLineIsInvalidMustBeBetweenAnd', endLine, startLine, total)
       )
     }
 
@@ -118,14 +122,19 @@ export class AnchorRegistry {
     if (startColumn < 1 || (startLen > 0 && startColumn > startLen)) {
       throw new AnchorError(
         'INVALID_RANGE',
-        `起始列 ${startColumn} 超出第 ${startLine} 行(该行 ${startLen} 个字符)。`
+        appText(
+          'ai.anchorRegistry.startColumnIsOutsideLineCharacters',
+          startColumn,
+          startLine,
+          startLen
+        )
       )
     }
     const endColumn = range.endColumn ?? endLen
     if (range.endColumn !== undefined && (endColumn < 1 || endColumn > endLen)) {
       throw new AnchorError(
         'INVALID_RANGE',
-        `结束列 ${endColumn} 超出第 ${endLine} 行(该行 ${endLen} 个字符)。`
+        appText('ai.anchorRegistry.endColumnIsOutsideLineCharacters', endColumn, endLine, endLen)
       )
     }
 
@@ -134,10 +143,16 @@ export class AnchorRegistry {
 
     if (range.includeTrailingNewline) {
       if (range.endColumn !== undefined && range.endColumn !== endLen) {
-        throw new AnchorError('INVALID_RANGE', '只有整行区间才能包含结尾换行。')
+        throw new AnchorError(
+          'INVALID_RANGE',
+          appText('ai.anchorRegistry.onlyWholeLineRangesMayIncludeATrailingNewline')
+        )
       }
       if (endSpan.terminator === 0) {
-        throw new AnchorError('INVALID_RANGE', `第 ${endLine} 行是文件最后一行,没有结尾换行。`)
+        throw new AnchorError(
+          'INVALID_RANGE',
+          appText('ai.anchorRegistry.lineIsTheLastLineAndHasNoTrailingNewline', endLine)
+        )
       }
       endOffset = endSpan.end + endSpan.terminator
     }
@@ -162,17 +177,23 @@ export class AnchorRegistry {
       startOffset < 0 ||
       endOffset > content.length
     ) {
-      throw new AnchorError('INVALID_RANGE', '区间越界。')
+      throw new AnchorError('INVALID_RANGE', appText('ai.anchorRegistry.rangeIsOutOfBounds'))
     }
     if (startOffset >= endOffset) {
-      throw new AnchorError('INVALID_RANGE', '锚点区间不能为空。')
+      throw new AnchorError('INVALID_RANGE', appText('ai.anchorRegistry.anchorRangeCannotBeEmpty'))
     }
     // 切在 surrogate pair 中间的区间,取出来是坏字符,写回去更是灾难
     if (isLowSurrogate(content.charCodeAt(startOffset))) {
-      throw new AnchorError('INVALID_RANGE', '起点落在代理对(emoji 等)中间。')
+      throw new AnchorError(
+        'INVALID_RANGE',
+        appText('ai.anchorRegistry.theStartSplitsASurrogatePairSuchAsAnEmoji')
+      )
     }
     if (isLowSurrogate(content.charCodeAt(endOffset))) {
-      throw new AnchorError('INVALID_RANGE', '终点落在代理对(emoji 等)中间。')
+      throw new AnchorError(
+        'INVALID_RANGE',
+        appText('ai.anchorRegistry.theEndSplitsASurrogatePairSuchAsAnEmoji')
+      )
     }
 
     const anchor: AnchorRecord = {
@@ -198,17 +219,28 @@ export class AnchorRegistry {
   resolve(id: string, currentRevision: number, content: string): AnchorRecord {
     const anchor = this.anchors.get(id)
     if (!anchor) {
-      throw new AnchorError('ANCHOR_NOT_FOUND', `锚点 ${id} 不存在,请重新 capture_range 或搜索。`)
+      throw new AnchorError(
+        'ANCHOR_NOT_FOUND',
+        appText('ai.anchorRegistry.anchorDoesNotExistRunCaptureRangeOrSearchAgain', id)
+      )
     }
     if (anchor.revision !== currentRevision) {
       throw new AnchorError(
         'ANCHOR_STALE',
-        `锚点 ${id} 基于修订 ${anchor.revision},文件已是修订 ${currentRevision},请重新定位。`
+        appText(
+          'ai.anchorRegistry.anchorUsesRevisionButTheFileIsAtRevisionLocateItAgain',
+          id,
+          anchor.revision,
+          currentRevision
+        )
       )
     }
     const slice = content.slice(anchor.startOffset, anchor.endOffset)
     if (hashOf(slice) !== anchor.contentHash) {
-      throw new AnchorError('ANCHOR_STALE', `锚点 ${id} 的原文已变化,请重新定位。`)
+      throw new AnchorError(
+        'ANCHOR_STALE',
+        appText('ai.anchorRegistry.theOriginalTextForAnchorHasChangedLocateItAgain', id)
+      )
     }
     return anchor
   }

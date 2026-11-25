@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { lookup } from 'dns/promises'
 import { isIP } from 'net'
 
@@ -54,19 +55,22 @@ export async function ssrfProblem(rawUrl: string): Promise<string | null> {
   try {
     url = new URL(rawUrl)
   } catch {
-    return '不是合法的 URL'
+    return appText('web.ssrf.invalidUrl')
   }
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
 
-  if (BLOCKED_HOSTS.has(host)) return `不允许访问 ${host}`
+  if (BLOCKED_HOSTS.has(host)) return appText('web.ssrf.accessToIsNotAllowed', host)
   if (isIP(host)) {
-    return isPrivateIp(host) ? `不允许访问内网地址 ${host}` : null
+    return isPrivateIp(host)
+      ? appText('web.ssrf.accessToPrivateNetworkAddressIsNotAllowed', host)
+      : null
   }
 
   try {
     const addresses = await lookup(host, { all: true })
     for (const { address } of addresses) {
-      if (isPrivateIp(address)) return `${host} 解析到内网地址 ${address},已拒绝`
+      if (isPrivateIp(address))
+        return appText('web.ssrf.resolvesToPrivateNetworkAddressAccessDenied', host, address)
     }
   } catch {
     // 解析失败交给后面的 loadURL 去报——那边的错误信息(ERR_NAME_NOT_RESOLVED)更准

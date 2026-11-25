@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { aiText } from '../i18n'
 import { promptText } from './prompts/i18n'
 import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
@@ -27,14 +29,17 @@ export function buildTimeTools(lang: PromptLanguage = 'zh-CN'): ToolSet {
       }),
       execute: async (input) => {
         try {
-          return describeNow(new Date(), input.timezone)
+          return describeNow(new Date(), input.timezone, lang)
         } catch {
-          return `错误:无法识别时区「${input.timezone}」。请用 IANA 格式,如 Asia/Shanghai。`
+          return aiText(
+            'ai.timeTools.errorUnknownTimeZoneUseAnIanaNameSuchAsAsiaShanghai',
+            input.timezone
+          )
         }
       }
     })
   }
-  return tools
+  return localizedTools(tools, lang)
 }
 
 /**
@@ -46,11 +51,11 @@ export function buildTimeTools(lang: PromptLanguage = 'zh-CN'): ToolSet {
  * 抽出来收 Date 参数是为了可测——直接读 new Date() 的话,测试只能断言
  * "不报错",那等于没测。
  */
-export function describeNow(now: Date, timezone?: string): string {
+export function describeNow(now: Date, timezone?: string, lang: PromptLanguage = 'zh-CN'): string {
   const zone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone
 
   // 非法时区在这里抛,由调用方转成人话。放过去的话会得到一个静默错误的时间
-  const parts = new Intl.DateTimeFormat('zh-CN', {
+  const parts = new Intl.DateTimeFormat(lang, {
     timeZone: zone,
     year: 'numeric',
     month: '2-digit',
@@ -67,17 +72,23 @@ export function describeNow(now: Date, timezone?: string): string {
   const time = `${get('hour')}:${get('minute')}:${get('second')}`
 
   return [
-    `当前时间:${date} ${time} ${get('weekday')}`,
-    `时区:${zone}(${offsetOf(now, zone)})`,
+    promptText(lang, 'ai.timeTools.currentTime', {
+      value0: date,
+      value1: time,
+      value2: get('weekday')
+    }),
+    promptText(lang, 'ai.timeTools.timeZone', { value0: zone, value1: offsetOf(now, zone, lang) }),
     `ISO:${now.toISOString()}`
   ].join('\n')
 }
 
 /** 相对 UTC 的偏移,形如 UTC+08:00。模型跨时区换算时要用 */
-function offsetOf(now: Date, zone: string): string {
+function offsetOf(now: Date, zone: string, lang: PromptLanguage): string {
   const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' })
     .formatToParts(now)
     .find((p) => p.type === 'timeZoneName')?.value
   // longOffset 在 UTC 上返回的就是 "GMT",补成完整写法免得看着像缺了东西
-  return name === 'GMT' ? 'UTC+00:00' : (name?.replace('GMT', 'UTC') ?? '未知')
+  return name === 'GMT'
+    ? 'UTC+00:00'
+    : (name?.replace('GMT', 'UTC') ?? promptText(lang, 'ai.timeTools.unknown'))
 }

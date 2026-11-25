@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import type { BrowserWindow } from 'electron'
 import { buildSnapshot } from './snapshot'
 import type { Snapshot } from './snapshot'
@@ -67,7 +68,7 @@ export class BrowserSession {
 
   async open(url: string): Promise<Snapshot> {
     const win = await this.ensure()
-    await withTimeout(win.loadURL(url), NAV_TIMEOUT_MS, `打开超时:${url}`)
+    await withTimeout(win.loadURL(url), NAV_TIMEOUT_MS, appText('web.browser.openTimedOut', url))
     return this.snapshot()
   }
 
@@ -93,9 +94,7 @@ export class BrowserSession {
   private resolve(uid: string): number {
     const backendNodeId = this.refs.get(uid)
     if (backendNodeId === undefined) {
-      throw new Error(
-        `引用 ${uid} 不存在或已失效(页面可能重新渲染过)。先 browser_snapshot 取最新快照再操作。`
-      )
+      throw new Error(appText('messages.referenceIsMissingOrStaleThe', uid))
     }
     return backendNodeId
   }
@@ -105,7 +104,8 @@ export class BrowserSession {
     const box = await this.send<{ model?: { content: number[] } }>('DOM.getBoxModel', {
       backendNodeId
     })
-    if (!box.model) throw new Error(`${uid} 当前不可见(可能在折叠区域里),没法点击。`)
+    if (!box.model)
+      throw new Error(appText('messages.isNotVisibleItMayBeCollapsedAndCannotBeClicked', uid))
 
     // content 是 [x1,y1, x2,y2, x3,y3, x4,y4] 四个角,取对角线中点
     const [x1, y1, , , x3, y3] = box.model.content
@@ -140,7 +140,10 @@ export class BrowserSession {
 
   async press(key: string): Promise<void> {
     const meta = KEYS[key]
-    if (!meta) throw new Error(`不支持的按键:${key}。可用:${Object.keys(KEYS).join('、')}`)
+    if (!meta)
+      throw new Error(
+        appText('messages.unsupportedKeyAvailable', key, Object.keys(KEYS).join('、'))
+      )
     for (const type of ['keyDown', 'keyUp'] as const) {
       await this.send('Input.dispatchKeyEvent', { type, ...meta })
     }

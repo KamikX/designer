@@ -1,3 +1,5 @@
+import { translate } from '../../shared/i18n'
+import type { Lang } from '../../shared/types'
 import type { PreviewLib } from '../../shared/types'
 
 /**
@@ -37,7 +39,11 @@ export function libSetupPaths(libs: PreviewLib[]): string[] {
  * 按虚拟路径生成 setup 模块源码。
  * @param enabled 项目勾选的依赖包——没勾的返回 null(404),守边界
  */
-export function libSetupSource(fileName: string, enabled: PreviewLib[]): string | null {
+export function libSetupSource(
+  fileName: string,
+  enabled: PreviewLib[],
+  lang: Lang = 'zh-CN'
+): string | null {
   const lib = SETUP_FILES[fileName]
   if (!lib || !enabled.includes(lib)) return null
 
@@ -62,7 +68,7 @@ function loadStyles() {
     link.rel = 'stylesheet'
     link.href = href
     link.addEventListener('load', resolve)
-    link.addEventListener('error', () => reject(new Error('样式加载失败:' + href)))
+    link.addEventListener('error', () => reject(new Error(${JSON.stringify(translate(lang, 'preview.stylesheetFailed'))} + href)))
     document.head.append(link)
   })))
 }

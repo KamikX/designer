@@ -17,12 +17,12 @@ const esbuildPkg = readdirSync(pnpmDir)
   .filter((n) => /^esbuild@\d/.test(n))
   .sort()
   .pop()
-if (!esbuildPkg) throw new Error('在 node_modules/.pnpm 里找不到 esbuild')
+if (!esbuildPkg) throw new Error('Cannot find esbuild in node_modules/.pnpm')
 
 const esbuild = await import(join(pnpmDir, esbuildPkg, 'node_modules/esbuild/lib/main.js'))
 
 const STUB = `module.exports = new Proxy({}, {
-  get: (_t, name) => () => { throw new Error('smoke 里 ' + String(name) + ' 被打桩,不该被调用') }
+  get: (_t, name) => () => { throw new Error('Smoke test: ' + String(name) + ' is stubbed and must not be called') }
 })`
 
 await esbuild.build({
@@ -47,4 +47,4 @@ await esbuild.build({
     }
   ]
 })
-console.log('[smoke-build] .capture-smoke.cjs 就绪')
+console.log('[smoke-build] .capture-smoke.cjs ready')

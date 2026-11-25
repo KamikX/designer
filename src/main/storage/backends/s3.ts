@@ -1,3 +1,4 @@
+import { text as appText } from '../../i18n'
 import type { StorageBackend } from '../types'
 
 export interface S3Options {
@@ -58,7 +59,8 @@ export async function createS3Backend(opts: S3Options): Promise<StorageBackend> 
       await put(key, payload, 'text/plain')
       const back = await get(key)
       await del(key)
-      if (!back.equals(payload)) throw new Error('写入与读回内容不一致')
+      if (!back.equals(payload))
+        throw new Error(appText('messages.writtenContentDiffersFromTheContentReadBack'))
     }
   }
 }

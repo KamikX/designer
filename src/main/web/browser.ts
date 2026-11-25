@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 /**
  * 无头浏览器:用 Electron 自带的 Chromium 打开页面、跑完 JS、取回内容。
  *
@@ -71,7 +72,11 @@ export async function withPage<T>(
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   try {
-    await withTimeout(win.loadURL(url), options.timeout ?? PAGE_TIMEOUT_MS, `打开超时:${url}`)
+    await withTimeout(
+      win.loadURL(url),
+      options.timeout ?? PAGE_TIMEOUT_MS,
+      appText('web.browser.openTimedOut', url)
+    )
     await delay(options.settle ?? SETTLE_MS)
     // 依赖脚本先注入(如 defuddle),再跑取值脚本。每一步都带超时:
     // 超时后 finally 里 destroy 会直接杀掉渲染进程,挂着的脚本一并回收
@@ -79,13 +84,13 @@ export async function withPage<T>(
       await withTimeout(
         win.webContents.executeJavaScript(source, true),
         EXEC_TIMEOUT_MS,
-        `页面脚本注入超时:${url}`
+        appText('web.browser.pageScriptInjectionTimedOut', url)
       )
     }
     return (await withTimeout(
       win.webContents.executeJavaScript(extract, true),
       EXEC_TIMEOUT_MS,
-      `正文提取超时:${url}`
+      appText('web.browser.contentExtractionTimedOut', url)
     )) as T
   } finally {
     if (!win.isDestroyed()) win.destroy()

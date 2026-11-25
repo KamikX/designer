@@ -53,3 +53,11 @@ describe('IPC visual guidance validation', () => {
     expect(() => validateVisualGuidance(value)).toThrow()
   })
 })
+
+it('formats validation errors using an explicitly supplied language', () => {
+  expect(() => validateVisualGuidance(null, 'en-US')).toThrow('Invalid visual guidance settings')
+  expect(() => validateVisualGuidance(null, 'zh-CN')).toThrow('视觉设置无效')
+  expect(() => decodeDesignDocument('design.md', encode(''), 'en-US')).toThrow(
+    'The Markdown file must not be empty'
+  )
+})

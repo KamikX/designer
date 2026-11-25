@@ -1,3 +1,4 @@
+import { currentLanguage } from '../../i18n'
 import { validateVisualGuidance } from '../../../shared/visual-guidance'
 import { desc, eq, sql } from 'drizzle-orm'
 import type {
@@ -60,12 +61,15 @@ function validateTargets(targets: unknown): DesignTarget[] | null {
 
 export function createProject(input: CreateProjectInput): Project {
   const targets = validateTargets(input.targets)
-  const guidance = validateVisualGuidance({
-    styleBrief: input.styleBrief === undefined ? '' : input.styleBrief,
-    designDocument: input.designDocument === undefined ? '' : input.designDocument,
-    visualStylePriority:
-      input.visualStylePriority === undefined ? 'styleBrief' : input.visualStylePriority
-  })
+  const guidance = validateVisualGuidance(
+    {
+      styleBrief: input.styleBrief === undefined ? '' : input.styleBrief,
+      designDocument: input.designDocument === undefined ? '' : input.designDocument,
+      visualStylePriority:
+        input.visualStylePriority === undefined ? 'styleBrief' : input.visualStylePriority
+    },
+    currentLanguage()
+  )
   resolveLibraries(input.externalLibraries ?? [], input.stack, input.libs ?? [])
   return toProject(
     getDb()
@@ -90,7 +94,7 @@ export function createProject(input: CreateProjectInput): Project {
 /** Keep visual sources and their precedence atomic so subsequent turns never see a mixed draft. */
 export function setProjectVisualGuidance(id: string, guidance: VisualGuidance): Project | null {
   if (typeof id !== 'string' || !id) throw new Error('Invalid project ID')
-  const validated = validateVisualGuidance(guidance)
+  const validated = validateVisualGuidance(guidance, currentLanguage())
   const row = getDb()
     .update(projects)
     .set({ ...validated, updatedAt: sql`(datetime('now'))` })

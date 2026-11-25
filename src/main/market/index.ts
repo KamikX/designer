@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { readConfig } from '../config'
 import type { CatalogSource, MarketMcp, MarketSkill } from './types'
 
@@ -41,7 +42,7 @@ async function load(): Promise<Loaded> {
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
-    if (!res.ok) throw new Error(`市场源返回 HTTP ${res.status}`)
+    if (!res.ok) throw new Error(appText('messages.marketplaceSourceReturnedHttp', res.status))
     const data = (await res.json()) as { skills?: unknown; mcp?: unknown }
     const loaded: Loaded = {
       skills: sanitizeSkills(data.skills),
@@ -51,7 +52,10 @@ async function load(): Promise<Loaded> {
     lastProblem = ''
     return loaded
   } catch (err) {
-    lastProblem = `市场源加载失败:${err instanceof Error ? err.message : String(err)}`
+    lastProblem = appText(
+      'market.index.failedToLoadMarketplaceSource',
+      err instanceof Error ? err.message : String(err)
+    )
     // 拉挂了但上次的缓存还在:继续用旧的,别让一次网络抖动清空整个市场
     if (cached && cached.url === url) return cached
     return { skills: [], mcp: [] }

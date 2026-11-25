@@ -1,3 +1,4 @@
+import { bindMainLanguage } from './i18n'
 import { app, shell, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -15,6 +16,7 @@ import { startSyncEngine } from './sync/engine'
 import { resolveAppNavigation } from './navigation'
 
 // 特权 scheme 必须在 app ready 前注册,放模块顶层最不容易被挪错位置
+bindMainLanguage(() => readConfig().lang)
 registerAppSchemes()
 
 // 冒烟测试/自动化联调用:DESIGNER_DEBUG_PORT=9223 pnpm dev 后可用 CDP 驱动。

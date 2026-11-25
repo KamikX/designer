@@ -55,14 +55,14 @@ const LIB_OPTIONS: { value: PreviewLib; label: string; hint: string }[] = [
     value: 'antdv-next',
     label: 'antdv-next',
     get hint() {
-      return t('组件库本体')
+      return t('common.componentLibrary')
     }
   },
   {
     value: '@antdv-next/icons',
     label: '@antdv-next/icons',
     get hint() {
-      return t('配套图标库')
+      return t('common.matchingIconLibrary')
     }
   }
 ]
@@ -96,7 +96,7 @@ async function toggleLib(value: PreviewLib): Promise<void> {
     // 引导 HTML 按项目当前状态生成,不刷预览看不到变化;
     // 提示词的变化则在下一轮对话自然生效
     store.previewEpoch++
-    message.success(t('依赖包已更新,预览已刷新;AI 从下一轮开始按新依赖生成'))
+    message.success(t('messages.librariesUpdatedAndPreviewRefreshedAi'))
   } catch (err) {
     libDraft.value = before
     message.error(uiMessage(err instanceof Error ? err.message : String(err)))
@@ -108,7 +108,7 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
   try {
     await projectStore.setExternalLibraries(props.project.id, refs)
     store.previewEpoch++
-    message.success(t('依赖包已更新,预览已刷新;AI 从下一轮开始按新依赖生成'))
+    message.success(t('messages.librariesUpdatedAndPreviewRefreshedAi'))
   } catch (err) {
     message.error(uiMessage(String(err)))
   } finally {
@@ -128,13 +128,13 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
         :options="[
           {
             get label() {
-              return t('预览')
+              return t('common.preview')
             },
             value: 'preview'
           },
           {
             get label() {
-              return t('代码')
+              return t('common.code')
             },
             value: 'code'
           }
@@ -147,7 +147,9 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
       <a-popover v-if="project.stack !== 'html'" trigger="click" placement="bottomRight">
         <template #content>
           <div class="libs-pop">
-            <div class="libs-pop-title">{{ t('依赖包(预览环境自动加载)') }}</div>
+            <div class="libs-pop-title">
+              {{ t('messages.librariesLoadedAutomaticallyInPreview') }}
+            </div>
             <label
               v-for="opt in project.stack === 'vue3' ? LIB_OPTIONS : []"
               :key="opt.value"
@@ -168,7 +170,7 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
             />
           </div>
         </template>
-        <a-tooltip :title="t('依赖包')">
+        <a-tooltip :title="t('common.libraries')">
           <button class="libs-btn" :style="{ color: token.colorTextSecondary }" type="button">
             <AppstoreAddOutlined />
             <span
@@ -197,9 +199,9 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
             class="workspace-empty-icon"
             :style="{ color: token.colorTextQuaternary }"
           />
-          <h3 class="workspace-empty-title">{{ t('还没有设计稿') }}</h3>
+          <h3 class="workspace-empty-title">{{ t('common.noDesignsYet') }}</h3>
           <div class="workspace-empty-sub" :style="{ color: token.colorTextTertiary }">
-            {{ t('在左边描述你要的页面,生成后这里会出现文件树与实时预览') }}
+            {{ t('messages.describeYourPageOnTheLeft') }}
           </div>
         </div>
       </div>

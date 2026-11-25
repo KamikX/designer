@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { createHash } from 'crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, extname, join } from 'path'
@@ -136,7 +137,7 @@ export async function testStorage(input: StorageConfigInput): Promise<ProviderTe
   try {
     if (input.mode === 'local' || !input.s3) return { ok: true }
     const secretKey = input.s3.secretKey ?? s3Credentials()?.secretKey
-    if (!secretKey) return { ok: false, error: '缺少 Secret Key' }
+    if (!secretKey) return { ok: false, error: appText('messages.secretKeyIsMissing') }
     const start = Date.now()
     const backend = await createS3Backend({
       endpoint: input.s3.endpoint,

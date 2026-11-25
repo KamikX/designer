@@ -1,3 +1,4 @@
+import { text as appText } from './i18n'
 import { readFileSync, writeFileSync } from 'fs'
 import type {
   DataBackendInput,
@@ -167,7 +168,8 @@ export function dataBackendView(): DataBackendView {
 export function setDataBackendConfig(input: DataBackendInput): DataBackendView {
   const config = read()
   // cloud 是给官方 SaaS 版预留的枚举,落地前不允许选中
-  if (input.mode === 'cloud') throw new Error('官方云服务尚未上线,敬请期待')
+  if (input.mode === 'cloud')
+    throw new Error(appText('messages.theOfficialCloudServiceIsNotAvailableYet'))
   if (input.selfHosted) {
     const prev = config.dataBackend.selfHosted
     config.dataBackend.selfHosted = {

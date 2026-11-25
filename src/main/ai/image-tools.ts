@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { aiText } from '../i18n'
 import { promptText } from './prompts/i18n'
 import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
@@ -48,7 +50,9 @@ export function buildImageTools(
     if (!hit) {
       const list = context.assets.map((a) => `${a.assetId}(${a.name})`).join('、')
       throw new VfsError(
-        list ? `没有这张参考图。本次会话可用的是:${list}` : '本次会话里用户没有提供过参考图。'
+        list
+          ? aiText('ai.imageTools.thatReferenceImageIsNotAvailableImagesInThisConversation', list)
+          : aiText('ai.imageTools.theUserHasNotProvidedReferenceImagesInThisConversation')
       )
     }
     return hit
@@ -65,19 +69,21 @@ export function buildImageTools(
         try {
           hit = known(asset_id)
         } catch (err) {
-          return err instanceof VfsError ? `错误:${err.message}` : `错误:${String(err)}`
+          return err instanceof VfsError
+            ? aiText('ai.imageTools.error', err.message)
+            : aiText('ai.imageTools.error', String(err))
         }
 
         const resolved = await resolveAsset(hit.assetId)
         if (!resolved) {
-          return `错误:参考图 ${hit.name} 的文件已经取不到了(可能是存储配置变了)。`
+          return aiText('ai.imageTools.errorReferenceImageIsNoLonger', hit.name)
         }
 
         // 工具结果可以直接携带图片,但要经 toModelOutput 才作数(见下)
         return {
           type: 'content' as const,
           value: [
-            { type: 'text' as const, text: `参考图 ${hit.name}:` },
+            { type: 'text' as const, text: aiText('ai.imageTools.referenceImage', hit.name) },
             {
               type: 'file' as const,
               data: { type: 'data' as const, data: resolved.data },
@@ -102,12 +108,14 @@ export function buildImageTools(
         try {
           const hit = known(asset_id)
           context.onNote(hit.assetId, description.trim())
-          return `已记下 ${hit.name} 的描述,后续轮次会带上它。`
+          return aiText('ai.imageTools.savedTheDescriptionOfItWillBeIncludedInLaterTurns', hit.name)
         } catch (err) {
-          return err instanceof VfsError ? `错误:${err.message}` : `错误:${String(err)}`
+          return err instanceof VfsError
+            ? aiText('ai.imageTools.error', err.message)
+            : aiText('ai.imageTools.error', String(err))
         }
       }
     })
   }
-  return tools
+  return localizedTools(tools, lang)
 }

@@ -34,7 +34,7 @@ async function doExport(packageExport: boolean): Promise<void> {
     const path = packageExport
       ? await window.api.project.exportPackage({ projectId, selectedArtifactId })
       : await store.exportCurrent()
-    if (path) message.success(t('已导出到 {0}', path))
+    if (path) message.success(t('common.exportedTo', path))
   } catch (error) {
     message.error(uiMessage(error instanceof Error ? error.message : String(error)))
   } finally {
@@ -48,14 +48,16 @@ async function doExport(packageExport: boolean): Promise<void> {
     <template #content>
       <div class="export-options">
         <a-button :disabled="disabled || !store.currentId" @click="doExport(false)">{{
-          t('导出源文件')
+          t('common.exportSourceFiles')
         }}</a-button>
-        <a-button :disabled="disabled" @click="doExport(true)">{{ t('导出项目') }}</a-button>
+        <a-button :disabled="disabled" @click="doExport(true)">{{
+          t('common.exportProject')
+        }}</a-button>
       </div>
     </template>
     <a-button size="small" :disabled="disabled" :loading="exporting || store.exporting">
       <template #icon><ExportOutlined /></template>
-      {{ t('导出') }}
+      {{ t('common.exportLabel') }}
     </a-button>
   </a-popover>
 </template>

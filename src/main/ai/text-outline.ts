@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 /**
  * 文件结构大纲。
  *
@@ -112,5 +113,7 @@ export function renderOutline(entries: OutlineEntry[]): string {
 }
 
 export function clip(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max)}…(本行还有 ${text.length - max} 字符)`
+  return text.length <= max
+    ? text
+    : aiText('ai.textOutline.moreCharactersOnThisLine', text.slice(0, max), text.length - max)
 }

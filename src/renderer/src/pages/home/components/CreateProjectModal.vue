@@ -33,12 +33,12 @@ const LIB_OPTIONS = computed<{ value: PreviewLib; label: string; hint: string }[
   {
     value: 'antdv-next',
     label: 'antdv-next',
-    hint: t('组件库本体:按钮、表格、表单等')
+    hint: t('messages.componentLibraryButtonsTablesFormsAndMore')
   },
   {
     value: '@antdv-next/icons',
     label: '@antdv-next/icons',
-    hint: t('配套图标库')
+    hint: t('common.matchingIconLibrary')
   }
 ])
 
@@ -61,28 +61,28 @@ function toggleLib(value: PreviewLib): void {
 const TARGET_OPTIONS = computed<{ value: DesignTarget; label: string; hint: string }[]>(() => [
   {
     value: 'landing',
-    label: t('落地页'),
-    hint: t('营销页 / 官网首页,讲一个故事,一个主 CTA')
+    label: t('common.landingPage'),
+    hint: t('messages.marketingOrHomePageWithAPrimaryCallToAction')
   },
   {
     value: 'web',
-    label: t('Web 应用'),
-    hint: t('PC 端产品界面,键盘与 hover 是一等公民')
+    label: t('common.webApplication'),
+    hint: t('messages.desktopInterfaceWithKeyboardAndHoverSupport')
   },
   {
     value: 'mobile',
-    label: t('移动端 App'),
-    hint: t('真机框呈现,一屏一事,44px 点击目标')
+    label: t('common.mobileApp'),
+    hint: t('messages.deviceFrameFocusedScreensAnd44pxTouchTargets')
   },
   {
     value: 'admin',
-    label: t('中后台'),
-    hint: t('管理系统,信息密度优先,表格与筛选')
+    label: t('common.adminDashboard'),
+    hint: t('messages.managementInterfaceWithTablesAndFilters')
   },
   {
     value: 'components',
-    label: t('组件开发'),
-    hint: t('通过提示词或参考素材开发可复用组件，提供独立预览')
+    label: t('common.componentDevelopment'),
+    hint: t('messages.reusableComponentsFromPromptsOrReferencesWithAnIsolatedPreview')
   }
 ])
 
@@ -94,23 +94,23 @@ const STACK_OPTIONS = computed<{ value: Stack; label: string; hint: string }[]>(
   {
     value: 'html',
     label: 'HTML',
-    hint: t('自包含页面,预览最稳,适合视觉稿与营销页')
+    hint: t('messages.selfContainedPageSuitableForVisualDesignsAndMarketingPages')
   },
   {
     value: 'vue3',
     label: 'Vue 3',
-    hint: t('SFC 组件形态,适合落进 Vue 工程')
+    hint: t('messages.sfcComponentsForVueProjects')
   },
   {
     value: 'react',
     label: 'React',
-    hint: t('JSX 组件形态,适合落进 React 工程')
+    hint: t('messages.jsxComponentsForReactProjects')
   }
 ])
 
 const MODE_OPTIONS = computed(() => [
-  { label: t('高质量 UI 设计'), value: 'design' },
-  { label: t('快速原型'), value: 'prototype' }
+  { label: t('common.highQualityUiDesign'), value: 'design' },
+  { label: t('common.rapidPrototype'), value: 'prototype' }
 ])
 
 const creating = ref(false)
@@ -122,7 +122,7 @@ watch(open, () => {
 async function submit(): Promise<void> {
   if (importing.value || creating.value) return
   if (!form.name.trim()) {
-    message.warning(t('请输入项目名称'))
+    message.warning(t('messages.enterAProjectName'))
     return
   }
   creating.value = true
@@ -142,28 +142,28 @@ async function submit(): Promise<void> {
 <template>
   <a-modal
     v-model:open="open"
-    :title="t('新建项目')"
+    :title="t('common.newProject')"
     :confirm-loading="creating"
     :ok-button-props="{ disabled: importing }"
     :width="520"
     centered
-    :ok-text="t('创建项目')"
+    :ok-text="t('common.createProject')"
     @ok="submit"
   >
     <!-- 表单项加到六组之后整体高度可能超过视口:弹窗本体封顶 80vh,
          超出的部分在这层内部滚,不把外面的页面顶出滚动条 -->
     <div class="create-body">
       <a-form layout="vertical" style="margin-top: 8px">
-        <a-form-item :label="t('项目名称')" required>
+        <a-form-item :label="t('common.projectName')" required>
           <a-input
             v-model:value="form.name"
             size="large"
-            :placeholder="t('如 官网改版 / 管理后台')"
+            :placeholder="t('messages.eGWebsiteRedesignAdminDashboard')"
             @press-enter="submit"
           />
         </a-form-item>
 
-        <a-form-item :label="t('产物技术栈(创建后不可更改)')">
+        <a-form-item :label="t('messages.technologyStackCannotBeChangedLater')">
           <div class="stack-grid">
             <div
               v-for="opt in STACK_OPTIONS"
@@ -193,11 +193,14 @@ async function submit(): Promise<void> {
           </div>
         </a-form-item>
 
-        <a-form-item :label="t('设计模式')">
+        <a-form-item :label="t('common.designMode')">
           <a-segmented v-model:value="form.designMode" :options="MODE_OPTIONS" block />
         </a-form-item>
 
-        <a-form-item v-if="form.stack === 'vue3'" :label="t('可选依赖包(预览环境自动加载)')">
+        <a-form-item
+          v-if="form.stack === 'vue3'"
+          :label="t('messages.optionalLibrariesLoadedAutomaticallyInPreview')"
+        >
           <div class="target-grid">
             <div
               v-for="opt in LIB_OPTIONS"
@@ -228,11 +231,13 @@ async function submit(): Promise<void> {
           </div>
         </a-form-item>
 
-        <a-form-item v-if="form.stack !== 'html'" :label="t('依赖库')">
+        <a-form-item v-if="form.stack !== 'html'" :label="t('common.librariesLabel')">
           <LibraryPicker :key="form.stack" v-model="form.externalLibraries" :stack="form.stack" />
         </a-form-item>
 
-        <a-form-item :label="t('设计目标（页面类型可多选；组件开发单独选择）')">
+        <a-form-item
+          :label="t('messages.designTargetsSelectMultiplePageTypesOrComponentDevelopmentAlone')"
+        >
           <div class="target-grid">
             <div
               v-for="opt in TARGET_OPTIONS"
@@ -263,11 +268,11 @@ async function submit(): Promise<void> {
           </div>
         </a-form-item>
 
-        <a-form-item :label="t('项目描述')">
+        <a-form-item :label="t('common.projectDescription')">
           <a-textarea
             v-model:value="form.description"
             :rows="3"
-            :placeholder="t('一句话说明这个项目要做什么,会作为 AI 的背景信息')"
+            :placeholder="t('messages.describeTheProjectForTheAi')"
           />
         </a-form-item>
 

@@ -12,7 +12,7 @@ import type { UsageDailyRow, UsageQuery } from '@shared/types'
 
 /** 和数 + 上报次数 → 展示文本。未报告的指标不许冒充 0 */
 export function formatMetric(sum: number, reportedCalls: number): string {
-  return reportedCalls === 0 ? t('未报告') : sum.toLocaleString()
+  return reportedCalls === 0 ? t('common.notReported') : sum.toLocaleString()
 }
 
 /** 缓存命中率:read / (read + noCache)。任一边没报就没有这个指标 */

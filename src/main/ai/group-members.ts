@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 import type {
   GroupMember,
   GroupMemberDraft,
@@ -43,7 +44,7 @@ function uniqueMemberId(createId: () => string, usedIds: Set<string>): string {
       return id
     }
   }
-  throw new Error('无法生成唯一成员 ID')
+  throw new Error(aiText('ai.groupMembers.couldNotGenerateAUniqueMemberId'))
 }
 
 interface DraftContext {
@@ -67,27 +68,33 @@ function normalizeDraft(
   position: number,
   context: DraftContext
 ): Omit<GroupMember, 'id'> {
-  if (!isGroupMemberDraft(draft)) throw new Error(`第 ${position} 位成员数据格式错误`)
+  if (!isGroupMemberDraft(draft))
+    throw new Error(aiText('ai.groupMembers.invalidDataForMember', position))
   const name = draft.name.trim()
   const persona = draft.persona.trim()
 
-  if (!name) throw new Error(`第 ${position} 位成员名称不能为空`)
+  if (!name) throw new Error(aiText('ai.groupMembers.memberMustHaveAName', position))
   if (Array.from(name).length > MAX_NAME_LENGTH) {
-    throw new Error(`成员名称不能超过 ${MAX_NAME_LENGTH} 个字符`)
+    throw new Error(aiText('ai.groupMembers.memberNamesCannotExceedCharacters', MAX_NAME_LENGTH))
   }
   if (INVALID_NAME.test(name)) {
-    throw new Error('成员名称不能包含换行或 @[]()')
+    throw new Error(aiText('ai.groupMembers.memberNamesCannotContainLineBreaksOr'))
   }
-  if (name === '用户') throw new Error('“用户”是保留名称')
-  if (context.usedNames.has(name)) throw new Error(`成员名称重复：${name}`)
-  if (!persona) throw new Error(`成员“${name}”的人设不能为空`)
+  if (name === '用户' || name.toLowerCase() === 'user')
+    throw new Error(aiText('ai.groupMembers.isAReservedName'))
+  if (context.usedNames.has(name))
+    throw new Error(aiText('ai.groupMembers.duplicateMemberName', name))
+  if (!persona) throw new Error(aiText('ai.groupMembers.memberMustHaveAPersona', name))
 
   const selectedModel = context.modelsById.get(draft.modelRowId)
-  if (!selectedModel) throw new Error(`成员“${name}”选择的模型不存在`)
-  if (!selectedModel.enabled) throw new Error(`成员“${name}”选择的模型已停用`)
-  if (selectedModel.type !== 'chat') throw new Error(`成员“${name}”必须选择对话模型`)
+  if (!selectedModel)
+    throw new Error(aiText('ai.groupMembers.theModelSelectedForDoesNotExist', name))
+  if (!selectedModel.enabled)
+    throw new Error(aiText('ai.groupMembers.theModelSelectedForIsDisabled', name))
+  if (selectedModel.type !== 'chat')
+    throw new Error(aiText('ai.groupMembers.memberMustUseAChatModel', name))
   if (!selectedModel.abilities.includes('tools')) {
-    throw new Error(`成员“${name}”选择的模型不支持 tools`)
+    throw new Error(aiText('ai.groupMembers.theModelSelectedForDoesNotSupportTools', name))
   }
 
   context.usedNames.add(name)
@@ -114,8 +121,8 @@ export function createGroupMembers(
   drafts: readonly GroupMemberDraft[],
   dependencies: CreateGroupMembersDependencies
 ): GroupMember[] {
-  if (!Array.isArray(drafts)) throw new Error('成员数据必须是数组')
-  if (drafts.length === 0) throw new Error('群组至少需要一个成员')
+  if (!Array.isArray(drafts)) throw new Error(aiText('ai.groupMembers.memberDataMustBeAnArray'))
+  if (drafts.length === 0) throw new Error(aiText('ai.groupMembers.aGroupNeedsAtLeastOneMember'))
 
   const context = buildDraftContext(dependencies)
   const usedIds = new Set<string>()
@@ -140,8 +147,8 @@ export function updateGroupMembers(
   drafts: readonly GroupMemberUpdate[],
   dependencies: CreateGroupMembersDependencies
 ): GroupMember[] {
-  if (!Array.isArray(drafts)) throw new Error('成员数据必须是数组')
-  if (drafts.length === 0) throw new Error('群组至少需要一个成员')
+  if (!Array.isArray(drafts)) throw new Error(aiText('ai.groupMembers.memberDataMustBeAnArray'))
+  if (drafts.length === 0) throw new Error(aiText('ai.groupMembers.aGroupNeedsAtLeastOneMember'))
 
   const existingIds = new Set(existing.map((member) => member.id))
   const keptIds = new Set<string>()
@@ -149,14 +156,14 @@ export function updateGroupMembers(
     const id = (draft as { id?: unknown }).id
     if (id === undefined) continue
     if (typeof id !== 'string' || !existingIds.has(id)) {
-      throw new Error('成员 ID 不属于这个群组')
+      throw new Error(aiText('ai.groupMembers.thisMemberIdDoesNotBelongToTheGroup'))
     }
-    if (keptIds.has(id)) throw new Error('同一位成员出现了两次')
+    if (keptIds.has(id)) throw new Error(aiText('ai.groupMembers.theSameMemberAppearsTwice'))
     keptIds.add(id)
   }
   const missing = existing.find((member) => !keptIds.has(member.id))
   if (missing) {
-    throw new Error(`已有成员“${missing.name}”不能被移除:历史消息还引用着 TA`)
+    throw new Error(aiText('ai.groupMembers.existingMemberCannotBeRemovedBecause', missing.name))
   }
 
   const context = buildDraftContext(dependencies)
@@ -173,11 +180,14 @@ export function resolveGroupAgent(
   getModel: (modelRowId: string) => Model | null
 ): ResolvedGroupAgent {
   const selectedModel = getModel(member.modelRowId)
-  if (!selectedModel) throw new Error(`成员“${member.name}”选择的模型不存在`)
-  if (!selectedModel.enabled) throw new Error(`成员“${member.name}”选择的模型已停用`)
-  if (selectedModel.type !== 'chat') throw new Error(`成员“${member.name}”选择的不是对话模型`)
+  if (!selectedModel)
+    throw new Error(aiText('ai.groupMembers.theModelSelectedForDoesNotExist', member.name))
+  if (!selectedModel.enabled)
+    throw new Error(aiText('ai.groupMembers.theModelSelectedForIsDisabled', member.name))
+  if (selectedModel.type !== 'chat')
+    throw new Error(aiText('ai.groupMembers.theModelSelectedForIsNotAChatModel', member.name))
   if (!selectedModel.abilities.includes('tools')) {
-    throw new Error(`成员“${member.name}”选择的模型不支持 tools`)
+    throw new Error(aiText('ai.groupMembers.theModelSelectedForDoesNotSupportTools', member.name))
   }
 
   return {

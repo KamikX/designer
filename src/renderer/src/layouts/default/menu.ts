@@ -22,21 +22,21 @@ export const MENU_ITEMS: MenuItemType[] = [
     key: '/',
     icon: HomeOutlined,
     get label() {
-      return t('首页')
+      return t('common.home')
     }
   },
   {
     key: '/chat',
     icon: MessageOutlined,
     get label() {
-      return t('聊天')
+      return t('common.chat')
     }
   },
   {
     key: '/collab',
     icon: TeamOutlined,
     get label() {
-      return t('协作')
+      return t('common.collaboration')
     }
   },
   // 技能和 MCP 合成一个入口的两个 tab:侧栏刚减掉一项,再加两项就白减了
@@ -44,7 +44,7 @@ export const MENU_ITEMS: MenuItemType[] = [
     key: '/market',
     icon: AppstoreOutlined,
     get label() {
-      return t('市场')
+      return t('common.marketplace')
     }
   }
 ]
@@ -56,14 +56,14 @@ export const FOOTER_MENU_ITEMS: MenuItemType[] = [
     key: '/usage',
     icon: LineChartOutlined,
     get label() {
-      return t('用量')
+      return t('common.usage')
     }
   },
   {
     key: '/settings',
     icon: SettingOutlined,
     get label() {
-      return t('设置')
+      return t('common.settings')
     }
   }
 ]

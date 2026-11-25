@@ -1,3 +1,5 @@
+import { currentLanguage } from '../i18n'
+import { text as appText } from '../i18n'
 import { resolveLibraries, libraryFile } from '../libraries/service'
 import { readFileSync } from 'fs'
 import { extname, join, normalize, sep } from 'path'
@@ -82,9 +84,12 @@ export function registerAssetHandler(): void {
         headers: { 'content-type': hit.mime, 'cache-control': 'max-age=31536000, immutable' }
       })
     } catch (err) {
-      return new Response(`资源服务错误: ${err instanceof Error ? err.message : err}`, {
-        status: 500
-      })
+      return new Response(
+        appText('preview.protocol.assetServiceError', err instanceof Error ? err.message : err),
+        {
+          status: 500
+        }
+      )
     }
   })
 }
@@ -101,9 +106,12 @@ export function registerPreviewHandler(): void {
       if (url.host === 'session') return serveSession(url.pathname)
       return new Response('Not Found', { status: 404 })
     } catch (err) {
-      return new Response(`预览服务错误: ${err instanceof Error ? err.message : err}`, {
-        status: 500
-      })
+      return new Response(
+        appText('preview.protocol.previewServiceError', err instanceof Error ? err.message : err),
+        {
+          status: 500
+        }
+      )
     }
   })
 }
@@ -211,14 +219,14 @@ function serveFileSet({
 
   // vue3 / react:入口出引导页,其余文件按名直出(引导页里 fetch 用)
   if (isEntry && stack !== 'html') {
-    return html(buildBootstrapHtml(stack, theme, libs, external))
+    return html(buildBootstrapHtml(stack, theme, libs, external, currentLanguage()))
   }
 
   const requested = filePath === '' ? 'index.html' : filePath
 
   // 依赖包的 setup 虚拟模块:不在产物文件树里,按项目勾选直出;没勾就 404,守边界
   if (requested.startsWith('__setup__/')) {
-    const code = libSetupSource(requested.slice('__setup__/'.length), libs)
+    const code = libSetupSource(requested.slice('__setup__/'.length), libs, currentLanguage())
     if (!code) return new Response('Not Found', { status: 404 })
     return new Response(code, {
       headers: { 'content-type': JS_MIME, 'cache-control': 'no-cache' }
@@ -260,7 +268,7 @@ function serveFileSet({
        */
       const detail = err instanceof Error ? err.message : String(err)
       return new Response(
-        `throw new Error(${JSON.stringify(`编译失败 ${entryName}\n${detail}`)})`,
+        `throw new Error(${JSON.stringify(appText('preview.protocol.compilationFailedFor', entryName, detail))})`,
         {
           headers: { 'content-type': JS_MIME, 'cache-control': 'no-cache' }
         }

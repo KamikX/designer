@@ -1,7 +1,7 @@
 {
   "name": "designer",
   "version": "1.0.0",
-  "description": "Antdv Next Designer — 用自然语言对话生成多文件设计稿（HTML / Vue 3 / React），实时预览、版本管理、可导出的 AI 设计工作台",
+  "description": "Antdv Next Designer — Generate multi-file designs (HTML / Vue 3 / React) through natural-language conversations, with live previews, version management, and export",
   "main": "./out/main/index.js",
   "author": "Antdv Next",
   "license": "AGPL-3.0-only",

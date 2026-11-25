@@ -1,3 +1,4 @@
+import { translate } from '../../shared/i18n'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
@@ -43,7 +44,10 @@ function scheduleObservabilityMaintenance(): void {
       markInterruptedRuns()
       cleanupDiagnostics(new Date().toISOString())
     } catch (err) {
-      console.warn('[db] 观测维护失败:', err instanceof Error ? err.message : err)
+      console.warn(
+        translate('en-US', 'db.index.dbObservabilityMaintenanceFailed'),
+        err instanceof Error ? err.message : err
+      )
     }
   })
 }
@@ -138,7 +142,14 @@ function migrate(conn: Database.Database): void {
   // 只报不改——自动"修复"很可能是继续删数据
   const dangling = conn.pragma('foreign_key_check') as unknown[]
   if (dangling.length) {
-    console.error(`[db] 迁移后发现 ${dangling.length} 条悬空外键引用:`, dangling.slice(0, 5))
+    console.error(
+      translate(
+        'en-US',
+        'db.index.dbFoundDanglingForeignKeyReferencesAfterMigration',
+        dangling.length
+      ),
+      dangling.slice(0, 5)
+    )
   }
 }
 

@@ -46,39 +46,39 @@ const runStats = computed(() => {
   return [
     {
       get label() {
-        return t('总耗时')
+        return t('common.totalDuration')
       },
       value: fmtMs(ms(run.startedAt, run.endedAt))
     },
     {
       get label() {
-        return t('首个输出')
+        return t('common.firstOutput')
       },
       value: fmtMs(ms(run.startedAt, run.firstOutputAt))
     },
     {
       get label() {
-        return t('首个文件变化')
+        return t('common.firstFileChange')
       },
       value: fmtMs(ms(run.startedAt, run.firstFileChangeAt))
     },
     {
       get label() {
-        return t('模型请求')
+        return t('common.modelRequests')
       },
-      value: t('{0} 次', run.modelCallCount)
+      value: t('common.calls', run.modelCallCount)
     },
     {
       get label() {
-        return t('工具调用')
+        return t('common.toolCalls')
       },
-      value: t('{0} 次', run.toolCallCount)
+      value: t('common.calls', run.toolCallCount)
     },
     {
       get label() {
-        return t('工具失败')
+        return t('common.toolFailures')
       },
-      value: t('{0} 次', run.toolFailureCount)
+      value: t('common.calls', run.toolFailureCount)
     }
   ]
 })
@@ -99,36 +99,36 @@ function fmtMs(value: number | null): string {
 
 /** 未报告的 token 字段显示"未报告",绝不显示 0 */
 function fmtTokens(value: number | null): string {
-  return value == null ? t('未报告') : value.toLocaleString()
+  return value == null ? t('common.notReported') : value.toLocaleString()
 }
 
 const STATUS_TEXT: Record<string, string> = {
   get running() {
-    return t('进行中')
+    return t('common.inProgress')
   },
   get complete() {
-    return t('完成')
+    return t('common.complete')
   },
   get error() {
-    return t('出错')
+    return t('common.error')
   },
   get aborted() {
-    return t('已停止')
+    return t('common.stopped')
   },
   get interrupted() {
-    return t('被应用重启打断')
+    return t('messages.interruptedByApplicationRestart')
   },
   get pending() {
-    return t('未返回')
+    return t('common.noResponse')
   },
   get success() {
-    return t('成功')
+    return t('common.success')
   },
   get recoverable_error() {
-    return t('可恢复失败')
+    return t('common.recoverableFailure')
   },
   get fatal_error() {
-    return t('失败')
+    return t('common.failed')
   }
 }
 
@@ -138,9 +138,12 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
 </script>
 
 <template>
-  <a-drawer :open="open" :title="t('运行诊断')" size="large" @close="emit('close')">
+  <a-drawer :open="open" :title="t('common.runDiagnostics')" size="large" @close="emit('close')">
     <a-spin v-if="loading" />
-    <a-empty v-else-if="!data" :description="t('没有诊断数据(明细只保留 7 天)')" />
+    <a-empty
+      v-else-if="!data"
+      :description="t('messages.noDiagnosticDataDetailsAreKeptFor7Days')"
+    />
     <div v-else class="diag">
       <div class="diag-grid">
         <div v-for="item in runStats" :key="item.label" class="diag-stat">
@@ -152,13 +155,19 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
       </div>
 
       <div v-if="data.run.toolBreaker || data.run.tokenBreaker || data.run.errorBreaker">
-        <a-tag v-if="data.run.toolBreaker" color="warning">{{ t('触发工具次数熔断') }}</a-tag>
-        <a-tag v-if="data.run.tokenBreaker" color="warning">{{ t('触发 token 熔断') }}</a-tag>
-        <a-tag v-if="data.run.errorBreaker" color="warning">{{ t('触发错误熔断') }}</a-tag>
+        <a-tag v-if="data.run.toolBreaker" color="warning">{{
+          t('messages.toolCallLimitReached')
+        }}</a-tag>
+        <a-tag v-if="data.run.tokenBreaker" color="warning">{{
+          t('common.tokenLimitReached')
+        }}</a-tag>
+        <a-tag v-if="data.run.errorBreaker" color="warning">{{
+          t('common.errorLimitReached')
+        }}</a-tag>
       </div>
 
       <div class="diag-section-title" :style="{ color: token.colorTextTertiary }">
-        {{ t('模型请求(') }}{{ data.steps.length }} {{ t('步)') }}
+        {{ t('common.modelRequestsLabel') }}{{ data.steps.length }} {{ t('common.steps') }}
       </div>
       <div class="diag-list">
         <div
@@ -168,22 +177,25 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
           :style="{ borderColor: token.colorBorderSecondary }"
         >
           <div class="diag-row-head">
-            <span>{{ t('第') }} {{ step.stepNumber + 1 }} {{ t('步 ·') }} {{ step.modelId }}</span>
+            <span
+              >{{ t('common.step') }} {{ step.stepNumber + 1 }}
+              {{ t('common.languageChineseLabel') }} {{ step.modelId }}</span
+            >
             <span :style="{ color: token.colorTextTertiary }">
               {{ fmtMs(step.stepTimeMs) }}
               <template
                 v-if="slowestStep && step.callId === slowestStep.callId && data.steps.length > 1"
               >
-                {{ t('· 最慢') }}
+                {{ t('common.slowest') }}
               </template>
             </span>
           </div>
           <div class="diag-row-detail" :style="{ color: token.colorTextTertiary }">
-            {{ t('首包') }} {{ fmtMs(step.timeToFirstOutputMs) }} {{ t('· 输入') }}
-            {{ fmtTokens(step.inputTokens) }} {{ t('· 缓存读') }}
-            {{ fmtTokens(step.cacheReadTokens) }} {{ t('· 缓存写') }}
-            {{ fmtTokens(step.cacheWriteTokens) }} {{ t('· 输出') }}
-            {{ fmtTokens(step.outputTokens) }} {{ t('· 思考') }}
+            {{ t('common.firstChunk') }} {{ fmtMs(step.timeToFirstOutputMs) }}
+            {{ t('common.input') }} {{ fmtTokens(step.inputTokens) }} {{ t('common.cacheRead') }}
+            {{ fmtTokens(step.cacheReadTokens) }} {{ t('common.cacheWrite') }}
+            {{ fmtTokens(step.cacheWriteTokens) }} {{ t('common.output') }}
+            {{ fmtTokens(step.outputTokens) }} {{ t('common.reasoning') }}
             {{ fmtTokens(step.reasoningTokens) }}
           </div>
           <div v-if="step.errorCode" class="diag-row-detail" :style="{ color: token.colorError }">
@@ -193,7 +205,7 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
       </div>
 
       <div class="diag-section-title" :style="{ color: token.colorTextTertiary }">
-        {{ t('工具时间线(') }}{{ data.tools.length }} {{ t('次)') }}
+        {{ t('common.toolTimeline') }}{{ data.tools.length }} {{ t('common.callsLabel') }}
       </div>
       <div class="diag-list">
         <div
@@ -217,7 +229,7 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
                       : token.colorTextTertiary
               }"
             >
-              {{ STATUS_TEXT[tool.status] ?? tool.status }} {{ t('· 执行') }}
+              {{ STATUS_TEXT[tool.status] ?? tool.status }} {{ t('common.execution') }}
               {{ toolDuration(tool) }}
             </span>
           </div>
@@ -229,7 +241,7 @@ function toolDuration(tool: RunDiagnostics['tools'][number]): string {
             }"
           >
             {{ tool.errorCode }} {{ uiMessage(tool.errorSummary) }}
-            <template v-if="tool.recovered">{{ t('(已恢复)') }}</template>
+            <template v-if="tool.recovered">{{ t('common.recovered') }}</template>
           </div>
         </div>
       </div>

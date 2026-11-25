@@ -32,9 +32,14 @@ watch(
 </script>
 
 <template>
-  <a-result v-if="missing" status="404" :title="t('项目不存在')" :sub-title="t('它可能已被删除')">
+  <a-result
+    v-if="missing"
+    status="404"
+    :title="t('common.projectNotFound')"
+    :sub-title="t('messages.itMayHaveBeenDeleted')"
+  >
     <template #extra>
-      <a-button type="primary" @click="router.push('/')">{{ t('回项目列表') }}</a-button>
+      <a-button type="primary" @click="router.push('/')">{{ t('common.backToProjects') }}</a-button>
     </template>
   </a-result>
 

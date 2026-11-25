@@ -42,11 +42,11 @@ function localDate(value: string): string {
 <template>
   <div v-if="store.artifacts.length" class="version-picker">
     <span v-if="historical && store.current" class="version-hint">
-      {{ t('下一次修改将基于 v{0}', store.current.version) }}
+      {{ t('messages.nextEditStartsFromV', store.current.version) }}
     </span>
     <a-popover v-model:open="open" trigger="click" placement="bottomRight">
       <template #content>
-        <div class="version-list" :aria-label="t('版本历史')">
+        <div class="version-list" :aria-label="t('common.versionHistory')">
           <button
             v-for="(version, index) in store.artifacts"
             :key="version.id"
@@ -59,7 +59,7 @@ function localDate(value: string): string {
           >
             <span class="version-meta">
               <strong>v{{ version.version }}</strong>
-              <span v-if="index === 0">{{ t('最新版本') }}</span>
+              <span v-if="index === 0">{{ t('common.latest') }}</span>
               <time :datetime="version.createdAt">{{ localDate(version.createdAt) }}</time>
             </span>
             <span v-if="version.summary" class="version-summary" :title="version.summary">
@@ -68,8 +68,13 @@ function localDate(value: string): string {
           </button>
         </div>
       </template>
-      <a-button size="small" :disabled="busy" :loading="store.loading" :aria-label="t('版本历史')">
-        {{ t('版本历史') }} {{ store.current ? `v${store.current.version}` : '' }}
+      <a-button
+        size="small"
+        :disabled="busy"
+        :loading="store.loading"
+        :aria-label="t('common.versionHistory')"
+      >
+        {{ t('common.versionHistory') }} {{ store.current ? `v${store.current.version}` : '' }}
         <DownOutlined />
       </a-button>
     </a-popover>

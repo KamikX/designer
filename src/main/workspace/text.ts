@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 /**
  * 文本嗅探:这个文件到底能不能当文本读。
  *
@@ -41,7 +42,11 @@ export type SniffResult =
 function reject(sample: Buffer, reason: string): SniffResult {
   const format = identify(sample)
   if (!format) return { ok: false, reason }
-  return { ok: false, reason: `这是 ${format.label},不能当文本读。`, format }
+  return {
+    ok: false,
+    reason: appText('messages.thisIsAndCannotBeReadAsText', format.label),
+    format
+  }
 }
 
 /** 控制字符占比超过这个值就判为二进制(制表/换行/回车不算) */
@@ -55,7 +60,8 @@ export function sniff(sample: Buffer): SniffResult {
     const utf32 =
       (sample[0] === 0xff && sample[1] === 0xfe && sample[2] === 0x00 && sample[3] === 0x00) ||
       (sample[0] === 0x00 && sample[1] === 0x00 && sample[2] === 0xfe && sample[3] === 0xff)
-    if (utf32) return { ok: false, reason: '是 UTF-32 编码,不支持。请转成 UTF-8 后再读。' }
+    if (utf32)
+      return { ok: false, reason: appText('messages.utf32IsNotSupportedConvertToUtf8First') }
   }
   if (sample.length >= 3 && sample[0] === 0xef && sample[1] === 0xbb && sample[2] === 0xbf) {
     return { ok: true, encoding: 'utf8', bomBytes: 3 }
@@ -69,7 +75,10 @@ export function sniff(sample: Buffer): SniffResult {
 
   // NUL 字节是二进制最硬的信号(git 用的也是这一条)
   if (sample.includes(0x00)) {
-    return reject(sample, '含有 NUL 字节,是二进制文件,不能当文本读。')
+    return reject(
+      sample,
+      appText('workspace.text.containsNulBytesThisIsBinaryContentAndCannotBeReadAs')
+    )
   }
 
   // 严格试解 UTF-8。stream: true 让结尾被截断的多字节序列不算错——
@@ -79,12 +88,15 @@ export function sniff(sample: Buffer): SniffResult {
   } catch {
     return reject(
       sample,
-      '不是有效的 UTF-8 编码(可能是 GBK 等其他编码,或二进制)。请转成 UTF-8 后再读。'
+      appText('workspace.text.notValidUtf8PossiblyGbkAnotherEncodingOrBinaryConvertTo')
     )
   }
 
   if (controlRatio(sample) > CONTROL_RATIO_LIMIT) {
-    return reject(sample, '控制字符过多,不像文本文件。')
+    return reject(
+      sample,
+      appText('workspace.text.tooManyControlCharactersThisDoesNotAppearToBeAText')
+    )
   }
 
   return { ok: true, encoding: 'utf8', bomBytes: 0 }

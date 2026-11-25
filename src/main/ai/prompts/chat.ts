@@ -1,3 +1,5 @@
+import { promptText } from './i18n'
+import type { PromptLanguage } from './i18n'
 /**
  * 纯聊天的系统提示词。
  *
@@ -24,37 +26,20 @@ export interface ChatPromptOptions {
   skillCatalog?: string
 }
 
-const WEB_SEARCH = `
-## 联网搜索
-
-用户为这次对话开启了联网。你可以用 web_search 找资料、用 web_fetch 读具体页面。
-
-- 先搜再读:web_search 只给标题和摘要,**摘要不足以回答问题时才 web_fetch**
-  正文——每次抓取都要真的渲染一个页面,比搜索贵得多
-- 涉及时效性的问题(版本号、价格、新闻、"最新的…")一律先搜,不要凭记忆答
-- 引用信息时带上来源链接,让用户能自己核对
-- 搜不到就说搜不到。**不要用记忆填补搜索的空白**,那比不搜更糟——用户以为
-  这是刚查到的
-
-### 操作网页
-
-需要登录后才能看、要点进去才展开、要填表单才有结果的内容,用 browser_open
-打开,再按快照里的编号点击和填写。
-
-- 每个动作都会返回**新快照**,直接用返回里的编号,不要沿用上一轮的——页面
-  重渲染之后旧编号可能指向别的东西
-- 找不到目标元素时先 browser_scroll 滚一屏:很多内容滚到才渲染
-- 表单用 browser_fill_form 一次填完,不要一个字段一次
-- **不可逆的操作(提交订单、支付、删除、发送)在动手之前必须先 ask_user
-  跟用户确认**。你没有撤销键
-`.trim()
-
-export function buildChatPrompt(options: ChatPromptOptions = {}): string {
+export function buildChatPrompt(
+  options: ChatPromptOptions = {},
+  lang: PromptLanguage = 'zh-CN'
+): string {
   const sections = [
     // 勾选的技能只出现在目录里(渐进披露),不再有"全文注入"这条路
     options.localScope,
     options.skillCatalog,
-    options.webSearch ? WEB_SEARCH : ''
+    options.webSearch
+      ? promptText(
+          lang,
+          'ai.prompts.chat.webSearchTheUserEnabledWebAccessUseWebSearchForSources'
+        ).trim()
+      : ''
   ].filter((section): section is string => !!section?.trim())
 
   return sections.join('\n\n')

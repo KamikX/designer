@@ -81,10 +81,10 @@ async function loadOptions(): Promise<void> {
 function addTemplate(template: GroupMemberTemplate): void {
   const draft = createMemberDraftFromTemplate({
     ...template,
-    name: t(template.name),
-    duty: t(template.duty),
-    deliverable: t(template.deliverable),
-    persona: t(template.persona)
+    name: uiMessage(template.name),
+    duty: uiMessage(template.duty),
+    deliverable: uiMessage(template.deliverable),
+    persona: uiMessage(template.persona)
   })
   members.value = [...members.value, draft]
   editingKey.value = draft.tempKey
@@ -122,7 +122,7 @@ async function submit(): Promise<void> {
 
   const groupName = name.value.trim()
   if (!groupName) {
-    message.warning(t('给群组起个名字'))
+    message.warning(t('messages.enterAGroupName'))
     return
   }
 
@@ -165,32 +165,32 @@ async function submit(): Promise<void> {
 <template>
   <a-modal
     v-model:open="open"
-    :title="isEdit ? t('群组设置') : t('新建群组')"
+    :title="isEdit ? t('common.groupSettings') : t('common.newGroup')"
     :confirm-loading="creating"
     :width="900"
     centered
-    :ok-text="isEdit ? t('保存') : t('建群')"
+    :ok-text="isEdit ? t('common.save') : t('common.createGroup')"
     @ok="submit"
   >
     <div class="create-body">
       <a-form layout="vertical">
-        <a-form-item :label="t('群组名称')" html-for="group-name" required>
+        <a-form-item :label="t('common.groupName')" html-for="group-name" required>
           <a-input
             id="group-name"
             v-model:value="name"
-            :aria-label="t('群组名称')"
+            :aria-label="t('common.groupName')"
             data-testid="group-name"
             size="large"
-            :placeholder="t('如 官网改版专项 / 管理后台需求评审')"
+            :placeholder="t('messages.eGWebsiteRedesignAdminRequirementsReview')"
             @press-enter="submit"
           />
         </a-form-item>
       </a-form>
 
       <div class="template-head">
-        <span class="section-title">{{ t('快捷模板') }}</span>
+        <span class="section-title">{{ t('common.quickTemplates') }}</span>
         <span class="section-hint" :style="{ color: token.colorTextTertiary }">
-          {{ t('模板只复制职责与人设，模型和技能由你配置') }}
+          {{ t('messages.templatesCopyResponsibilitiesAndPersonasConfigure') }}
         </span>
       </div>
       <div class="template-row">
@@ -202,19 +202,19 @@ async function submit(): Promise<void> {
           @click="addTemplate(role)"
         >
           <span class="template-dot" :style="{ background: role.color }" />
-          {{ t(role.name) }}
+          {{ uiMessage(role.name) }}
         </a-button>
         <a-button data-testid="add-blank-member" size="small" type="dashed" @click="addBlank">
           <template #icon><PlusOutlined /></template>
-          {{ t('空白成员') }}
+          {{ t('common.blankMember') }}
         </a-button>
       </div>
 
       <div class="member-layout">
         <section class="member-column">
-          <div class="section-title">{{ t('群组成员 ·') }} {{ members.length }}</div>
+          <div class="section-title">{{ t('common.groupMembers') }} {{ members.length }}</div>
           <div v-if="isEdit" class="section-hint" :style="{ color: token.colorTextTertiary }">
-            {{ t('已有成员可修改配置但不能移除——TA 的历史发言还在群里') }}
+            {{ t('messages.existingMembersCanBeEditedBut') }}
           </div>
           <GroupMemberList
             :members="members"
@@ -238,7 +238,7 @@ async function submit(): Promise<void> {
             class="editor-placeholder"
             :style="{ color: token.colorTextTertiary, borderColor: token.colorBorderSecondary }"
           >
-            {{ t('添加或选择一位成员后，在这里配置它') }}
+            {{ t('messages.addOrSelectAMemberToConfigureItHere') }}
           </div>
         </section>
       </div>

@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { aiText } from '../i18n'
 import { promptText } from './prompts/i18n'
 import type { PromptLanguage } from './prompts/i18n'
 import { randomUUID } from 'crypto'
@@ -152,7 +154,7 @@ export function buildAskUserTool(context: AskUserContext, lang: PromptLanguage =
       }
     })
   }
-  return tools
+  return localizedTools(tools, lang)
 }
 
 function waitForAnswer(
@@ -202,21 +204,28 @@ export function renderAnswer(
   configured: string[] = []
 ): string {
   if (answer.skipped) {
-    return '用户跳过了这次确认。请按你自己的判断继续,不要再问一次。'
+    return aiText(
+      'ai.askUser.theUserSkippedThisConfirmationUseYourJudgmentAndContinueWithoutAsking'
+    )
   }
 
   const lines = ask.questions.map((question, index) => {
     const picked = answer.selections[index] ?? []
-    return `- ${question.header}:${picked.length ? picked.join('、') : '(未选)'}`
+    return `- ${question.header}:${picked.length ? picked.join('、') : aiText('ai.askUser.notSelected')}`
   })
 
   const notes = answer.notes?.trim()
-  if (notes) lines.push(`- 补充说明:${notes}`)
+  if (notes) lines.push(aiText('ai.askUser.additionalNotes', notes))
 
   if (configured.length) {
     // 只说配了哪些,不说是什么。模型不需要知道值,它只需要知道可以往下走了
-    lines.push(`- 已配置密钥:${configured.join('、')}(值已加密保存,你看不到也不需要看到)`)
+    lines.push(
+      aiText(
+        'ai.askUser.configuredSecretsEncryptedValuesAreHiddenAndAreNotNeeded',
+        configured.join('、')
+      )
+    )
   }
 
-  return `用户的选择:\n${lines.join('\n')}`
+  return aiText('ai.askUser.userSelections', lines.join('\n'))
 }

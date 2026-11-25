@@ -1,3 +1,4 @@
+import { aiText } from '../../i18n'
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { Conversation, GroupMember, SessionSettings } from '../../../shared/types'
 import { getDb } from '../index'
@@ -97,7 +98,7 @@ export function updateGroup(input: {
   members: GroupMember[]
 }): Conversation {
   const current = getConversation(input.id)
-  if (!current) throw new Error('群组不存在')
+  if (!current) throw new Error(aiText('ai.groupService.groupNotFound'))
   return toView(
     getDb()
       .update(conversations)

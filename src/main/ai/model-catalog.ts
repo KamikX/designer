@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import type { FetchModelsInput, RemoteModel } from '../../shared/types'
 import { decryptSecret } from '../crypto'
 import type { KeyStorage } from '../crypto'
@@ -30,10 +31,10 @@ export async function fetchRemoteModels(input: FetchModelsInput): Promise<Remote
       }
     }
   }
-  if (!apiKey) throw new Error('请先填写 API Key')
+  if (!apiKey) throw new Error(appText('messages.enterAnApiKeyFirst'))
 
   const base = (baseUrl || DEFAULT_BASE[input.adapter] || '').replace(/\/$/, '')
-  if (!base) throw new Error('缺少 Base URL')
+  if (!base) throw new Error(appText('messages.baseUrlIsMissing'))
 
   const signal = AbortSignal.timeout(15_000)
 
@@ -70,7 +71,7 @@ export async function fetchRemoteModels(input: FetchModelsInput): Promise<Remote
     return (json.data ?? []).map((m) => ({ modelId: m.id, displayName: m.id }))
   } catch (err) {
     if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
-      throw new Error('请求超时,请检查 Base URL 与网络')
+      throw new Error(appText('messages.requestTimedOutCheckTheBaseUrlAndNetworkConnection'))
     }
     throw err
   }

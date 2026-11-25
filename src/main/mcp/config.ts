@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { DATA_DIR, ensureDataDirs } from '../paths'
@@ -61,7 +62,7 @@ export function readMcpConfig(): McpReadResult {
   try {
     raw = readFileSync(FILE, 'utf-8')
   } catch (err) {
-    return { servers: {}, problem: `读不了 ${FILE}:${message(err)}` }
+    return { servers: {}, problem: appText('messages.cannotRead', FILE, message(err)) }
   }
   return parseMcpText(raw, FILE)
 }
@@ -70,12 +71,18 @@ export function readMcpConfig(): McpReadResult {
  * 解析一段 MCP 配置文本。独立出来是因为有两个入口:读 mcp.json 本体,
  * 和用户在界面上粘贴一段从别的工具拷来的配置("从 JSON 导入")。
  */
-export function parseMcpText(raw: string, sourceLabel = '配置'): McpReadResult {
+export function parseMcpText(
+  raw: string,
+  sourceLabel = appText('common.configure')
+): McpReadResult {
   // TOML 是 Codex 的方言。识别出来说清楚,别让用户对着一个"空配置"发呆
   if (/^\s*\[mcp_servers\./m.test(raw)) {
     return {
       servers: {},
-      problem: `${sourceLabel} 看起来是 Codex 的 TOML 格式。本应用读 JSON,请改写成 { "mcpServers": { … } }。`
+      problem: appText(
+        'messages.appearsToUseCodexTomlFormatThisApplicationReadsJsonUseMcpserversInstead',
+        sourceLabel
+      )
     }
   }
 
@@ -83,14 +90,17 @@ export function parseMcpText(raw: string, sourceLabel = '配置'): McpReadResult
   try {
     parsed = JSON.parse(raw)
   } catch (err) {
-    return { servers: {}, problem: `${sourceLabel} 不是合法 JSON:${message(err)}` }
+    return { servers: {}, problem: appText('messages.isNotValidJson', sourceLabel, message(err)) }
   }
 
   const root = parsed as Record<string, unknown>
   // VS Code 用 servers,其余用 mcpServers。两者结构一致,只是键名不同
   const block = (root.mcpServers ?? root.servers) as Record<string, McpServerConfig> | undefined
   if (!block || typeof block !== 'object') {
-    return { servers: {}, problem: `${sourceLabel} 里没有 mcpServers(或 servers)字段。` }
+    return {
+      servers: {},
+      problem: appText('messages.containsNoMcpserversOrServersField', sourceLabel)
+    }
   }
   return { servers: block }
 }

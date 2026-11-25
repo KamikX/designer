@@ -1,3 +1,4 @@
+import { text as appText } from '../../i18n'
 import type { SyncBackend } from '../types'
 
 /**
@@ -12,5 +13,5 @@ import type { SyncBackend } from '../types'
  *   密文是机器绑定的,不能直接上云)。
  */
 export function createCloudSyncBackend(): SyncBackend {
-  throw new Error('官方云同步尚未上线')
+  throw new Error(appText('messages.officialCloudSyncIsNotAvailableYet'))
 }

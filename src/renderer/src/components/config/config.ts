@@ -28,7 +28,7 @@ interface LocaleEntry {
 
 /** 支持的语言。加语种只需在这里加一项 */
 export const LOCALES: Record<Lang, LocaleEntry> = {
-  'zh-CN': { antd: zhCN, dayjs: 'zh-cn', label: '简体中文' },
+  'zh-CN': { antd: zhCN, dayjs: 'zh-cn', label: t('common.languageChinese') },
   'en-US': { antd: enUS, dayjs: 'en', label: 'English' }
 }
 
@@ -45,7 +45,7 @@ const DEFAULT_PRIMARY_COLOR = '#1677ff'
 export const COLOR_PRESETS = [
   {
     get label() {
-      return t('推荐')
+      return t('common.recommended')
     },
     colors: ['#1677ff', '#5b8ff9', '#00b96b', '#13c2c2', '#722ed1', '#eb2f96', '#fa541c', '#faad14']
   }

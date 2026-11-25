@@ -1,3 +1,5 @@
+import { withLanguage } from '../i18n'
+import { aiText } from '../i18n'
 import { promptText, resolvePromptLanguage } from './prompts/i18n'
 import { randomUUID } from 'crypto'
 import { parsePartialJson, streamText } from 'ai'
@@ -117,8 +119,14 @@ function countToolCalls(steps: readonly StepResult<ToolSet>[]): number {
 const running = new Map<string, AbortController>()
 
 export function sendChat(sender: WebContents, input: SendChatInput): SendChatResult {
+  return withLanguage(resolvePromptLanguage(readConfig().lang), () =>
+    sendChatInLanguage(sender, input)
+  )
+}
+
+function sendChatInLanguage(sender: WebContents, input: SendChatInput): SendChatResult {
   const conversation = getConversation(input.conversationId)
-  if (!conversation) throw new Error('会话不存在')
+  if (!conversation) throw new Error(aiText('ai.chatService.conversationNotFound'))
 
   /**
    * 两种会话走同一条链路,靠 project 是否存在分流:
@@ -131,17 +139,17 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
    * 占了大头的部分两边完全一样,复制一份迟早会漂移。
    */
   const project = conversation.projectId ? getProject(conversation.projectId) : null
-  if (conversation.projectId && !project) throw new Error('项目不存在')
+  if (conversation.projectId && !project) throw new Error(aiText('ai.chatService.projectNotFound'))
   const appLanguage = resolvePromptLanguage(readConfig().lang)
-  const lang = project ? appLanguage : 'zh-CN'
+  const lang = appLanguage
   const isChat = !project
   /** 授权范围:项目会话跟着项目,纯聊天跟着这次会话 */
   const scope: RootScope = project ? { projectId: project.id } : { conversationId: conversation.id }
 
   const provider = getProviderRowById(input.providerId)
-  if (!provider) throw new Error('供应商不存在')
+  if (!provider) throw new Error(aiText('ai.chatService.providerNotFound'))
   const model = getModel(input.modelId)
-  if (!model) throw new Error('模型不存在')
+  if (!model) throw new Error(aiText('ai.chatService.modelNotFound'))
 
   // 历史与当前设计稿在落库新消息之前取
   const priorMessages = listMessages(input.conversationId)
@@ -149,10 +157,11 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
   let base = project ? latestArtifact(project.id) : null
   if (input.baseArtifactId !== undefined) {
     if (!project || typeof input.baseArtifactId !== 'string' || !input.baseArtifactId) {
-      throw new Error('无效的设计稿版本')
+      throw new Error(aiText('ai.chatService.invalidDesignVersion'))
     }
     const selected = getArtifact(input.baseArtifactId)
-    if (!selected || selected.projectId !== project.id) throw new Error('设计稿版本不属于此项目')
+    if (!selected || selected.projectId !== project.id)
+      throw new Error(aiText('ai.chatService.theDesignVersionDoesNotBelongToThisProject'))
     base = selected
   }
   const currentFiles = base ? getArtifactFiles(base.id) : []
@@ -203,7 +212,12 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
 
   const attachments = toImageParts(input.attachments ?? [])
   if (attachments.length > 0 && !model.abilities.includes('vision')) {
-    throw new Error(`模型「${model.displayName}」不支持识图,请换一个带识图能力的模型再发图片。`)
+    throw new Error(
+      aiText(
+        'ai.chatService.modelCannotProcessImagesSelectAModelWithImageSupportAndTry',
+        model.displayName
+      )
+    )
   }
 
   const userMessage = createMessage({
@@ -293,7 +307,7 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
     : null
   if (initialStyleGate?.isLocked()) {
     vfs.blockWrites(
-      '请先确认整体视觉方向；有答案时先调用 set_style_brief 保存，跳过后才可使用兜底风格。'
+      aiText('ai.chatService.confirmTheOverallVisualDirectionFirstSaveAnAnswerWithSetStyle')
     )
   }
   const parser = new FileStreamParser()
@@ -550,11 +564,14 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
             },
             lang
           )
-        : buildChatPrompt({
-            localScope: localScopePrompt(userRoots, detected.missing, lang),
-            webSearch: input.webSearch === true,
-            skillCatalog: catalog
-          })
+        : buildChatPrompt(
+            {
+              localScope: localScopePrompt(userRoots, detected.missing, lang),
+              webSearch: input.webSearch === true,
+              skillCatalog: catalog
+            },
+            lang
+          )
 
       // 图片字节到这里才读:sendChat 本身是同步的,不能 await
       const pixels = await loadAttachmentBytes(attachments)
@@ -833,7 +850,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
       // 本轮发生过致命一致性错误:绝不产出与 VFS 状态存疑的新版本
       if (useTools && !runLedger.canFinalizeArtifact()) {
         throw new Error(
-          `本轮发生致命一致性错误(${runLedger.fatalLockReason()}),已中止,不产出新版本。`
+          aiText(
+            'ai.chatService.thisTurnWasAbortedDueToAFatalConsistencyErrorNoNew',
+            runLedger.fatalLockReason()
+          )
         )
       }
       // 熔断类型在上面按 tool / token 分好了,这里不能再无条件盖成 'tool'
@@ -966,8 +986,10 @@ export function sendChat(sender: WebContents, input: SendChatInput): SendChatRes
           findings.unshift({
             rule: 'compile-error',
             severity: 'P0',
-            message: `${path} 编译失败,预览白屏:${error}`,
-            fix: '先修编译错误再谈其他改动;跑不起来的设计稿用户什么都看不到。'
+            message: aiText('ai.chatService.failedToCompileLeavingThePreviewBlank', path, error),
+            fix: aiText(
+              'ai.chatService.fixCompilationErrorsBeforeOtherChangesTheUserCannotSeeADesign'
+            )
           })
         }
       }

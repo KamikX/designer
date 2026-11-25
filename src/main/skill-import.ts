@@ -1,3 +1,4 @@
+import { text as appText } from './i18n'
 import { translate } from '../shared/i18n'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { basename, dirname, join, normalize, sep } from 'path'
@@ -20,10 +21,13 @@ export async function importSkillPackage(givenPath?: string): Promise<InstalledS
   let zipPath = givenPath
   if (!zipPath) {
     const res = await dialog.showOpenDialog({
-      title: translate((await import('./config')).readConfig().lang, '选择技能压缩包'),
+      title: translate(
+        (await import('./config')).readConfig().lang,
+        'messages.selectASkillArchive'
+      ),
       filters: [
         {
-          name: translate((await import('./config')).readConfig().lang, '技能包'),
+          name: translate((await import('./config')).readConfig().lang, 'common.skillArchive'),
           extensions: ['zip']
         }
       ],
@@ -42,7 +46,7 @@ export async function importSkillPackage(givenPath?: string): Promise<InstalledS
     .filter((e) => /(^|\/)SKILL\.md$/i.test(e.entryName))
     .sort((a, b) => a.entryName.split('/').length - b.entryName.split('/').length)[0]
   if (!skillEntry) {
-    throw new Error('压缩包必须包含 SKILL.md 文件')
+    throw new Error(appText('messages.theArchiveMustContainASkillMdFile'))
   }
 
   const raw = skillEntry.getData().toString('utf-8')
@@ -51,7 +55,7 @@ export async function importSkillPackage(givenPath?: string): Promise<InstalledS
 
   const targetDir = join(DATA_DIR, 'skills', dirName)
   if (existsSync(targetDir)) {
-    throw new Error(`技能「${dirName}」已存在,请先删除旧的再导入`)
+    throw new Error(appText('messages.skillAlreadyExistsDeleteItBeforeImporting', dirName))
   }
 
   // 整包解压(逐条校验路径,防 zip-slip 目录穿越)
@@ -72,7 +76,7 @@ export async function importSkillPackage(givenPath?: string): Promise<InstalledS
 function sanitizeDirName(name: string): string {
   const cleaned = name.replace(/[/\\]/g, '-').trim()
   if (!cleaned || cleaned === '.' || cleaned === '..' || cleaned.startsWith('.')) {
-    throw new Error(`技能名「${name}」不合法`)
+    throw new Error(appText('messages.invalidSkillName', name))
   }
   return cleaned
 }

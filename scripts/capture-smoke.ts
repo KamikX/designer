@@ -25,8 +25,8 @@ const HTML_FILES = [
   {
     path: 'index.html',
     content: `<!doctype html><html><body style="font-family: system-ui; padding: 40px">
-<h1 style="color: #111">html 栈冒烟 OK</h1>
-<p style="color: #555">这行文字应该出现在截图里。</p>
+<h1 style="color: #111">HTML smoke test OK</h1>
+<p style="color: #555">This text should appear in the screenshot.</p>
 </body></html>`
   }
 ]
@@ -35,12 +35,12 @@ const VUE_FILES = [
   {
     path: 'App.vue',
     content: `<script setup lang="ts">
-const msg = 'vue3 栈冒烟 OK'
+const msg = 'Vue 3 smoke test OK'
 </script>
 <template>
   <main style="padding: 40px; font-family: system-ui">
     <h1>{{ msg }}</h1>
-    <button type="button">一个按钮</button>
+    <button type="button">A button</button>
   </main>
 </template>`
   },
@@ -92,7 +92,7 @@ const CASES: Case[] = [
   }
 ]
 
-console.log('[smoke] 启动,等待 app ready…')
+console.log('[smoke] Starting; waiting for app readiness…')
 void app.whenReady().then(async () => {
   console.log('[smoke] app ready')
   registerPreviewHandler()
@@ -100,7 +100,7 @@ void app.whenReady().then(async () => {
   let failures = 0
 
   for (const c of CASES) {
-    console.log(`[smoke] ${c.name}: 开始`)
+    console.log(`[smoke] ${c.name}: starting`)
     registerSessionPreview(c.sessionId, { stack: c.stack, libs: [], files: () => c.files })
     try {
       const result = await capturePreview(`preview://session/${c.sessionId}/`, c.viewport)
@@ -123,6 +123,6 @@ void app.whenReady().then(async () => {
     }
   }
 
-  console.log(failures === 0 ? '[smoke] 全部通过' : `[smoke] ${failures} 个用例失败`)
+  console.log(failures === 0 ? '[smoke] All checks passed' : `[smoke] ${failures} cases failed`)
   app.exit(failures === 0 ? 0 : 1)
 })

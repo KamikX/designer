@@ -46,30 +46,28 @@ const composerRef = ref<{ setDraft: (text: string) => void } | null>(null)
 const STARTERS = computed(() => [
   {
     icon: FolderOpenOutlined,
-    title: t('分析本地项目'),
-    hint: t('授权一个目录,让我摸清它的技术栈和结构'),
-    draft: t(
-      '我想让你了解一下我的项目。我待会授权一个目录给你,你先浏览一遍结构,再告诉我它用了什么技术栈、代码组织方式是怎样的。'
-    )
+    title: t('messages.analyzeALocalProject'),
+    hint: t('messages.grantAccessToADirectoryToInspectItsStackAndStructure'),
+    draft: t('messages.iWillGrantAccessToMy')
   },
   {
     icon: FileTextOutlined,
-    title: t('读一份文档'),
-    hint: t('pdf / docx / xlsx 拖进来就行'),
-    draft: t('我会附上一份文档,帮我读完之后提炼要点。')
+    title: t('common.readADocument'),
+    hint: t('messages.dragInAPdfDocxOrXlsxFile'),
+    draft: t('messages.iWillAttachADocumentPleaseReadItAndSummarizeTheKeyPoints')
   },
   {
     icon: GlobalOutlined,
-    title: t('联网查资料'),
-    hint: t('搜索 + 打开页面读正文'),
-    draft: t('帮我查一下 '),
+    title: t('common.searchTheWeb'),
+    hint: t('messages.searchAndReadWebPages'),
+    draft: t('messages.pleaseLookUp'),
     web: true
   },
   {
     icon: SelectOutlined,
-    title: t('操作网页'),
-    hint: t('打开页面、点击、填表单'),
-    draft: t('帮我打开这个页面并操作:'),
+    title: t('messages.interactWithAWebPage'),
+    hint: t('messages.openPagesClickAndFillInForms'),
+    draft: t('messages.pleaseOpenAndInteractWithThisPage'),
     web: true
   }
 ])
@@ -115,8 +113,8 @@ async function send(text: string, attachments: ChatAttachment[]): Promise<void> 
 
 function remove(chat: Conversation): void {
   modal.confirm({
-    title: t('删除「{0}」?', chat.title || t('新对话')),
-    content: t('这条对话的消息和它授权过的本地目录都会一起删除。'),
+    title: t('common.delete', chat.title || t('common.newConversation')),
+    content: t('messages.thisConversationSMessagesAndItsAccessToLocalDirectoriesWillBeDeleted'),
     okType: 'danger',
     onOk: async () => {
       await window.api.chatSession.remove(chat.id)
@@ -169,7 +167,7 @@ function scrollToBottom(smooth: boolean): void {
     <div class="chat-sider" :style="{ borderColor: token.colorBorderSecondary }">
       <a-button block size="small" style="margin-bottom: 10px" @click="startNew">
         <template #icon><PlusOutlined /></template>
-        {{ t('新对话') }}
+        {{ t('common.newConversation') }}
       </a-button>
 
       <div
@@ -177,7 +175,7 @@ function scrollToBottom(smooth: boolean): void {
         class="chat-sider-empty"
         :style="{ color: token.colorTextQuaternary }"
       >
-        {{ t('还没有历史对话') }}
+        {{ t('common.noConversationsYet') }}
       </div>
 
       <div
@@ -198,7 +196,7 @@ function scrollToBottom(smooth: boolean): void {
           :style="{ color: token.colorPrimary }"
         />
         <MessageOutlined v-else />
-        <span class="chat-item-title">{{ chat.title || t('新对话') }}</span>
+        <span class="chat-item-title">{{ chat.title || t('common.newConversation') }}</span>
         <button class="chat-item-remove" type="button" @click.stop="remove(chat)">
           <DeleteOutlined />
         </button>
@@ -208,9 +206,9 @@ function scrollToBottom(smooth: boolean): void {
     <!-- 起始页:输入框在正中间 -->
     <div v-if="!activeId" class="chat-start">
       <div class="chat-start-inner">
-        <h1 class="chat-start-title">{{ t('有什么可以帮你的?') }}</h1>
+        <h1 class="chat-start-title">{{ t('messages.howCanIHelp') }}</h1>
         <div class="chat-start-sub" :style="{ color: token.colorTextTertiary }">
-          {{ t('这是一个干净的对话,没有任何预设。') }}
+          {{ t('messages.startAConversationWithoutPresetInstructions') }}
         </div>
 
         <Composer ref="composerRef" class="chat-start-composer" @send="send" />

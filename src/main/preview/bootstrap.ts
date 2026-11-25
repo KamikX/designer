@@ -1,3 +1,5 @@
+import { translate } from '../../shared/i18n'
+import type { Lang } from '../../shared/types'
 import type { InstalledLibrary, PreviewLib, Stack } from '../../shared/types'
 import { ANNOTATE_RUNTIME } from './annotate-runtime'
 import { LIB_VERSIONS, libSetupPaths } from './lib-setup'
@@ -161,13 +163,13 @@ ${ANNOTATE_RUNTIME}
  * import 返回的是 promise,失败能接住,再走 reportError 显示到预览面板,并回流
  * 给模型。这条链是"模型知道自己写的东西跑不跑得起来"的唯一来源。
  */
-const vueBoot = (setups: string[], withAntd: boolean): string => `
+const vueBoot = (setups: string[], withAntd: boolean, lang: Lang): string => `
 <script type="module">
   window.__previewAwaitMount = true
   try {
     const { createApp } = await import('vue')
     const App = (await import('./App.vue')).default
-    if (!App) throw new Error('App.vue 需要默认导出根组件')
+    if (!App) throw new Error(${JSON.stringify(translate(lang, 'preview.vueRootRequired'))})
     const app = createApp(App)
     ${setups
       .map(
@@ -190,9 +192,7 @@ const vueBoot = (setups: string[], withAntd: boolean): string => `
     )
     if (stray) {
       reportError(
-        '页面用了 ' + stray.tagName.toLowerCase() + ' 等 antdv-next 组件,' +
-        '但本项目没有勾选 antdv-next 依赖包。在工作台右上角的「依赖包」里勾上它,' +
-        '或者改用原生元素实现。'
+        ${JSON.stringify(translate(lang, 'preview.missingAntdvNext'))}.replace('{0}', stray.tagName.toLowerCase())
       )
     }`
     }
@@ -203,7 +203,7 @@ const vueBoot = (setups: string[], withAntd: boolean): string => `
 </script>
 `
 
-const REACT_BOOT = `
+const reactBoot = (lang: Lang): string => `
 <script type="module">
   window.__previewAwaitMount = true
   try {
@@ -221,7 +221,7 @@ const REACT_BOOT = `
       mod = await import('./App.jsx')
     }
     const App = mod.default || mod.App
-    if (!App) throw new Error('App.tsx 需要默认导出根组件')
+    if (!App) throw new Error(${JSON.stringify(translate(lang, 'preview.reactRootRequired'))})
     createRoot(document.getElementById('app')).render(React.createElement(App))
     notifyReady()
   } catch (err) {
@@ -234,14 +234,15 @@ export function buildBootstrapHtml(
   stack: Stack,
   theme?: string,
   libs: PreviewLib[] = [],
-  external: InstalledLibrary[] = []
+  external: InstalledLibrary[] = [],
+  lang: Lang = 'zh-CN'
 ): string {
   // 组件库目前只有 vue3 栈的运行时装配;别的栈传进来也不生效
   const activeLibs = stack === 'vue3' ? libs : []
   let boot =
     stack === 'vue3'
-      ? vueBoot(libSetupPaths(activeLibs), activeLibs.includes('antdv-next'))
-      : REACT_BOOT
+      ? vueBoot(libSetupPaths(activeLibs), activeLibs.includes('antdv-next'), lang)
+      : reactBoot(lang)
   const extra: Record<string, string> = {}
   const styles: string[] = []
   for (const lib of external) {

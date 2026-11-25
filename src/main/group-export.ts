@@ -1,3 +1,5 @@
+import type { TranslationKey } from '../shared/i18n'
+import { aiText } from './i18n'
 import { writeFileSync } from 'fs'
 import { dialog, shell } from 'electron'
 import { translate } from '../shared/i18n'
@@ -32,7 +34,8 @@ export function renderGroupDeliverables(
   members: GroupMember[],
   lang: Lang = 'zh-CN'
 ): string {
-  const t = (source: string, ...values: unknown[]): string => translate(lang, source, ...values)
+  const t = (source: TranslationKey, ...values: unknown[]): string =>
+    translate(lang, source, ...values)
   const entries = groupDeliverables(messages, members)
   const delivered = entries.filter((entry) => entry.status === 'delivered')
   const byId = new Map(messages.map((message) => [message.id, message]))
@@ -42,7 +45,7 @@ export function renderGroupDeliverables(
     const who = `@${entry.memberName}`
     return entry.status === 'delivered'
       ? `${index + 1}. ${entry.title} —— ${who}`
-      : t('{0}. (未交付){1} —— {2}', index + 1, entry.deliverable, who)
+      : t('messages.notDelivered', index + 1, entry.deliverable, who)
   })
 
   const bodies = delivered.map((entry) => {
@@ -52,15 +55,15 @@ export function renderGroupDeliverables(
       .join('')
     const text = stripHandoff(mentionsToModelText(raw, mentionMembers)).trim()
     // 各文档自己是一级标题,整份导出的标题也是一级——降一级让层级不打架
-    return t('{0}\n\n> 由 @{1} 交付', text.replace(/^#\s+/, '## '), entry.memberName)
+    return t('messages.deliveredBy', text.replace(/^#\s+/, '## '), entry.memberName)
   })
 
   const head = [
-    `# ${conversation.title || t('协作交付')}`,
+    `# ${conversation.title || t('common.collaborationDeliverables')}`,
     entries.length > 0
-      ? t('本轮交付 {0}/{1} 项。', delivered.length, entries.length)
-      : t('本轮没有交付物。'),
-    toc.length > 0 ? t('## 目录\n\n{0}', toc.join('\n')) : ''
+      ? t('messages.deliveredItemsInThisRound', delivered.length, entries.length)
+      : t('messages.noDeliverablesInThisRound'),
+    toc.length > 0 ? t('common.contents', toc.join('\n')) : ''
   ].filter(Boolean)
 
   return [...head, ...bodies].join('\n\n---\n\n').replace(/\n{3,}/g, '\n\n') + '\n'
@@ -74,17 +77,18 @@ export function renderGroupDeliverables(
  */
 export async function exportGroupDeliverables(conversationId: string): Promise<string | null> {
   const lang = (await import('./config')).readConfig().lang
-  const t = (source: string): string => translate(lang, source)
+  const t = (source: TranslationKey): string => translate(lang, source)
   const conversation = getConversation(conversationId)
-  if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')
+  if (!conversation || conversation.kind !== 'group')
+    throw new Error(aiText('ai.groupService.groupNotFound'))
 
   const members = normalizeGroupMembers(conversation.settings?.members)
   const messages = listMessages(conversationId)
   const content = renderGroupDeliverables(conversation, messages, members, lang)
 
   const result = await dialog.showSaveDialog({
-    title: t('导出协作交付'),
-    defaultPath: `${sanitizeName(conversation.title || t('协作交付'))}.md`,
+    title: t('common.exportCollaborationDeliverables'),
+    defaultPath: `${sanitizeName(conversation.title || t('common.collaborationDeliverables'))}.md`,
     filters: [{ name: 'Markdown', extensions: ['md'] }]
   })
   if (result.canceled || !result.filePath) return null

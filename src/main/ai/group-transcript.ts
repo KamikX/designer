@@ -1,3 +1,5 @@
+import { text as appText } from '../i18n'
+import { aiText } from '../i18n'
 import type { Message } from '../../shared/types'
 import { mentionsToModelText, type GroupMentionMember } from '../../shared/group-mentions'
 
@@ -93,7 +95,9 @@ export function transcriptEntries(
 ): TranscriptEntry[] {
   const membersById = new Map(members.map((member) => [member.id, member]))
   const nameOf = (author: string | null | undefined): string =>
-    author === 'user' || !author ? '用户' : (membersById.get(author)?.name ?? author)
+    author === 'user' || !author
+      ? appText('common.user')
+      : (membersById.get(author)?.name ?? author)
 
   return messages
     .filter((m) => m.id !== excludeId && m.status !== 'streaming')
@@ -133,9 +137,18 @@ function stubText(entry: TranscriptEntry): string {
       .find((line) => line.trim())
       ?.trim() ?? ''
   const skeleton = headings.length > 0 ? headings.join('\n') : `${entry.text.slice(0, 200)}…`
-  const handoff = lastLine && !headings.includes(lastLine) ? `\n(结尾交接:${lastLine})` : ''
+  const handoff =
+    lastLine && !headings.includes(lastLine)
+      ? aiText('ai.groupTranscript.finalHandoff', lastLine)
+      : ''
   // 带消息 id:需要逐字引用时,agent 可用 read_group_message 按 id 取回原文
-  return `(这条较早的发言已折叠,全文 ${entry.text.length} 字,此处只保留结构;原文可用 read_group_message 读取,消息 id: ${entry.id})\n${skeleton}${handoff}`
+  return aiText(
+    'ai.groupTranscript.thisEarlierMessageIsFoldedCharacters',
+    entry.text.length,
+    entry.id,
+    skeleton,
+    handoff
+  )
 }
 
 /**
@@ -211,7 +224,12 @@ export function buildGroupTranscript(input: GroupTranscriptInput): string {
     if (folded.has(entry.id) && index <= coveredIndex) {
       if (!digestEmitted) {
         digestEmitted = true
-        blocks.push(`【前情纪要】\n(更早的发言已折叠,以下是它们的纪要)\n\n${digest!.text.trim()}`)
+        blocks.push(
+          aiText(
+            'ai.groupTranscript.discussionDigestEarlierMessagesAreFoldedTheirDigestFollows',
+            digest!.text.trim()
+          )
+        )
       }
       return
     }
@@ -229,11 +247,17 @@ export function buildGroupTranscript(input: GroupTranscriptInput): string {
       ? extractHandoff(last, input.selfName)
       : null
   const footer = [
-    handoff ? `【${handoff.name}】交给你的任务,这就是你本棒要做的事:\n> ${handoff.line}` : '',
-    `现在轮到你(${input.selfName})发言。按你的职责与协作协议产出文档。`
+    handoff
+      ? aiText('ai.groupTranscript.assignedYouThisTaskForYourHop', handoff.name, handoff.line)
+      : '',
+    aiText('ai.groupTranscript.itIsYourTurnProduceA', input.selfName)
   ]
     .filter(Boolean)
     .join('\n\n')
 
-  return `以下是群聊记录(按时间顺序):\n\n${blocks.join('\n\n---\n\n')}\n\n---\n\n${footer}`
+  return aiText(
+    'ai.groupTranscript.groupTranscriptChronological',
+    blocks.join('\n\n---\n\n'),
+    footer
+  )
 }

@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import {
   existsSync,
   mkdirSync,
@@ -32,9 +33,9 @@ function root(): string {
 
 function skillDir(name: string): string {
   const trimmed = name.trim()
-  if (!trimmed) throw new Error('技能名不能为空')
+  if (!trimmed) throw new Error(appText('messages.skillNameCannotBeEmpty'))
   if (/[/\\]/.test(trimmed) || trimmed === '.' || trimmed === '..' || trimmed.startsWith('.')) {
-    throw new Error('技能名不能包含路径分隔符,也不能以点开头')
+    throw new Error(appText('messages.skillNamesCannotContainPathSeparatorsOrStartWithADot'))
   }
   return join(root(), trimmed)
 }
@@ -42,10 +43,10 @@ function skillDir(name: string): string {
 /** rel 解析到技能目录内的绝对路径;任何形式的越界都直接拒绝 */
 function resolveEntry(name: string, rel: string): string {
   const dir = skillDir(name)
-  if (isAbsolute(rel)) throw new Error('只接受相对路径')
+  if (isAbsolute(rel)) throw new Error(appText('messages.onlyRelativePathsAreAccepted'))
   const target = normalize(join(dir, rel))
   if (target !== dir && !target.startsWith(dir + sep)) {
-    throw new Error('路径越出了技能目录')
+    throw new Error(appText('messages.thePathEscapesTheSkillDirectory'))
   }
   return target
 }
@@ -80,7 +81,7 @@ const MAX_FILE_BYTES = 1024 * 1024
 export function readSkillFile(name: string, rel: string): string {
   const path = resolveEntry(name, rel)
   if (statSync(path).size > MAX_FILE_BYTES) {
-    throw new Error('文件超过 1MB,技能文件不该这么大')
+    throw new Error(appText('messages.theFileExceeds1MbSkillFilesShouldBeSmaller'))
   }
   return readFileSync(path, 'utf-8')
 }
@@ -98,19 +99,20 @@ export function mkdirSkill(name: string, rel: string): void {
 export function removeSkillEntry(name: string, rel: string): void {
   const path = resolveEntry(name, rel)
   // rel 为空会解析成技能根目录——删整个技能走 removeSkillPackage,语义要分开
-  if (path === skillDir(name)) throw new Error('不能删除技能根目录,请用删除技能')
+  if (path === skillDir(name))
+    throw new Error(appText('messages.cannotDeleteTheSkillRootDirectoryDeleteTheSkillInstead'))
   rmSync(path, { recursive: true, force: true })
 }
 
 /** 新建技能:目录 + 模板 SKILL.md。已存在就报错,不静默覆盖 */
 export function createSkillPackage(name: string): InstalledSkill {
   const dir = skillDir(name)
-  if (existsSync(dir)) throw new Error(`技能「${name}」已存在`)
+  if (existsSync(dir)) throw new Error(appText('messages.skillAlreadyExists', name))
   mkdirSync(dir, { recursive: true })
-  const description = '一句话说明这个技能什么时候用(模型靠它判断要不要加载,写具体些)'
+  const description = appText('skills.files.describeWhenToUseThisSkillInOneSentenceBeSpecificSo')
   writeFileSync(
     join(dir, 'SKILL.md'),
-    `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n\n在这里写技能内容。建议:规则写成可判定的祈使句,配触发场景与反例。\n`,
+    appText('skills.files.nameDescriptionWriteSkillContentHere', name, description, name),
     'utf-8'
   )
   return { name, description, source: 'app', dir }
@@ -128,7 +130,7 @@ export function installSkillContent(
   content: string
 ): InstalledSkill {
   const dir = skillDir(name)
-  if (existsSync(dir)) throw new Error(`技能「${name}」已安装`)
+  if (existsSync(dir)) throw new Error(appText('messages.skillIsAlreadyInstalled', name))
   mkdirSync(dir, { recursive: true })
   const front = `---\nname: ${name}\ndescription: ${escapeYaml(description)}\n---\n\n`
   const body = content.startsWith('---') ? content : front + content

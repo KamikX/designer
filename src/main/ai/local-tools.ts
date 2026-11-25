@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { aiText } from '../i18n'
 import { promptText } from './prompts/i18n'
 import type { PromptLanguage } from './prompts/i18n'
 import { statSync } from 'fs'
@@ -59,9 +61,9 @@ async function guarded(run: () => string | Promise<string>): Promise<string> {
     const out = await run()
     return out.length <= MAX_RESULT_CHARS
       ? out
-      : `${out.slice(0, MAX_RESULT_CHARS)}\n\n…结果过长已截断,请缩小范围。`
+      : aiText('ai.localTools.resultTruncatedNarrowTheRequest', out.slice(0, MAX_RESULT_CHARS))
   } catch (err) {
-    return `错误:${err instanceof Error ? err.message : String(err)}`
+    return aiText('ai.imageTools.error', err instanceof Error ? err.message : String(err))
   }
 }
 
@@ -82,7 +84,7 @@ export function buildLocalTools(
   options: LocalToolOptions = { canSeeImages: false },
   lang: PromptLanguage = 'zh-CN'
 ): ToolSet {
-  if (roots.length === 0) return {}
+  if (roots.length === 0) return localizedTools({}, lang)
 
   const scope = roots.map((r) => `${r.name}(${r.path})`).join('、')
   const show = (absolute: string): string => displayPath(roots, absolute)
@@ -108,17 +110,23 @@ export function buildLocalTools(
           const base = resolveWithin(roots, input.path ?? roots[0].name)
           // 用户在对话里直接给一个文件路径时,授权的就是那一个文件
           if (!statSync(base).isDirectory()) {
-            return `${show(base)} 是一个文件(${formatSize(statSync(base).size)}),不是目录。用 read_local_file 或 read_local_document 读它。`
+            return aiText(
+              'ai.localTools.isAFileNotADirectoryReadItWithReadLocalFile',
+              show(base),
+              formatSize(statSync(base).size)
+            )
           }
           const entries = walk(base, { maxDepth: input.depth ?? 2 })
-          if (entries.length === 0) return `${show(base)} 是空目录。`
+          if (entries.length === 0) return aiText('ai.localTools.isAnEmptyDirectory', show(base))
           const lines = entries.slice(0, LIMITS.results).map((e) => {
             const indent = '  '.repeat(e.rel.split(sep).length - 1)
             const name = e.rel.split(sep).pop()
             return e.isDir ? `${indent}${name}/` : `${indent}${name}\t${formatSize(e.size)}`
           })
           const more =
-            entries.length > LIMITS.results ? `\n…还有 ${entries.length - LIMITS.results} 项` : ''
+            entries.length > LIMITS.results
+              ? aiText('ai.localTools.moreEntries', entries.length - LIMITS.results)
+              : ''
           return `${show(base)}:\n${lines.join('\n')}${more}`
         })
     }),
@@ -136,31 +144,58 @@ export function buildLocalTools(
             // 否则这个工具就成了探测本机文件系统的入口:模型被诱导着
             // 逐个试 ~/.ssh/id_rsa 之类的路径,靠"存在/不存在"就能摸出
             // 一份目录结构
-            return `${path}:不在授权范围内,看不到。请让用户把这个路径发到对话里,或在界面上授权对应目录。`
+            return aiText(
+              'ai.localTools.outsideTheAuthorizedScopeAskTheUserToShareThisPathIn',
+              path
+            )
           }
 
           const stat = statSync(target)
           if (stat.isDirectory()) {
             const children = walk(target, { maxDepth: 0 })
-            return `${show(target)}:目录,直接子项 ${children.length} 个。可以用 list_local_dir 展开。`
+            return aiText(
+              'ai.localTools.directoryWithImmediateEntriesExpandItWithListLocalDir',
+              show(target),
+              children.length
+            )
           }
           // 判定顺序必须和 read_local_file 完全一致,否则两个工具会给出
           // 互相矛盾的答案:先看后缀(对已知类型它是权威的——.png 就是 PNG,
           // 哪怕内容碰巧像文本),再落到内容嗅探
           if (isBinaryPath(target)) {
             return isSupportedDocument(target)
-              ? `${show(target)}:文件,${formatSize(stat.size)},文档格式,用 read_local_document 读。`
-              : `${show(target)}:文件,${formatSize(stat.size)},二进制,读不了。`
+              ? aiText(
+                  'ai.localTools.fileDocumentFormatReadItWithReadLocalDocument',
+                  show(target),
+                  formatSize(stat.size)
+                )
+              : aiText(
+                  'ai.localTools.fileBinaryCannotBeReadAsText',
+                  show(target),
+                  formatSize(stat.size)
+                )
           }
           // 后缀不在黑名单里也不代表就是文本,还要按内容验一次
           const probe = probeReadable(target)
           if (!probe.ok) {
             // 后缀说谎的情况:一个叫 notes.txt 的 PDF,该引导去文档工具
             // 而不是简单地拒绝
-            const hint = probe.isDocument ? ' 但它其实是文档,用 read_local_document 读。' : ''
-            return `${show(target)}:文件,${formatSize(stat.size)},读不了——${probe.reason}${hint}`
+            const hint = probe.isDocument
+              ? aiText('ai.localTools.itIsADocumentReadItWithReadLocalDocument')
+              : ''
+            return aiText(
+              'ai.localTools.fileCannotRead',
+              show(target),
+              formatSize(stat.size),
+              probe.reason,
+              hint
+            )
           }
-          return `${show(target)}:文件,${formatSize(stat.size)},可以当文本读(read_local_file)。`
+          return aiText(
+            'ai.localTools.fileReadableAsTextReadLocalFile',
+            show(target),
+            formatSize(stat.size)
+          )
         })
     }),
 
@@ -180,7 +215,7 @@ export function buildLocalTools(
           const hits = walk(base)
             .filter((e) => !e.isDir && match.test(e.rel.split(sep).join('/')))
             .slice(0, LIMITS.results)
-          if (hits.length === 0) return `没有匹配 ${input.glob} 的文件。`
+          if (hits.length === 0) return aiText('ai.localTools.noFilesMatch', input.glob)
           return hits.map((e) => `${show(e.path)}\t${formatSize(e.size)}`).join('\n')
         })
     }),
@@ -207,13 +242,21 @@ export function buildLocalTools(
               'gi'
             )
           } catch (err) {
-            throw new Error(`正则无效:${err instanceof Error ? err.message : String(err)}`)
+            throw new Error(
+              aiText(
+                'ai.localTools.invalidRegularExpression',
+                err instanceof Error ? err.message : String(err)
+              )
+            )
           }
           const hits = grep(base, pattern, { glob: input.glob, maxResults: input.max_results })
-          if (hits.length === 0) return '没有匹配。可以放宽关键词或换个 glob。'
-          return `${hits.length} 处匹配:\n${hits
-            .map((h) => `${show(h.path)}:${h.line}:${h.column}: ${h.text}`)
-            .join('\n')}`
+          if (hits.length === 0)
+            return aiText('ai.localTools.noMatchesBroadenTheKeywordsOrTryAnotherGlob')
+          return aiText(
+            'ai.localTools.matches',
+            hits.length,
+            hits.map((h) => `${show(h.path)}:${h.line}:${h.column}: ${h.text}`).join('\n')
+          )
         })
     }),
 
@@ -229,18 +272,19 @@ export function buildLocalTools(
       execute: async (input) =>
         guarded(() => {
           const file = resolveWithin(roots, input.path)
-          if (statSync(file).isDirectory()) throw new Error('这是目录,用 list_local_dir。')
+          if (statSync(file).isDirectory())
+            throw new Error(aiText('ai.localTools.thisIsADirectoryUseListLocalDir'))
           if (isBinaryPath(file)) {
             throw new Error(
               isSupportedDocument(file)
-                ? '这是文档格式,请用 read_local_document 读。'
-                : '这是二进制文件,读不了。'
+                ? aiText('ai.localTools.thisIsADocumentUseReadLocalDocument')
+                : aiText('ai.localTools.thisIsABinaryFileAndCannotBeReadAsText')
             )
           }
           const { body, total, from, to } = readTextRange(file, input.start_line, input.end_line)
           const note =
             from > 1 || to < total
-              ? `\n\n---\n${show(file)} 共 ${total} 行,当前看的是 ${from}-${to}。`
+              ? aiText('ai.localTools.hasLinesShowing', show(file), total, from, to)
               : ''
           return body + note
         })
@@ -254,14 +298,14 @@ export function buildLocalTools(
         try {
           file = resolveWithin(roots, path)
         } catch (err) {
-          return `错误:${err instanceof Error ? err.message : String(err)}`
+          return aiText('ai.imageTools.error', err instanceof Error ? err.message : String(err))
         }
 
         let doc: Awaited<ReturnType<typeof extractDocument>>
         try {
           doc = await extractDocument(file)
         } catch (err) {
-          return `错误:${err instanceof Error ? err.message : String(err)}`
+          return aiText('ai.imageTools.error', err instanceof Error ? err.message : String(err))
         }
 
         // 抽出来的是空白或乱码——扫描件和字体坏掉的 PDF 都属于这种,
@@ -269,19 +313,27 @@ export function buildLocalTools(
         if (!doc.verdict.usable) {
           if (!options.canSeeImages) {
             return (
-              `${show(file)} 读不出可用文字:${doc.verdict.reason}\n` +
-              '当前模型不支持识图,没法改用图片方式。请让用户换一个带识图能力的模型,' +
-              '或者提供这份文档的文字版。'
+              aiText('ai.localTools.cannotExtractUsableTextFrom', show(file), doc.verdict.reason) +
+              aiText('ai.localTools.theCurrentModelCannotReadImagesAskTheUserToSelectA') +
+              aiText('ai.localTools.orProvideATextVersionOfThisDocument')
             )
           }
           if (!canExtractImages(file)) {
-            return `${show(file)} 读不出可用文字:${doc.verdict.reason}`
+            return aiText(
+              'ai.localTools.cannotExtractUsableTextFromText',
+              show(file),
+              doc.verdict.reason
+            )
           }
           // 走到这里说明文字指望不上了,只能靠图看懂——这时才值得付
           // Electron 渲染那几百毫秒换字体正确
           const rendered = await imagesOf(file, 1, MAX_IMAGES, true)
           if (rendered.images.length === 0) {
-            return `${show(file)} 读不出可用文字:${doc.verdict.reason}(也取不到可用的图片)`
+            return aiText(
+              'ai.localTools.cannotExtractUsableTextFromNoUsableImagesAreAvailableEither',
+              show(file),
+              doc.verdict.reason
+            )
           }
 
           // 抽取失败常常是字体坏,而**渲染用的是同一套字体**——图很可能同样
@@ -291,19 +343,37 @@ export function buildLocalTools(
           const salvaged = salvageReadable(doc.text)
           return asContent(
             [
-              `${show(file)} 抽不出可用文字(${doc.verdict.reason})`,
-              `改用页面图片:共 ${rendered.total} ${rendered.unit},以下是前 ${rendered.images.length} 张。` +
+              aiText(
+                'ai.localTools.cannotExtractUsableTextFromTextText',
+                show(file),
+                doc.verdict.reason
+              ),
+              aiText(
+                'ai.localTools.usingPageImagesInsteadTotalShowingTheFirst',
+                rendered.total,
+                rendered.unit,
+                rendered.images.length
+              ) +
                 (rendered.total > rendered.images.length
-                  ? ' 需要看后面的用 read_document_images 指定起始页。'
+                  ? aiText('ai.localTools.toSeeLaterPagesSetTheStartingPageInReadDocumentImages')
                   : ''),
               '',
-              '**先确认图上是不是可读的文字**。如果图上也是乱码、空白或缺字,',
-              '说明这份文档我们解析不了——直接告诉用户,请他提供其他格式(Word、',
-              '文字版 PDF、或者截图),不要根据残缺内容猜测文档在讲什么。',
+              aiText('ai.localTools.firstCheckWhetherTheTextInTheImagesIsReadableIfIt'),
+              aiText('ai.localTools.weCannotParseTheDocumentTellTheUserAndRequestAnotherFormat'),
+              aiText('ai.localTools.aTextBasedPdfOrScreenshotsDoNotInferTheDocumentS'),
               ...(rendered.renderer === 'wasm'
-                ? ['(这些图是用内置渲染器画的,对非嵌入的中文字体可能缺字)']
+                ? [
+                    aiText(
+                      'ai.localTools.theseImagesUseTheBuiltInRendererNonEmbeddedChineseFontsMay'
+                    )
+                  ]
                 : []),
-              ...(salvaged ? ['', `另外,文字抽取里这部分是可读的,可以参考:\n${salvaged}`] : [])
+              ...(salvaged
+                ? [
+                    '',
+                    aiText('ai.localTools.thisPartOfTheExtractedTextIsReadableAndMayHelp', salvaged)
+                  ]
+                : [])
             ].join('\n'),
             rendered.images
           )
@@ -315,11 +385,15 @@ export function buildLocalTools(
 
         const imageHint =
           options.canSeeImages && canExtractImages(file)
-            ? '\n\n(文档里若有配图,可用 read_document_images 查看)'
+            ? aiText('ai.localTools.useReadDocumentImagesToViewIllustrationsInTheDocument')
             : ''
         const notes = [doc.note, condensed.note].filter(Boolean).join(';')
         const banner = condensed.summarized
-          ? `${show(file)}(${notes})\n**以下是提炼稿,不是原文**;需要某处的原文再单独问用户。\n\n`
+          ? aiText(
+              'ai.localTools.theFollowingIsAnExtractionNotTheOriginalTextAskTheUser',
+              show(file),
+              notes
+            )
           : `${show(file)}(${notes})\n\n`
         return capText(`${banner}${condensed.text}${imageHint}`)
       },
@@ -348,22 +422,41 @@ export function buildLocalTools(
               try {
                 file = resolveWithin(roots, input.path)
               } catch (err) {
-                return `错误:${err instanceof Error ? err.message : String(err)}`
+                return aiText(
+                  'ai.imageTools.error',
+                  err instanceof Error ? err.message : String(err)
+                )
               }
               if (!canExtractImages(file)) {
-                return `错误:${show(file)} 这个类型取不了图(支持 pdf / docx / xlsx / pptx)。`
+                return aiText(
+                  'ai.localTools.errorImagesCannotBeExtractedFromSupportedPdfDocxXlsxPptx',
+                  show(file)
+                )
               }
               try {
                 const out = await imagesOf(file, input.from ?? 1, input.count ?? MAX_IMAGES)
                 if (out.images.length === 0) {
-                  return `${show(file)} 里没有可取的图片(内嵌小图标已跳过)。`
+                  return aiText(
+                    'ai.localTools.noImagesAreAvailableInSmallEmbeddedIconsWereSkipped',
+                    show(file)
+                  )
                 }
                 return asContent(
-                  `${show(file)}:共 ${out.total} ${out.unit},以下是第 ${input.from ?? 1} 张起的 ${out.images.length} 张。`,
+                  aiText(
+                    'ai.localTools.totalShowingImagesStartingAt',
+                    show(file),
+                    out.total,
+                    out.unit,
+                    input.from ?? 1,
+                    out.images.length
+                  ),
                   out.images
                 )
               } catch (err) {
-                return `错误:取图失败——${err instanceof Error ? err.message : String(err)}`
+                return aiText(
+                  'ai.localTools.errorImageExtractionFailed',
+                  err instanceof Error ? err.message : String(err)
+                )
               }
             },
             toModelOutput: contentAwareModelOutput
@@ -371,7 +464,7 @@ export function buildLocalTools(
         }
       : {})
   }
-  return tools
+  return localizedTools(tools, lang)
 }
 
 /** pdf 走渲染,ooxml 走解压 */
@@ -383,10 +476,15 @@ async function imagesOf(
 ): Promise<{ images: DocImage[]; total: number; unit: string; renderer?: string }> {
   if (file.toLowerCase().endsWith('.pdf')) {
     const out = await renderPdfPages(file, { from, count, highFidelity })
-    return { images: out.images, total: out.totalPages, unit: '页', renderer: out.renderer }
+    return {
+      images: out.images,
+      total: out.totalPages,
+      unit: aiText('ai.localTools.pages'),
+      renderer: out.renderer
+    }
   }
   const out = await extractEmbeddedImages(file, { from, count })
-  return { images: out.images, total: out.total, unit: '张图' }
+  return { images: out.images, total: out.total, unit: aiText('ai.localTools.images') }
 }
 
 /** 组装成能直接携带图片的工具结果。交给模型要经 toModelOutput,见 tool-result.ts */
@@ -446,7 +544,7 @@ export function salvageReadable(text: string, maxChars = 1500): string {
 function capText(text: string): string {
   return text.length <= MAX_RESULT_CHARS
     ? text
-    : `${text.slice(0, MAX_RESULT_CHARS)}\n\n…结果过长已截断,请缩小范围。`
+    : aiText('ai.localTools.resultTruncatedNarrowTheRequest', text.slice(0, MAX_RESULT_CHARS))
 }
 
 function formatSize(bytes: number): string {

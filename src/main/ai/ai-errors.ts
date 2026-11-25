@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { APICallError, InvalidPromptError, RetryError } from 'ai'
 
 /**
@@ -21,7 +22,7 @@ export function errorMessage(err: unknown): string {
   // 重试耗尽:外层只说"试了 N 次",真正的原因在 lastError 里
   if (RetryError.isInstance(err)) {
     const inner = describe(err.lastError)
-    return `重试 ${err.errors.length} 次仍失败:${inner}`
+    return appText('messages.stillFailedAfterRetries', err.errors.length, inner)
   }
   return describe(err)
 }
@@ -44,7 +45,8 @@ function describe(err: unknown): string {
   // 消息形态非法:message 只说"不符合 ModelMessage schema",位置全在 cause 里
   if (InvalidPromptError.isInstance(err)) return describeInvalidPrompt(err)
   if (err instanceof Error) {
-    if (err.name === 'TimeoutError' || err.name === 'AbortError') return '请求超时'
+    if (err.name === 'TimeoutError' || err.name === 'AbortError')
+      return appText('common.requestTimedOut')
     return err.message
   }
   // 流中途的错误不是 Error 实例:HTTP 已经 200,中转站把上游故障作为
@@ -58,7 +60,7 @@ function describe(err: unknown): string {
     const detail = inner.message ?? inner.code ?? inner.type
     if (detail) {
       const kind = inner.type && inner.type !== detail ? `${inner.type}:` : ''
-      return `上游在响应中途报错(${kind}${detail}),不是本地配置的问题,稍后重试`
+      return appText('messages.theUpstreamServiceFailedDuringThe', kind, detail)
     }
   }
   return String(err)
@@ -83,8 +85,10 @@ function describeInvalidPrompt(err: Error): string {
   const clues = [
     ...new Set(leaves.filter((path) => path.length === deepest).map((path) => path.join('.')))
   ]
-  const tail = clues.length ? `,可疑位置:${clues.slice(0, 3).join('、')}` : ''
-  return `请求消息形态非法(${err.message})。这是本地拼装消息的错误,与供应商配置和网络无关,重试无效${tail}`
+  const tail = clues.length
+    ? appText('messages.possibleLocation', clues.slice(0, 3).join('、'))
+    : ''
+  return appText('messages.invalidRequestMessageFormatThisIs', err.message, tail)
 }
 
 interface ZodIssueLike {
@@ -148,15 +152,33 @@ function safeStringify(value: unknown): string {
  * 这个区分比错误原文有用得多——它直接决定用户下一步做什么。
  */
 const STATUS_HINTS: Record<number, string> = {
-  401: 'API Key 无效或已过期,检查供应商配置',
-  403: '没有访问这个模型的权限',
-  404: '接口或模型不存在,检查 Base URL 是否需要带 /v1、模型名是否拼对',
-  413: '请求体太大,减少附件或让对话短一些',
-  429: '被限流了,稍等再试',
-  500: '服务端内部错误,不是本地配置的问题',
-  502: '网关的上游服务挂了,不是本地配置的问题,稍后重试',
-  503: '服务暂时不可用,稍后重试',
-  504: '上游响应超时,稍后重试'
+  get 401() {
+    return appText('messages.theApiKeyIsInvalidOrExpiredCheckProviderSettings')
+  },
+  get 403() {
+    return appText('messages.youDoNotHaveAccessToThisModel')
+  },
+  get 404() {
+    return appText('messages.endpointOrModelNotFoundCheck')
+  },
+  get 413() {
+    return appText('messages.requestTooLargeReduceAttachmentsOrShortenTheConversation')
+  },
+  get 429() {
+    return appText('messages.rateLimitedWaitAndTryAgain')
+  },
+  get 500() {
+    return appText('messages.internalServerErrorThisIsNotALocalConfigurationIssue')
+  },
+  get 502() {
+    return appText('messages.theGatewaySUpstreamServiceFailed')
+  },
+  get 503() {
+    return appText('messages.serviceTemporarilyUnavailableRetryLater')
+  },
+  get 504() {
+    return appText('messages.upstreamResponseTimedOutRetryLater')
+  }
 }
 
 /** 响应体通常是 `{"error":{"message":"..."}}`,把那句话挖出来,别把整段 JSON 甩给用户 */

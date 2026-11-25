@@ -1,3 +1,4 @@
+import { text as appText } from '../../i18n'
 import { and, eq, gte, lt, lte, sql } from 'drizzle-orm'
 import { ulid } from 'ulid'
 import type { DetailedUsage, UsageScene } from '../../../shared/types'
@@ -167,7 +168,7 @@ export function finishModelStep(input: FinishModelStepInput): void {
     const usage = input.usage!
 
     const run = tx.select().from(aiRuns).where(eq(aiRuns.id, input.runId)).get()
-    if (!run) throw new Error(`ai_runs 行不存在: ${input.runId}`)
+    if (!run) throw new Error(appText('messages.aiRunsRecordNotFound', input.runId))
 
     // step 的 token 归它实际结束的 UTC 日期
     const utcDate = input.endedAt.slice(0, 10)

@@ -1,3 +1,4 @@
+import { t } from '@renderer/i18n'
 import { defineStore } from 'pinia'
 import type {
   AskUserAnswer,
@@ -212,7 +213,7 @@ export const useChatStore = defineStore('chat', {
         : this.conversationId
           ? window.api.chatSession.saveSettings(this.conversationId, patch)
           : null
-      save?.catch((e) => console.error('[chat] 保存选择失败:', e))
+      save?.catch((e) => console.error(t('messages.chatFailedToSaveSelections'), e))
     },
 
     /** 联网开关。和技能一样要记住,否则每开一条会话都要重新点 */

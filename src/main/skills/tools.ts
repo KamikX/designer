@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { text as appText } from '../i18n'
 import { promptText } from '../ai/prompts/i18n'
 import type { PromptLanguage } from '../ai/prompts/i18n'
 import { existsSync, readFileSync, readdirSync } from 'fs'
@@ -24,7 +26,7 @@ import type { FileSkill } from './scan'
 const MAX_BODY = 20_000
 
 export function buildSkillTools(skills: FileSkill[], lang: PromptLanguage = 'zh-CN'): ToolSet {
-  if (skills.length === 0) return {}
+  if (skills.length === 0) return localizedTools({}, lang)
 
   const byName = new Map(skills.map((s) => [s.name, s]))
   const names = skills.map((s) => s.name) as [string, ...string[]]
@@ -38,13 +40,17 @@ export function buildSkillTools(skills: FileSkill[], lang: PromptLanguage = 'zh-
       }),
       execute: async (input) => {
         const skill = byName.get(input.name)
-        if (!skill) return `错误:没有名为「${input.name}」的技能。`
+        if (!skill) return appText('messages.errorNoSkillNamed', input.name)
 
         let raw: string
         try {
           raw = readFileSync(skill.path, 'utf-8')
         } catch (err) {
-          return `错误:读不到 ${skill.path}(${err instanceof Error ? err.message : err})`
+          return appText(
+            'messages.errorCannotRead',
+            skill.path,
+            err instanceof Error ? err.message : err
+          )
         }
 
         // frontmatter 已经在目录里给过了,再给一遍是重复占位
@@ -55,7 +61,7 @@ export function buildSkillTools(skills: FileSkill[], lang: PromptLanguage = 'zh-
           `<skill_content name="${skill.name}">`,
           body.trim(),
           '',
-          `技能目录:${skill.dir}`,
+          appText('common.skillDirectory', skill.dir),
           resources.length
             ? `<skill_resources>\n${resources.map((f) => `  <file>${f}</file>`).join('\n')}\n</skill_resources>`
             : '',
@@ -66,7 +72,7 @@ export function buildSkillTools(skills: FileSkill[], lang: PromptLanguage = 'zh-
       }
     })
   }
-  return tools
+  return localizedTools(tools, lang)
 }
 
 function stripFrontmatter(raw: string): string {

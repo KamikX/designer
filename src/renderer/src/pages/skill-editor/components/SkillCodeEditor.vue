@@ -121,7 +121,11 @@ function syncModel(): void {
     :style="{ background: token.colorFillQuaternary, borderColor: token.colorBorderSecondary }"
   >
     <a-skeleton v-if="loading" active :paragraph="{ rows: 8 }" style="padding: 12px" />
-    <a-empty v-else-if="!path" :description="t('选择左侧文件开始编辑')" style="margin-top: 60px" />
+    <a-empty
+      v-else-if="!path"
+      :description="t('messages.selectAFileOnTheLeftToStartEditing')"
+      style="margin-top: 60px"
+    />
     <div v-show="!loading && path" ref="host" class="skill-code-host" />
   </div>
 </template>

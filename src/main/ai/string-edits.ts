@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 import MagicString from 'magic-string'
 import type { AnchorRecord, AnchorRegistry } from './anchor-registry'
 import type { SessionVfs } from './session-vfs'
@@ -70,7 +71,10 @@ export class MagicStringBatchEditor {
    */
   apply(operations: StringEditOperation[]): AppliedStringEdit[] {
     if (operations.length === 0) {
-      throw new StringEditError('INVALID_OPERATION', 'operations 不能为空。')
+      throw new StringEditError(
+        'INVALID_OPERATION',
+        aiText('ai.stringEdits.operationsCannotBeEmpty')
+      )
     }
 
     // 1. 按锚点归组。before/after 保持请求数组顺序
@@ -101,7 +105,10 @@ export class MagicStringBatchEditor {
           if (plan.core !== null) {
             throw new StringEditError(
               'INVALID_OPERATION',
-              `锚点 ${op.anchorId} 上有多个 replace/remove,一个锚点最多一个。`,
+              aiText(
+                'ai.stringEdits.anchorHasMultipleReplaceRemoveOperationsAtMostOneIsAllowedPer',
+                op.anchorId
+              ),
               index
             )
           }
@@ -126,8 +133,12 @@ export class MagicStringBatchEditor {
         if (next.startOffset < prev.endOffset) {
           throw new StringEditError(
             'RANGE_OVERLAP',
-            `${path} 内区间 [${prev.startOffset},${prev.endOffset}) 与 ` +
-              `[${next.startOffset},${next.endOffset}) 重叠,拆成不相交的锚点再试。`,
+            aiText('ai.stringEdits.rangeInOverlapsWith', path, prev.startOffset, prev.endOffset) +
+              aiText(
+                'ai.stringEdits.splitThemIntoNonOverlappingAnchorsAndRetry',
+                next.startOffset,
+                next.endOffset
+              ),
             list[i].firstIndex
           )
         }

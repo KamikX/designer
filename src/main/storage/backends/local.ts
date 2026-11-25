@@ -1,3 +1,4 @@
+import { text as appText } from '../../i18n'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join, normalize, sep } from 'path'
 import { ASSETS_DIR } from '../../paths'
@@ -7,7 +8,8 @@ import type { StorageBackend } from '../types'
 export function createLocalBackend(): StorageBackend {
   const resolve = (key: string): string => {
     const target = normalize(join(ASSETS_DIR, key))
-    if (!target.startsWith(ASSETS_DIR + sep)) throw new Error(`非法资源 key: ${key}`)
+    if (!target.startsWith(ASSETS_DIR + sep))
+      throw new Error(appText('messages.invalidResourceKey', key))
     return target
   }
   return {

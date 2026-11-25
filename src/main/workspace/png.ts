@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { deflateSync } from 'zlib'
 
 /**
@@ -50,7 +51,13 @@ function chunk(type: string, data: Buffer): Buffer {
  */
 export function bgraToPng(bgra: Uint8Array, width: number, height: number): Buffer {
   if (bgra.length < width * height * 4) {
-    throw new Error(`位图数据不足:期望 ${width * height * 4} 字节,实际 ${bgra.length}`)
+    throw new Error(
+      appText(
+        'messages.insufficientBitmapDataExpectedBytesReceived',
+        width * height * 4,
+        bgra.length
+      )
+    )
   }
 
   // 每行前面要加一个 filter 字节(0 = 不预测)

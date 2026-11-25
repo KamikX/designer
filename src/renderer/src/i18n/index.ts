@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import { translate, translateMessage, translateActivity } from '@shared/i18n'
+import type { TranslationKey } from '@shared/i18n'
 import type { Lang } from '@shared/types'
 
 // Config binds the persisted language; translations can also run in isolated tests.
@@ -9,8 +10,12 @@ export function bindLanguage(value: Readonly<Ref<Lang>>): void {
   readLanguage = () => value.value
 }
 
-export function t(source: string, ...values: unknown[]): string {
-  return translate(readLanguage(), source, ...values)
+export function currentLanguage(): Lang {
+  return readLanguage()
+}
+
+export function t(key: TranslationKey, ...values: unknown[]): string {
+  return translate(readLanguage(), key, ...values)
 }
 
 export function uiMessage(source: string | null | undefined): string {

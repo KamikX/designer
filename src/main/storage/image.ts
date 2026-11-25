@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { nativeImage } from 'electron'
 
 /**
@@ -41,10 +42,12 @@ export class ImageError extends Error {}
 export function prepareImage(data: Buffer, mime: string, name: string): PreparedImage {
   if (mime === 'image/svg+xml') {
     // SVG 各家基本都不收当图片,而且它是可执行的标记语言,不该直接喂
-    throw new ImageError(`${name} 是 SVG,模型无法识别。请导出成 PNG 再试。`)
+    throw new ImageError(
+      appText('storage.image.isSvgWhichTheModelCannotReadExportItAsPngAnd', name)
+    )
   }
   if (!SUPPORTED.has(mime)) {
-    throw new ImageError(`${name} 的格式(${mime})不支持,请用 PNG / JPEG / GIF / WebP。`)
+    throw new ImageError(appText('storage.image.unsupportedFormatForUsePngJpegGifWebp', name, mime))
   }
 
   const image = nativeImage.createFromBuffer(data)

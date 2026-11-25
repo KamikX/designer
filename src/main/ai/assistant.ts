@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 import { generateText } from 'ai'
 import type { AdapterType } from '../../shared/types'
 import { readConfig } from '../config'
@@ -66,7 +67,10 @@ export async function condenseIfLong(text: string, hint?: string): Promise<Summa
   if (!assistant) {
     return {
       text,
-      note: `内容较长(${text.length} 字符);设置里还没配辅助模型,给的是原文`,
+      note: aiText(
+        'ai.assistant.longContentCharactersNoAuxiliaryModelIsConfiguredSoTheOriginalText',
+        text.length
+      ),
       summarized: false
     }
   }
@@ -109,17 +113,25 @@ export async function condenseIfLong(text: string, hint?: string): Promise<Summa
 
   try {
     const out: SummarizeResult = await summarizeForDesign(text, complete, hint)
-    if (!out.text.trim()) throw new Error('辅助模型没有返回内容')
+    if (!out.text.trim()) throw new Error(aiText('ai.assistant.theAssistantModelReturnedNoContent'))
     return {
       text: out.text,
-      note: `原文 ${text.length} 字符,已由「${assistant.label}」提炼成设计要点(${out.chunks} 段)`,
+      note: aiText(
+        'ai.assistant.originalTextCharactersExtractedDesignNotesSections',
+        text.length,
+        assistant.label,
+        out.chunks
+      ),
       summarized: true
     }
   } catch (err) {
     // 提炼失败退回原文:少一层压缩总好过读不到文档
     return {
       text,
-      note: `内容较长;辅助模型提炼失败(${err instanceof Error ? err.message : String(err)}),给的是原文`,
+      note: aiText(
+        'ai.assistant.longContentAuxiliaryModelExtractionFailed',
+        err instanceof Error ? err.message : String(err)
+      ),
       summarized: false
     }
   }

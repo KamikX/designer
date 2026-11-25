@@ -29,9 +29,9 @@ const { token } = theme.useToken()
     >
       <RoleAvatar :role="{ ...member, id: member.tempKey }" :size="28" />
       <div class="member-card-copy">
-        <div class="member-card-name">{{ member.name || t('未命名成员') }}</div>
+        <div class="member-card-name">{{ member.name || t('common.unnamedMember') }}</div>
         <div class="member-card-duty" :style="{ color: token.colorTextTertiary }">
-          {{ member.duty || t('尚未填写职责') }}
+          {{ member.duty || t('common.noResponsibilitiesSpecified') }}
         </div>
       </div>
       <div class="member-card-actions">
@@ -39,7 +39,7 @@ const { token } = theme.useToken()
           :data-testid="`edit-${member.tempKey}`"
           type="text"
           size="small"
-          :aria-label="t('编辑成员')"
+          :aria-label="t('common.editMember')"
           @click.stop="emit('edit', member.tempKey)"
         >
           <template #icon><EditOutlined /></template>
@@ -48,7 +48,7 @@ const { token } = theme.useToken()
           :data-testid="`move-up-${member.tempKey}`"
           type="text"
           size="small"
-          :aria-label="t('上移成员')"
+          :aria-label="t('common.moveMemberUp')"
           :disabled="index === 0"
           @click.stop="emit('move', member.tempKey, 'up')"
         >
@@ -58,7 +58,7 @@ const { token } = theme.useToken()
           :data-testid="`move-down-${member.tempKey}`"
           type="text"
           size="small"
-          :aria-label="t('下移成员')"
+          :aria-label="t('common.moveMemberDown')"
           :disabled="index === props.members.length - 1"
           @click.stop="emit('move', member.tempKey, 'down')"
         >
@@ -71,7 +71,7 @@ const { token } = theme.useToken()
           type="text"
           size="small"
           danger
-          :aria-label="t('删除成员')"
+          :aria-label="t('common.deleteMember')"
           @click.stop="emit('remove', member.tempKey)"
         >
           <template #icon><DeleteOutlined /></template>
@@ -82,7 +82,7 @@ const { token } = theme.useToken()
   <a-empty
     v-else
     :image-style="{ height: '36px' }"
-    :description="t('从模板添加，或创建空白成员')"
+    :description="t('messages.addFromATemplateOrCreateABlankMember')"
   />
 </template>
 

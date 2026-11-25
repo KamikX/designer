@@ -1,22 +1,23 @@
 <script setup lang="ts">
 import { t } from '@renderer/i18n'
+import type { TranslationKey } from '@shared/i18n'
 import type { DesignMode, DesignTarget, Stack } from '@shared/types'
 
 defineProps<{ stack: Stack; designMode: DesignMode; targets: DesignTarget[] | null }>()
 
 const stackLabels: Record<Stack, string> = { html: 'HTML', vue3: 'Vue 3', react: 'React' }
 
-const modeLabels: Record<DesignMode, string> = {
-  design: '高质量 UI 设计',
-  prototype: '快速原型'
+const modeLabels: Record<DesignMode, TranslationKey> = {
+  design: 'common.highQualityUiDesign',
+  prototype: 'common.rapidPrototype'
 }
 
-const targetLabels: Record<DesignTarget, string> = {
-  landing: '落地页',
-  web: 'Web 应用',
-  mobile: '移动端 App',
-  admin: '中后台',
-  components: '组件开发'
+const targetLabels: Record<DesignTarget, TranslationKey> = {
+  landing: 'common.landingPage',
+  web: 'common.webApplication',
+  mobile: 'common.mobileApp',
+  admin: 'common.adminDashboard',
+  components: 'common.componentDevelopment'
 }
 </script>
 

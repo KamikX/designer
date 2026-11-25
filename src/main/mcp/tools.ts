@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
@@ -56,14 +57,20 @@ export async function connectMcpTools(names: string[]): Promise<McpSession> {
     names.map(async (name, index) => {
       const raw = servers[name]
       if (!raw) {
-        warnings.push(`MCP「${name}」不在 mcp.json 里,已跳过。`)
+        warnings.push(appText('messages.mcpServiceIsNotInMcpJsonAndWasSkipped', name))
         return
       }
       if (raw.enabled === false) return
 
       const { config, missing } = resolveConfig(raw, env)
       if (missing.length) {
-        warnings.push(`MCP「${name}」缺少环境变量 ${missing.join(', ')},已跳过。`)
+        warnings.push(
+          appText(
+            'messages.mcpServiceIsMissingEnvironmentVariablesAndWasSkipped',
+            name,
+            missing.join(', ')
+          )
+        )
         return
       }
 
@@ -87,7 +94,13 @@ export async function connectMcpTools(names: string[]): Promise<McpSession> {
           })
         }
       } catch (err) {
-        warnings.push(`MCP「${name}」连接失败:${err instanceof Error ? err.message : String(err)}`)
+        warnings.push(
+          appText(
+            'messages.mcpServiceFailedToConnect',
+            name,
+            err instanceof Error ? err.message : String(err)
+          )
+        )
       }
     })
   )
@@ -110,7 +123,7 @@ async function connectOne(
 
   const transport = (() => {
     if (type === 'stdio') {
-      if (!config.command) throw new Error('stdio 服务缺少 command')
+      if (!config.command) throw new Error(appText('messages.theStdioServiceIsMissingACommand'))
       return new StdioClientTransport({
         command: config.command,
         args: config.args ?? [],
@@ -118,7 +131,7 @@ async function connectOne(
         env: { ...(process.env as Record<string, string>), ...(config.env ?? {}) }
       })
     }
-    if (!config.url) throw new Error(`${type} 服务缺少 url`)
+    if (!config.url) throw new Error(appText('messages.theServiceIsMissingAUrl', type))
     const url = new URL(config.url)
     const init = config.headers ? { requestInit: { headers: config.headers } } : {}
     return type === 'sse'
@@ -130,7 +143,7 @@ async function connectOne(
   await withTimeout(
     client.connect(transport),
     CONNECT_TIMEOUT_MS,
-    `连接「${name}」超过 ${CONNECT_TIMEOUT_MS / 1000} 秒`
+    appText('mcp.tools.connectionToExceededSeconds', name, CONNECT_TIMEOUT_MS / 1000)
   )
   return client
 }
@@ -158,9 +171,10 @@ function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T>
 function renderResult(result: Awaited<ReturnType<Client['callTool']>>): string {
   const content = (result.content ?? []) as { type: string; text?: string }[]
   const text = content
-    .map((c) => (c.type === 'text' ? (c.text ?? '') : `[${c.type} 内容,已省略]`))
+    .map((c) => (c.type === 'text' ? (c.text ?? '') : appText('mcp.tools.contentOmitted', c.type)))
     .filter(Boolean)
     .join('\n')
-  if (result.isError) return `工具执行出错:${text || '(无详情)'}`
-  return text || '(无输出)'
+  if (result.isError)
+    return appText('mcp.tools.toolExecutionError', text || appText('mcp.tools.noDetails'))
+  return text || appText('mcp.tools.noOutput')
 }

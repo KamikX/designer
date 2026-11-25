@@ -9,7 +9,7 @@ import {
 } from './create-project'
 
 describe('buildCreateProjectInput', () => {
-  it('清理自由文本两端空白并保留视觉方向字段', () => {
+  it('trims free text and preserves visual guidance fields', () => {
     expect(
       buildCreateProjectInput({
         name: '  运营后台  ',
@@ -37,7 +37,7 @@ describe('buildCreateProjectInput', () => {
     })
   })
 
-  it('非 Vue 项目不会提交残留的组件库选择', () => {
+  it('drops stale component library selections for non-Vue projects', () => {
     expect(
       buildCreateProjectInput({
         name: '原型',
@@ -64,7 +64,7 @@ it('creates a cloneable IPC payload from reactive external library selections', 
 })
 
 describe('resetProjectForm', () => {
-  it('原位恢复所有创建默认值', () => {
+  it('restores all creation defaults in place', () => {
     const form = createDefaultProjectForm()
     form.name = '后台'
     form.stack = 'react'
@@ -97,8 +97,8 @@ describe('resetProjectForm', () => {
 })
 
 describe('CreateProjectModal', () => {
-  it('明确标注视觉风格可以留空', () => {
-    expect(STYLE_BRIEF_FIELD_LABEL).toBe('视觉风格（可选）')
+  it('exports the translation key for the optional visual style label', () => {
+    expect(STYLE_BRIEF_FIELD_LABEL).toBe('common.visualStyle')
   })
 })
 

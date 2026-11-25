@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 import type { ModelMessage } from 'ai'
 import type { Message } from '../../shared/types'
 import { renderAnswer } from './ask-user'
@@ -29,16 +30,23 @@ function renderMessage(message: Message): string {
       // 问答要回放:用户选过的方向是后续每一轮都该守住的约束,
       // 丢了它模型下一轮就会重新按自己的偏好来
       if (part.type === 'question') {
-        return part.answer ? renderAnswer(part.ask, part.answer) : '(向用户提过问,但没等到回答)'
+        return part.answer
+          ? renderAnswer(part.ask, part.answer)
+          : aiText('ai.context.theUserWasAskedButHasNotAnswered')
       }
       // 图片只在发出它的那一轮带像素。历史里降成引用 + 描述:图片按尺寸
       // 计费,每轮重发一次就是每轮重付一次,而多数后续轮次根本用不着看图
       if (part.type === 'image') {
-        const note = part.description ? `,内容:${part.description}` : ''
-        return `[用户提供的参考图 ${part.assetId}(${part.name})${note}。需要看具体像素时用 view_image 取回]`
+        const note = part.description ? aiText('ai.context.content', part.description) : ''
+        return aiText(
+          'ai.context.userReferenceImageUseViewImageWhenYouNeedItsPixels',
+          part.assetId,
+          part.name,
+          note
+        )
       }
-      if (part.action === 'delete') return `[已删除文件 ${part.path}]`
-      return `[已生成文件 ${part.path},其最新内容见系统提示中的当前设计稿]`
+      if (part.action === 'delete') return aiText('ai.context.deletedFile', part.path)
+      return aiText('ai.context.generatedFileItsLatestContentIsInTheCurrentDesignInThe', part.path)
     })
     .filter(Boolean)
     .join('\n')
@@ -66,7 +74,10 @@ export function buildHistory(history: Message[], contextWindow: number): ModelMe
   if (dropped > 0) {
     rendered.unshift({
       role: 'user',
-      content: `(系统提示:更早的 ${dropped} 条对话因篇幅省略,如需回顾请向用户确认)`
+      content: aiText(
+        'ai.context.systemNoteEarlierMessagesWereOmittedForLengthAskTheUserIf',
+        dropped
+      )
     })
   }
   return rendered

@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 /**
  * 结构自检。
  *
@@ -114,13 +115,19 @@ function checkDelimiters(content: string, options: ScanOptions, lineOffset = 0):
       if (!top) {
         problems.push({
           ...positionOf(starts, i, lineOffset),
-          message: `多了一个 ${ch},前面没有与之配对的开括号。`
+          message: aiText('ai.textSyntax.unexpectedNoMatchingOpeningBracket', ch)
         })
       } else if (PAIRS[top.ch] !== ch) {
         const open = positionOf(starts, top.index, lineOffset)
         problems.push({
           ...positionOf(starts, i, lineOffset),
-          message: `这里是 ${ch},但第 ${open.line} 行开的是 ${top.ch},应当以 ${PAIRS[top.ch]} 闭合。`
+          message: aiText(
+            'ai.textSyntax.foundButLineOpensWithExpected',
+            ch,
+            open.line,
+            top.ch,
+            PAIRS[top.ch]
+          )
         })
       }
     }
@@ -130,7 +137,7 @@ function checkDelimiters(content: string, options: ScanOptions, lineOffset = 0):
   for (const left of stack) {
     problems.push({
       ...positionOf(starts, left.index, lineOffset),
-      message: `${left.ch} 一直没有闭合,缺一个 ${PAIRS[left.ch]}。`
+      message: aiText('ai.textSyntax.isNotClosedMissing', left.ch, PAIRS[left.ch])
     })
   }
   return problems
@@ -250,14 +257,14 @@ function scanHtml(content: string): HtmlScan {
         if (!OPTIONAL_CLOSE_TAGS.has(tag.name) && !VOID_TAGS.has(tag.name)) {
           problems.push({
             ...positionOf(starts, i),
-            message: `</${tag.name}> 没有对应的开始标签。`
+            message: aiText('ai.textSyntax.hasNoOpeningTag', tag.name)
           })
         }
       } else {
         for (const unclosed of stack.slice(found + 1)) {
           problems.push({
             ...positionOf(starts, unclosed.index),
-            message: `<${unclosed.name}> 没有闭合,却先遇到了 </${tag.name}>。`
+            message: aiText('ai.textSyntax.isNotClosedBefore', unclosed.name, tag.name)
           })
         }
         stack.length = found
@@ -276,7 +283,10 @@ function scanHtml(content: string): HtmlScan {
         }
       }
       if (closeAt >= content.length) {
-        problems.push({ ...positionOf(starts, i), message: `<${tag.name}> 没有闭合。` })
+        problems.push({
+          ...positionOf(starts, i),
+          message: aiText('ai.textSyntax.isNotClosed', tag.name)
+        })
         i = content.length
       } else {
         i = content.indexOf('>', closeAt)
@@ -292,7 +302,10 @@ function scanHtml(content: string): HtmlScan {
   }
 
   for (const left of stack) {
-    problems.push({ ...positionOf(starts, left.index), message: `<${left.name}> 没有闭合。` })
+    problems.push({
+      ...positionOf(starts, left.index),
+      message: aiText('ai.textSyntax.isNotClosed', left.name)
+    })
   }
   return { problems, scripts }
 }
@@ -398,6 +411,6 @@ function checkJson(content: string): SyntaxProblem[] {
     const message = err instanceof Error ? err.message : String(err)
     const at = /position (\d+)/.exec(message)
     const position = at ? positionOf(lineStartsOf(content), Number(at[1])) : { line: 1, column: 1 }
-    return [{ ...position, message: `JSON 解析失败:${message}` }]
+    return [{ ...position, message: aiText('ai.textSyntax.jsonParsingFailed', message) }]
   }
 }

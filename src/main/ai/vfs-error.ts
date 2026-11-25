@@ -1,3 +1,5 @@
+import type { ToolErrorCode } from './tool-result'
+
 /**
  * 面向模型的错误。
  *
@@ -8,7 +10,10 @@
  * 单独成文件是为了让 session-vfs / patch-format 都能用它而不互相 import。
  */
 export class VfsError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly code?: ToolErrorCode
+  ) {
     super(message)
     this.name = 'VfsError'
   }

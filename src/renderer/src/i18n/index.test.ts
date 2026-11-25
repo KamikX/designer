@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import { bindLanguage, t, uiMessage, activityLabel } from './index'
 import type { Lang } from '@shared/types'
 import messages from '@shared/i18n/en-US.json'
+import chinese from '@shared/i18n/zh-CN.json'
+import type { TranslationKey } from '@shared/i18n'
 
 afterEach(() => bindLanguage(ref<Lang>('zh-CN')))
 
@@ -10,7 +12,7 @@ describe('application localization', () => {
   it('updates existing computed labels when the persisted language changes', () => {
     const lang = ref<Lang>('zh-CN')
     bindLanguage(lang)
-    const label = computed(() => t('保存'))
+    const label = computed(() => t('common.save'))
     expect(label.value).toBe('保存')
     lang.value = 'en-US'
     expect(label.value).toBe('Save')
@@ -20,8 +22,9 @@ describe('application localization', () => {
 
   it('preserves user values, including braces, quotes and Unicode', () => {
     bindLanguage(ref<Lang>('en-US'))
-    expect(t('已导出到 {0}', '/tmp/项目/{0}/"test"')).toBe('Exported to /tmp/项目/{0}/"test"')
-    expect(t('unknown key')).toBe('unknown key')
+    expect(t('common.exportedTo', '/tmp/项目/{0}/"test"')).toBe('Exported to /tmp/项目/{0}/"test"')
+    // Persisted data from a newer release may contain an unknown key at runtime.
+    expect(t('unknown key' as TranslationKey)).toBe('unknown key')
   })
 
   it('translates native IPC failures and interpolated diagnostics', () => {
@@ -49,7 +52,22 @@ describe('application localization', () => {
     const placeholders = (value: string): string[] =>
       [...value.matchAll(/\{(\d+)\}/g)].map((match) => match[1]).sort()
     for (const [source, english] of Object.entries(messages)) {
-      expect(placeholders(english), source).toEqual(placeholders(source))
+      expect(placeholders(english), source).toEqual(placeholders(chinese[source as TranslationKey]))
     }
+  })
+})
+
+describe('translation catalog compatibility', () => {
+  it('uses named keys with matching EN/CN coverage', () => {
+    expect(Object.keys(chinese).sort()).toEqual(Object.keys(messages).sort())
+    for (const key of Object.keys(messages)) expect(key).not.toMatch(/\p{Script=Han}/u)
+  })
+
+  it('translates historical English diagnostics back to Chinese without changing user values', () => {
+    bindLanguage(ref<Lang>('zh-CN'))
+    expect(uiMessage('Provider “产品经理 {0}” has no Base URL')).toBe(
+      '供应商「产品经理 {0}」缺少 Base URL'
+    )
+    expect(activityLabel('Read src/中文.vue lines 1–80')).toBe('读取 src/中文.vue 1-80 行')
   })
 })

@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 /**
  * 借 Electron 自带的 Chromium 渲染 PDF。
  *
@@ -75,15 +76,19 @@ export async function renderPdfViaElectron(
       // 每页整份重新加载:只改 hash 时 PDF 插件不一定会重新定位,
       // 而这条路本来就慢,不差这一次导航
       const url = `${pathToUrl(path)}#page=${page}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`
-      await withTimeout(win.loadURL(url), PAGE_TIMEOUT_MS, `第 ${page} 页加载超时`)
+      await withTimeout(
+        win.loadURL(url),
+        PAGE_TIMEOUT_MS,
+        appText('workspace.pdfElectron.pageLoadingTimedOut', page)
+      )
       await delay(RENDER_SETTLE_MS)
 
       const image = await withTimeout(
         win.webContents.capturePage(),
         PAGE_TIMEOUT_MS,
-        `第 ${page} 页截图超时`
+        appText('workspace.pdfElectron.pageCaptureTimedOut', page)
       )
-      if (image.isEmpty()) throw new Error(`第 ${page} 页截图为空`)
+      if (image.isEmpty()) throw new Error(appText('messages.theScreenshotOfPageIsEmpty', page))
       pages.push({ data: image.toPNG(), mime: 'image/png', page })
     }
     return pages

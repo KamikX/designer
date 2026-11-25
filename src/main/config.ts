@@ -1,3 +1,4 @@
+import { translate } from '../shared/i18n'
 import { readFileSync, writeFileSync } from 'fs'
 import type { AppConfig } from '../shared/types'
 import { DEFAULT_TOOL_CALL_LIMIT } from '../shared/limits'
@@ -62,7 +63,7 @@ export function readConfig(): AppConfig {
     } else {
       // 内容损坏：只在内存里用默认值，不覆盖用户的文件——
       // 里面可能有他手改坏的内容，留着让他自己修
-      console.error(`[config] ${CONFIG_FILE} 解析失败，本次使用默认配置：`, e)
+      console.error(translate('en-US', 'config.configFailedToParseUsingDefaults', CONFIG_FILE), e)
     }
   }
   return cache

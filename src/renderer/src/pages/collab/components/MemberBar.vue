@@ -53,10 +53,10 @@ const drawerSpeaking = computed(
 const activeStates = new Set(['preparing', 'executing'])
 
 const statusText = computed(() => {
-  if (!drawerSpeaking.value) return t('空闲')
+  if (!drawerSpeaking.value) return t('common.idle')
   return drawerActivities.value.some((a) => activeStates.has(a.state))
-    ? t('正在调用工具')
-    : t('正在输出')
+    ? t('common.callingTools')
+    : t('common.generating')
 })
 </script>
 
@@ -91,13 +91,13 @@ const statusText = computed(() => {
           <div class="role-head-text">
             <div class="role-duty">{{ drawerRole.duty }}</div>
             <div class="role-deliverable" :style="{ color: token.colorTextTertiary }">
-              {{ t('产出物:') }}{{ drawerRole.deliverable }}
+              {{ t('common.deliverableLabel') }}{{ drawerRole.deliverable }}
             </div>
           </div>
         </div>
 
         <div class="role-section-title" :style="{ color: token.colorTextTertiary }">
-          {{ t('当前状态') }}
+          {{ t('common.currentStatus') }}
         </div>
         <div class="role-status">
           <LoadingOutlined v-if="drawerSpeaking" spin :style="{ color: token.colorPrimary }" />
@@ -132,7 +132,7 @@ const statusText = computed(() => {
         </div>
 
         <div class="role-section-title" :style="{ color: token.colorTextTertiary }">
-          {{ t('本轮注入的提示词') }}
+          {{ t('messages.promptUsedForThisTurn') }}
         </div>
         <!-- pre 自己封顶滚动:注入提示词动辄几千字,不封顶抽屉整个被它撑走 -->
         <pre
@@ -144,7 +144,7 @@ const statusText = computed(() => {
           }"
           >{{ drawerSystem }}</pre>
         <div v-else class="role-system-empty" :style="{ color: token.colorTextQuaternary }">
-          {{ t('这个角色本轮还没有发言。它被 @ 到时,这里会显示注入给它的完整提示词。') }}
+          {{ t('messages.thisMemberHasNotSpokenYet') }}
         </div>
       </div>
     </a-drawer>

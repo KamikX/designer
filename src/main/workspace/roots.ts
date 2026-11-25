@@ -1,3 +1,4 @@
+import { text as appText, aiText } from '../i18n'
 import { realpathSync, statSync } from 'fs'
 import { isAbsolute, relative, resolve, sep } from 'path'
 import { eq } from 'drizzle-orm'
@@ -115,9 +116,9 @@ export interface GrantOutcome {
 
 function reasonOf(err: unknown): string {
   const code = (err as NodeJS.ErrnoException).code
-  if (code === 'ENOENT') return '文件不存在'
-  if (code === 'EACCES' || code === 'EPERM') return '没有读取权限'
-  if (code === 'ELOOP') return '符号链接成环'
+  if (code === 'ENOENT') return appText('workspace.roots.fileDoesNotExist')
+  if (code === 'EACCES' || code === 'EPERM') return appText('workspace.roots.readPermissionDenied')
+  if (code === 'ELOOP') return appText('workspace.roots.symbolicLinkLoop')
   return err instanceof Error ? err.message : String(err)
 }
 
@@ -128,10 +129,11 @@ function reasonOf(err: unknown): string {
  * 解析失败与越界一律抛错——**宁可拒绝一次合法请求,也不能放过一次越界**。
  */
 export function resolveWithin(roots: WorkspaceRoot[], input: string): string {
-  if (roots.length === 0) throw new Error('本项目还没有授权任何本地目录。')
+  if (roots.length === 0)
+    throw new Error(appText('messages.noLocalDirectoriesAreAuthorizedForThisProject'))
 
   const trimmed = input.trim()
-  if (!trimmed) throw new Error('路径不能为空。')
+  if (!trimmed) throw new Error(aiText('ai.sessionVfs.pathCannotBeEmpty'))
 
   const candidates: string[] = []
   if (trimmed.startsWith('/') || /^[A-Za-z]:[\\/]/.test(trimmed)) {
@@ -157,7 +159,11 @@ export function resolveWithin(roots: WorkspaceRoot[], input: string): string {
   }
 
   throw new Error(
-    `路径不在授权范围内,或不存在:${trimmed}。当前可访问:${roots.map((r) => r.name).join('、')}`
+    appText(
+      'messages.pathIsUnauthorizedOrDoesNotExistAccessiblePaths',
+      trimmed,
+      roots.map((r) => r.name).join('、')
+    )
   )
 }
 

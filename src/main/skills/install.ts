@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { mkdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
@@ -39,16 +40,19 @@ export function skillRoot(scope: InstallScope): string {
 export function installSkill(content: string, scope: InstallScope): InstallResult {
   const front = parseFrontmatter(content)
   if (!front) {
-    return { ok: false, error: 'SKILL.md 缺少 frontmatter(文件必须以 --- 开头的 YAML 块起始)' }
+    return {
+      ok: false,
+      error: appText('messages.skillMdHasNoFrontmatterItMustStartWithAYamlBlockDelimitedBy')
+    }
   }
 
   const name = typeof front.name === 'string' ? front.name.trim() : ''
   const description = typeof front.description === 'string' ? front.description.trim() : ''
 
-  if (!name) return { ok: false, error: 'frontmatter 缺少 name' }
+  if (!name) return { ok: false, error: appText('messages.frontmatterIsMissingName') }
   if (!description) {
     // 缺了它这个技能永远不会被激活——目录里没有触发条件,模型无从判断
-    return { ok: false, error: 'frontmatter 缺少 description(它是模型判断何时加载的唯一依据)' }
+    return { ok: false, error: appText('messages.frontmatterIsMissingDescriptionNeededFor') }
   }
 
   const invalid = validateName(name)
@@ -59,7 +63,10 @@ export function installSkill(content: string, scope: InstallScope): InstallResul
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'SKILL.md'), content.endsWith('\n') ? content : `${content}\n`, 'utf-8')
   } catch (err) {
-    return { ok: false, error: `写入失败:${err instanceof Error ? err.message : err}` }
+    return {
+      ok: false,
+      error: appText('common.writeFailed', err instanceof Error ? err.message : err)
+    }
   }
   return { ok: true, dir }
 }
@@ -69,9 +76,9 @@ export function installSkill(content: string, scope: InstallScope): InstallResul
  * 反而制造出扫描时的那种警告。
  */
 function validateName(name: string): string | null {
-  if (name.length > 64) return `name 超过 64 字符:${name}`
+  if (name.length > 64) return appText('messages.nameExceeds64Characters', name)
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) {
-    return `name 只允许小写字母、数字和单个连字符,且不能以连字符开头或结尾:${name}`
+    return appText('messages.nameMayContainOnlyLowercaseLetters', name)
   }
   return null
 }

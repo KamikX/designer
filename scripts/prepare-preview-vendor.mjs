@@ -70,7 +70,7 @@ ${imports}
 const __module__ = { exports: {} }
 function __require__(id) {
 ${cases}
-  throw new Error('预览运行时缺少依赖: ' + id)
+  throw new Error('Preview runtime dependency missing: ' + id)
 }
 // call(globalThis):ESM 里 this 是 undefined,而 UMD 头部拿 this 当全局对象。
 // 这里走的是 CommonJS 分支用不到它,但别留一个 undefined 在那儿等着炸
@@ -83,7 +83,7 @@ export const { ${names.join(', ')} } = __default__
 `,
     'utf-8'
   )
-  console.log(`preview-vendor: ${out} (${names.length} 个具名导出)`)
+  console.log(`preview-vendor: ${out} (${names.length} named exports)`)
 }
 
 esmShim({ umd: 'react/umd/react.production.min.js', moduleId: 'react', out: 'react.esm.js' })

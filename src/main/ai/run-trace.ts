@@ -1,3 +1,4 @@
+import { translate } from '../../shared/i18n'
 import type { LanguageModelUsage } from 'ai'
 import type { AdapterType, UsageScene } from '../../shared/types'
 import * as observability from '../db/repo/ai-observability'
@@ -98,7 +99,10 @@ export class RunTraceCollector {
     try {
       action()
     } catch (err) {
-      console.warn('[run-trace] 仓储写入失败:', err instanceof Error ? err.message : err)
+      console.warn(
+        translate('en-US', 'ai.runTrace.runTraceRepositoryWriteFailed'),
+        err instanceof Error ? err.message : err
+      )
     }
   }
 

@@ -1,3 +1,4 @@
+import { aiText, text as appText } from '../i18n'
 import type { ArtifactFile } from '../../shared/types'
 import { VfsError } from './vfs-error'
 import { clip, outlineBetween, outlineOf, renderOutline } from './text-outline'
@@ -85,13 +86,16 @@ export interface EditSpec {
 /** 路径规则与 <antdFile> 协议一致:相对路径、不含 ..、不以 / 开头 */
 function assertPath(path: string): string {
   const trimmed = path.trim()
-  if (!trimmed) throw new VfsError('路径不能为空。')
+  if (!trimmed) throw new VfsError(aiText('ai.sessionVfs.pathCannotBeEmpty'), 'INVALID_PATH')
   if (trimmed.startsWith('/') || /^[A-Za-z]:/.test(trimmed)) {
-    throw new VfsError('路径必须是相对路径,不能以 / 或盘符开头。')
+    throw new VfsError(
+      aiText('ai.sessionVfs.thePathMustBeRelativeAndCannotBeginWithOrADrive'),
+      'INVALID_PATH'
+    )
   }
   const normalized = trimmed.replace(/\\/g, '/')
   if (normalized.split('/').includes('..')) {
-    throw new VfsError('路径不允许包含 .. 。')
+    throw new VfsError(aiText('ai.sessionVfs.thePathCannotContain'), 'INVALID_PATH')
   }
   return normalized
 }
@@ -287,7 +291,10 @@ export class SessionVfs {
     const key = assertPath(path)
     const content = this.files.get(key)
     if (content === undefined) {
-      throw new VfsError(`文件不存在:${key}。用 list_files 看现有文件,新建文件用 write_file。`)
+      throw new VfsError(
+        aiText('ai.sessionVfs.fileDoesNotExistUseListFilesToInspectFilesOrWrite', key),
+        'FILE_NOT_FOUND'
+      )
     }
     return { key, content }
   }
@@ -301,14 +308,17 @@ export class SessionVfs {
    */
   read(path: string, startLine?: number, endLine?: number): string {
     const { key, content } = this.mustGet(path)
-    if (content === '') return '(空文件)'
+    if (content === '') return aiText('ai.sessionVfs.emptyFile')
 
     const lines = toLines(content)
     const total = lines.length
 
     const start = Math.max(1, startLine ?? 1)
     if (start > total) {
-      throw new VfsError(`起始行 ${start} 超出文件范围(共 ${total} 行)。`)
+      throw new VfsError(
+        appText('messages.startingLineExceedsTheFileLengthLines', start, total),
+        'INVALID_PATH'
+      )
     }
     const requestedEnd = endLine ?? total
     const capped = Math.min(requestedEnd, start + MAX_READ_LINES - 1)
@@ -322,15 +332,18 @@ export class SessionVfs {
 
     const notes: string[] = []
     if (end < requestedEnd) {
-      notes.push(`单次最多读 ${MAX_READ_LINES} 行,已截断到第 ${end} 行。`)
+      notes.push(aiText('ai.sessionVfs.atMostLinesPerReadTruncatedAtLine', MAX_READ_LINES, end))
     }
     if (start > 1 || end < total) {
-      notes.push(`${key} 共 ${total} 行,当前只看了 ${start}-${end}。`)
+      notes.push(aiText('ai.sessionVfs.hasLinesOnlyAreShown', key, total, start, end))
       const rest = outlineBetween(outlineOf(key, lines), 1, total).filter(
         (e) => e.line < start || e.line > end
       )
       const outline = renderOutline(rest)
-      if (outline) notes.push(`区间之外的结构大纲(只给骨架,取正文请再 read_file):\n${outline}`)
+      if (outline)
+        notes.push(
+          aiText('ai.sessionVfs.outlineOutsideThisRangeStructureOnlyUseReadFileForContent', outline)
+        )
     }
 
     return notes.length ? `${body}\n\n---\n${notes.join('\n')}` : body
@@ -342,9 +355,13 @@ export class SessionVfs {
     const lines = toLines(content)
     const rendered = renderOutline(outlineOf(key, lines))
     if (!rendered) {
-      return `${key} 共 ${lines.length} 行,这个类型没有可用的结构大纲,请用 read_file 按区间读。`
+      return aiText(
+        'ai.sessionVfs.hasLinesNoOutlineIsAvailableForThisTypeReadRangesWith',
+        key,
+        lines.length
+      )
     }
-    return `${key} 共 ${lines.length} 行,结构大纲:\n${rendered}`
+    return aiText('ai.sessionVfs.hasLinesOutline', key, lines.length, rendered)
   }
 
   /**
@@ -366,11 +383,17 @@ export class SessionVfs {
     const total = lines.length
 
     if (startLine < 1 || startLine > total) {
-      throw new VfsError(`起始行 ${startLine} 超出文件范围(${key} 共 ${total} 行)。`)
+      throw new VfsError(
+        aiText('ai.sessionVfs.startLineIsOutsideTheFileHasLines', startLine, key, total),
+        'INVALID_PATH'
+      )
     }
     const last = Math.min(endLine ?? startLine, total)
     if (last < startLine) {
-      throw new VfsError(`结束行 ${last} 不能小于起始行 ${startLine}。`)
+      throw new VfsError(
+        aiText('ai.sessionVfs.endLineCannotPrecedeStartLine', last, startLine),
+        'INVALID_PATH'
+      )
     }
 
     const picked = lines.slice(startLine - 1, last)
@@ -390,7 +413,8 @@ export class SessionVfs {
    * 打开文件——这是省 token 最直接的一条。
    */
   search(query: string, options: SearchOptions = {}): SearchHit[] {
-    if (!query) throw new VfsError('搜索内容不能为空。')
+    if (!query)
+      throw new VfsError(aiText('ai.sessionVfs.searchContentCannotBeEmpty'), 'INVALID_PATH')
 
     const limit = Math.min(options.maxResults ?? DEFAULT_SEARCH_RESULTS, MAX_SEARCH_RESULTS)
     const context = Math.max(0, Math.min(options.contextLines ?? 0, 5))
@@ -403,7 +427,13 @@ export class SessionVfs {
         flags
       )
     } catch (err) {
-      throw new VfsError(`正则表达式无效:${err instanceof Error ? err.message : String(err)}`)
+      throw new VfsError(
+        aiText(
+          'ai.sessionVfs.invalidRegularExpression',
+          err instanceof Error ? err.message : String(err)
+        ),
+        'TOOL_EXECUTION_FAILED'
+      )
     }
 
     const hits: SearchHit[] = []
@@ -464,7 +494,8 @@ export class SessionVfs {
    */
   multiEdit(path: string, edits: EditSpec[]): VfsPatch[] {
     this.assertWritesAllowed()
-    if (edits.length === 0) throw new VfsError('edits 不能为空。')
+    if (edits.length === 0)
+      throw new VfsError(aiText('ai.sessionVfs.editsCannotBeEmpty'), 'INVALID_PATH')
     const { key, content } = this.mustGetForEdit(path)
 
     let working = content
@@ -481,7 +512,10 @@ export class SessionVfs {
         })
       } catch (err) {
         const reason = err instanceof VfsError ? err.message : String(err)
-        throw new VfsError(`第 ${index + 1} 处编辑失败(其余改动已一并撤销):${reason}`)
+        throw new VfsError(
+          aiText('ai.sessionVfs.editFailedAllOtherChangesWereRolledBack', index + 1, reason),
+          'MATCH_NOT_FOUND'
+        )
       }
     }
 
@@ -503,9 +537,19 @@ export class SessionVfs {
     this.assertWritesAllowed()
     const source = this.mustGetForEdit(from)
     const target = assertPath(to)
-    if (source.key === target) throw new VfsError('源路径与目标路径相同。')
+    if (source.key === target)
+      throw new VfsError(
+        aiText('ai.sessionVfs.sourceAndDestinationPathsAreIdentical'),
+        'TOOL_EXECUTION_FAILED'
+      )
     if (this.files.has(target)) {
-      throw new VfsError(`目标路径 ${target} 已存在。先 delete_file,或换一个名字。`)
+      throw new VfsError(
+        aiText(
+          'ai.sessionVfs.destinationAlreadyExistsUseDeleteFileFirstOrChooseAnotherName',
+          target
+        ),
+        'FILE_ALREADY_EXISTS'
+      )
     }
     this.remove(source.key)
     return { removed: source.key, patch: this.write(target, source.content) }
@@ -516,9 +560,19 @@ export class SessionVfs {
     this.assertWritesAllowed()
     const source = this.mustGetForEdit(from)
     const target = assertPath(to)
-    if (source.key === target) throw new VfsError('源路径与目标路径相同。')
+    if (source.key === target)
+      throw new VfsError(
+        aiText('ai.sessionVfs.sourceAndDestinationPathsAreIdentical'),
+        'TOOL_EXECUTION_FAILED'
+      )
     if (this.files.has(target)) {
-      throw new VfsError(`目标路径 ${target} 已存在。先 delete_file,或换一个名字。`)
+      throw new VfsError(
+        aiText(
+          'ai.sessionVfs.destinationAlreadyExistsUseDeleteFileFirstOrChooseAnotherName',
+          target
+        ),
+        'FILE_ALREADY_EXISTS'
+      )
     }
     return this.write(target, source.content)
   }
@@ -535,7 +589,10 @@ export class SessionVfs {
     const wasTouched = this.touched.has(key)
     const wasRemoved = this.removed.has(key)
     if (!wasTouched && !wasRemoved) {
-      throw new VfsError(`${key} 本回合没有改动过,无需撤销。`)
+      throw new VfsError(
+        aiText('ai.sessionVfs.hasNotChangedThisTurnNothingToRevert', key),
+        'TOOL_EXECUTION_FAILED'
+      )
     }
 
     const origin = this.original.get(key)
@@ -558,7 +615,10 @@ export class SessionVfs {
     this.assertWritesAllowed()
     const key = assertPath(path)
     if (!this.files.has(key)) {
-      throw new VfsError(`文件不存在:${key},无需删除。`)
+      throw new VfsError(
+        aiText('ai.sessionVfs.fileDoesNotExistNothingToDelete', key),
+        'FILE_NOT_FOUND'
+      )
     }
     this.files.delete(key)
     this.revisions.delete(key)
@@ -599,7 +659,10 @@ export class SessionVfs {
     const key = assertPath(path)
     const content = this.files.get(key)
     if (content === undefined) {
-      throw new VfsError(`文件不存在:${key}。新建文件请用 write_file。`)
+      throw new VfsError(
+        aiText('ai.sessionVfs.fileDoesNotExistCreateItWithWriteFile', key),
+        'FILE_NOT_FOUND'
+      )
     }
     return { key, content }
   }
@@ -680,22 +743,30 @@ export class SessionVfs {
 function applyEdit(content: string, spec: EditSpec): { content: string; multi: boolean } {
   const { oldText, newText, replaceAll = false } = spec
   if (!oldText) {
-    throw new VfsError('old_string 不能为空。整份写入请用 write_file。')
+    throw new VfsError(
+      aiText('ai.sessionVfs.oldStringCannotBeEmptyUseWriteFileForACompleteRewrite'),
+      'TOOL_EXECUTION_FAILED'
+    )
   }
   if (oldText === newText) {
-    throw new VfsError('新旧内容相同,无需编辑。')
+    throw new VfsError(
+      aiText('ai.sessionVfs.theOldAndNewContentAreIdenticalNoEditIsNeeded'),
+      'TOOL_EXECUTION_FAILED'
+    )
   }
 
   const hits = countOccurrences(content, oldText)
   if (hits === 0) {
     throw new VfsError(
-      '未找到匹配内容。请先 search_files 或 read_file 确认原文(注意缩进与空行),' +
-        'old_string 需与原文逐字符一致;也可以用 get_range 按行列把原文精确取出来。'
+      aiText('ai.sessionVfs.noMatchingContentCheckTheOriginalWithSearchFilesOrReadFile') +
+        aiText('ai.sessionVfs.oldStringMustMatchCharacterForCharacterUseGetRangeForExact'),
+      'MATCH_NOT_FOUND'
     )
   }
   if (hits > 1 && !replaceAll) {
     throw new VfsError(
-      `匹配到 ${hits} 处。请扩大 old_string 包含更多上下文行以保证唯一,或传 replace_all: true。`
+      aiText('ai.sessionVfs.foundMatchesIncludeMoreContextInOldStringToMakeItUnique', hits),
+      'MATCH_AMBIGUOUS'
     )
   }
 

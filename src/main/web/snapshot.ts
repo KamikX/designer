@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import type { AXNode } from './session'
 
 /**
@@ -130,12 +131,14 @@ export function buildSnapshot(nodes: AXNode[], page: { url: string; title: strin
   if (root) walk(root, 0)
 
   const body = lines.join('\n')
-  const tail = truncated ? `\n…(还有更多元素未列出,可以滚动或缩小范围后重新取快照)` : ''
+  const tail = truncated
+    ? appText('web.snapshot.moreElementsAreAvailableScrollOrNarrowTheScopeAndTakeAnother')
+    : ''
 
   return {
     url: page.url,
     title: page.title,
-    text: `# ${page.title}\n${page.url}\n\n${body || '(页面上没有可交互元素)'}${tail}`,
+    text: `# ${page.title}\n${page.url}\n\n${body || appText('web.snapshot.noInteractiveElementsOnThisPage')}${tail}`,
     refs,
     truncated
   }
@@ -146,14 +149,18 @@ function state(node: AXNode): string {
   const flags: string[] = []
   for (const prop of node.properties ?? []) {
     const value = prop.value?.value
-    if (prop.name === 'checked' && value && value !== 'false') flags.push('已选中')
-    if (prop.name === 'selected' && value === true) flags.push('已选中')
-    if (prop.name === 'expanded') flags.push(value === true ? '已展开' : '已折叠')
-    if (prop.name === 'disabled' && value === true) flags.push('禁用')
-    if (prop.name === 'required' && value === true) flags.push('必填')
+    if (prop.name === 'checked' && value && value !== 'false')
+      flags.push(appText('web.snapshot.selected'))
+    if (prop.name === 'selected' && value === true) flags.push(appText('web.snapshot.selected'))
+    if (prop.name === 'expanded')
+      flags.push(
+        value === true ? appText('web.snapshot.expanded') : appText('web.snapshot.collapsed')
+      )
+    if (prop.name === 'disabled' && value === true) flags.push(appText('web.snapshot.disabled'))
+    if (prop.name === 'required' && value === true) flags.push(appText('web.snapshot.required'))
   }
   const current = node.value?.value
-  if (current) flags.push(`当前值:${clip(String(current), 40)}`)
+  if (current) flags.push(appText('web.snapshot.currentValue', clip(String(current), 40)))
   return flags.length ? ` (${flags.join(', ')})` : ''
 }
 

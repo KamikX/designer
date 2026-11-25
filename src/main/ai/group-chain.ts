@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 /** 单条路径的深度上限(从根一路接下去数几棒) */
 export const MAX_HOPS = 8
 /**
@@ -99,7 +100,7 @@ export class GroupChainGuard {
       return {
         ok: false,
         reason: 'member-limit',
-        message: `「${name}」已参与 ${MAX_VISITS} 次，为避免无限返工，接力已自动停止。还需要 TA 继续的话，再发一条 @${name} 即可。`
+        message: aiText('ai.groupChain.hasParticipatedTimesTheRelayStopped', name, MAX_VISITS, name)
       }
     }
 
@@ -108,7 +109,12 @@ export class GroupChainGuard {
       return {
         ok: false,
         reason: 'cycle-detected',
-        message: `「${this.previous?.name} → ${name}」这条交接已经走过 ${MAX_EDGE_REPEATS} 次，继续更像是在绕圈，接力已自动停止。需要继续的话，手动 @ 下一位成员即可。`
+        message: aiText(
+          'ai.groupChain.theHandoffHasOccurredTimesTheRelayStoppedToAvoidALoop',
+          this.previous?.name,
+          name,
+          MAX_EDGE_REPEATS
+        )
       }
     }
 
@@ -116,7 +122,10 @@ export class GroupChainGuard {
       return {
         ok: false,
         reason: 'hop-limit',
-        message: `这条接力已达 ${MAX_HOPS} 棒上限，已自动停止。需要继续的话，手动 @ 下一位成员即可。`
+        message: aiText(
+          'ai.groupChain.thisRelayReachedItsTurnLimitAndStoppedMentionTheNextMember',
+          MAX_HOPS
+        )
       }
     }
 
@@ -124,7 +133,10 @@ export class GroupChainGuard {
       return {
         ok: false,
         reason: 'hop-limit',
-        message: `本轮全部分支合计已达 ${MAX_TOTAL_HOPS} 棒上限，已自动停止。需要继续的话，手动 @ 下一位成员即可。`
+        message: aiText(
+          'ai.groupChain.allBranchesTogetherReachedTheTurnLimitAndStoppedMentionTheNext',
+          MAX_TOTAL_HOPS
+        )
       }
     }
 

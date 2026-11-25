@@ -1,3 +1,4 @@
+import { text as appText, aiText } from '../i18n'
 import { installLibrary, listLibraries, updateLibrary, removeLibrary } from '../libraries/service'
 import { translate } from '../../shared/i18n'
 import { dialog, ipcMain, nativeTheme } from 'electron'
@@ -186,7 +187,7 @@ export function registerIpc(): void {
   ipcMain.handle('group:list', () => listGroups())
   ipcMain.handle('group:create', (_e, input: CreateGroupInput) => {
     if (input == null || typeof input.name !== 'string' || !input.name.trim()) {
-      throw new Error('群组名称不能为空')
+      throw new Error(appText('messages.groupNameCannotBeEmpty'))
     }
     const members = createGroupMembers(input.members, {
       models: listModels(),
@@ -196,15 +197,19 @@ export function registerIpc(): void {
     return createGroup({ name: input.name.trim(), members })
   })
   ipcMain.handle('group:update', (_e, input: UpdateGroupInput) => {
-    if (input == null || typeof input.id !== 'string') throw new Error('群组不存在')
+    if (input == null || typeof input.id !== 'string')
+      throw new Error(aiText('ai.groupService.groupNotFound'))
     if (typeof input.name !== 'string' || !input.name.trim()) {
-      throw new Error('群组名称不能为空')
+      throw new Error(appText('messages.groupNameCannotBeEmpty'))
     }
     const conversation = getConversation(input.id)
-    if (!conversation || conversation.kind !== 'group') throw new Error('群组不存在')
+    if (!conversation || conversation.kind !== 'group')
+      throw new Error(aiText('ai.groupService.groupNotFound'))
     // 每一棒开始时都重读成员配置,链跑一半改配置=中途换人设
     if (isGroupChainRunning(input.id)) {
-      throw new Error('接力进行中,先等它结束或点停止,再修改群组配置。')
+      throw new Error(
+        appText('messages.aRelayIsRunningWaitForItToFinishOrStopItBeforeEditingTheGroup')
+      )
     }
     const members = updateGroupMembers(
       normalizeGroupMembers(conversation.settings?.members),
@@ -301,8 +306,11 @@ export function registerIpc(): void {
   ipcMain.handle('workspace:list', (_e, scope: RootScope) => listRoots(scope))
   ipcMain.handle('workspace:grant', async (_e, scope: RootScope) => {
     const res = await dialog.showOpenDialog({
-      title: translate(readConfig().lang, '选择要让 AI 参考的本地目录'),
-      message: translate(readConfig().lang, 'AI 将能读取该目录下的文件用于分析;范围之外一律不可见'),
+      title: translate(readConfig().lang, 'messages.selectALocalDirectoryForAiToReference'),
+      message: translate(
+        readConfig().lang,
+        'messages.aiCanReadFilesInThisDirectoryForAnalysisOtherPathsRemainInaccessible'
+      ),
       properties: ['openDirectory']
     })
     if (res.canceled || res.filePaths.length === 0) return null
@@ -312,8 +320,11 @@ export function registerIpc(): void {
   // 走 grant-paths,点"+ 文件"的走这里
   ipcMain.handle('workspace:pick-files', async (_e, scope: RootScope) => {
     const res = await dialog.showOpenDialog({
-      title: translate(readConfig().lang, '选择要让 AI 参考的文件'),
-      message: translate(readConfig().lang, 'AI 将能读取这些文件用于分析;其余文件一律不可见'),
+      title: translate(readConfig().lang, 'messages.selectFilesForAiToReference'),
+      message: translate(
+        readConfig().lang,
+        'messages.aiCanReadTheseFilesForAnalysisOtherFilesRemainInaccessible'
+      ),
       properties: ['openFile', 'multiSelections']
     })
     if (res.canceled || res.filePaths.length === 0) return { granted: [], rejected: [] }
@@ -353,7 +364,7 @@ export function registerIpc(): void {
   ipcMain.handle('skill:create', (_e, name: string) => createSkillPackage(name))
   ipcMain.handle('skill:install-market', async (_e, id: string) => {
     const entry = (await catalog().skills()).find((s) => s.id === id)
-    if (!entry) throw new Error('市场里没有这个技能')
+    if (!entry) throw new Error(appText('messages.thisSkillIsNotInTheMarketplace'))
     return installSkillContent(entry.name, entry.description, entry.content)
   })
   ipcMain.handle('skill:delete', (_e, name: string) => removeSkillPackage(name))

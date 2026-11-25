@@ -34,56 +34,56 @@ const store = useProviderStore()
 
 const ADAPTER_LABEL: Record<string, string> = {
   get openai() {
-    return t('OpenAI 接口')
+    return t('common.openaiApi')
   },
   get anthropic() {
-    return t('Anthropic 接口')
+    return t('common.anthropicApi')
   },
   get google() {
-    return t('Gemini 接口')
+    return t('common.geminiApi')
   },
   get deepseek() {
-    return t('DeepSeek 接口')
+    return t('common.deepseekApi')
   },
   get 'openai-compatible'() {
-    return t('OpenAI 兼容接口')
+    return t('common.openaiCompatibleApi')
   }
 }
 
 const TYPE_OPTIONS: { label: string; value: ModelType }[] = [
   {
     get label() {
-      return t('对话')
+      return t('common.chatLabel')
     },
     value: 'chat'
   },
   {
     get label() {
-      return t('绘图')
+      return t('common.imageGeneration')
     },
     value: 'image'
   },
   {
     get label() {
-      return t('向量')
+      return t('common.embeddings')
     },
     value: 'embedding'
   },
   {
     get label() {
-      return t('重排')
+      return t('common.reranking')
     },
     value: 'rerank'
   },
   {
     get label() {
-      return t('语音合成')
+      return t('common.textToSpeech')
     },
     value: 'tts'
   },
   {
     get label() {
-      return t('语音识别')
+      return t('common.speechRecognition')
     },
     value: 'stt'
   }
@@ -96,19 +96,19 @@ const TYPE_LABEL = computed<Record<string, string>>(() =>
 const ABILITY_OPTIONS: { label: string; value: ModelAbility }[] = [
   {
     get label() {
-      return t('识图')
+      return t('common.imageInput')
     },
     value: 'vision'
   },
   {
     get label() {
-      return t('文件')
+      return t('common.file')
     },
     value: 'files'
   },
   {
     get label() {
-      return t('工具')
+      return t('common.tools')
     },
     value: 'tools'
   }
@@ -262,7 +262,7 @@ const PRESETS: Preset[] = [
   {
     key: 'zhipu',
     get label() {
-      return t('智谱 AI')
+      return t('common.zhipuAi')
     },
     adapter: 'openai-compatible',
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
@@ -300,7 +300,7 @@ const PRESETS: Preset[] = [
   {
     key: 'custom',
     get label() {
-      return t('其他(OpenAI 兼容)')
+      return t('common.otherOpenaiCompatible')
     },
     adapter: 'openai-compatible',
     baseUrl: '',
@@ -410,7 +410,7 @@ watch(
 
 async function loadModels(): Promise<void> {
   if (!drawer.apiKey.trim() && !drawer.editing?.hasKey) {
-    message.warning(t('请先填写 API Key'))
+    message.warning(t('messages.enterAnApiKeyFirst'))
     return
   }
   drawer.loadingModels = true
@@ -427,7 +427,7 @@ async function loadModels(): Promise<void> {
       (m) => !seen.has(m.modelId) && drawer.checked.includes(m.modelId)
     )
     drawer.candidates = [...remote, ...kept]
-    message.success(t('拉取到 {0} 个模型', remote.length))
+    message.success(t('common.fetchedModels', remote.length))
   } catch (err) {
     message.error(uiMessage(err instanceof Error ? err.message : String(err)))
   } finally {
@@ -451,7 +451,7 @@ function buildSelections(): ModelSelection[] {
 
 async function save(): Promise<void> {
   if (!drawer.name.trim()) {
-    message.warning(t('请填写供应商名称'))
+    message.warning(t('messages.enterAProviderName'))
     return
   }
   drawer.saving = true
@@ -473,7 +473,7 @@ async function save(): Promise<void> {
       await store.setModelSelection(provider.id, buildSelections())
     }
     drawer.open = false
-    message.success(t('已保存'))
+    message.success(t('common.saved'))
   } catch (err) {
     // 任何一步失败都要让用户看见,不能静默吞掉
     message.error(uiMessage(err instanceof Error ? err.message : String(err)))
@@ -492,7 +492,7 @@ async function runTest(p: Provider): Promise<void> {
   testResult[p.id] = ''
   try {
     const r = await store.test(p.id)
-    testResult[p.id] = r.ok ? t('✓ 连通,{0}ms', r.latencyMs) : `✗ ${uiMessage(r.error)}`
+    testResult[p.id] = r.ok ? t('common.connectedMs', r.latencyMs) : `✗ ${uiMessage(r.error)}`
   } finally {
     testing[p.id] = false
   }
@@ -501,9 +501,9 @@ async function runTest(p: Provider): Promise<void> {
 function confirmRemove(p: Provider): void {
   modal.confirm({
     get title() {
-      return t('删除供应商「{0}」?', p.name)
+      return t('common.deleteProvider', p.name)
     },
-    content: t('其下的模型配置会一并删除。'),
+    content: t('messages.itsModelConfigurationsWillAlsoBeDeleted'),
     okType: 'danger',
     onOk: () => store.removeProvider(p.id)
   })
@@ -524,7 +524,7 @@ function toggleExpand(id: string): void {
 function modelMeta(m: Model): string {
   if (m.type !== 'chat') return TYPE_LABEL.value[m.type] ?? m.type
   const abilities = m.abilities.map((a) => ABILITY_LABEL.value[a] ?? a).join(' / ')
-  return abilities ? t('对话 · {0}', abilities) : t('对话')
+  return abilities ? t('common.chatLabelText', abilities) : t('common.chatLabel')
 }
 </script>
 
@@ -532,20 +532,20 @@ function modelMeta(m: Model): string {
   <div style="max-width: 800px">
     <a-flex justify="space-between" align="center" style="margin-bottom: 12px">
       <span style="font-size: 12px; opacity: 0.65">
-        {{ t('密钥加密保存在本机,绝不上传;点击卡片可修改端点、密钥、模型与能力') }}
+        {{ t('messages.keysAreEncryptedLocallyAndNever') }}
       </span>
       <a-button type="primary" @click="openAdd">
         <template #icon><PlusOutlined /></template>
-        {{ t('添加供应商') }}
+        {{ t('common.addProvider') }}
       </a-button>
     </a-flex>
 
     <a-empty
       v-if="store.loaded && store.providers.length === 0"
-      :description="t('还没有配置任何供应商')"
+      :description="t('common.noProvidersConfigured')"
       style="margin-top: 80px"
     >
-      <a-button type="primary" @click="openAdd">{{ t('添加供应商') }}</a-button>
+      <a-button type="primary" @click="openAdd">{{ t('common.addProvider') }}</a-button>
     </a-empty>
 
     <div v-else class="provider-cards">
@@ -573,18 +573,18 @@ function modelMeta(m: Model): string {
               {{ ADAPTER_LABEL[p.adapter] ?? p.adapter }}
             </a-tag>
             <a-tag v-if="p.hasKey && p.keyStorage === 'plain'" color="warning" style="margin: 0">
-              {{ t('密钥明文') }}
+              {{ t('common.plaintextKey') }}
             </a-tag>
             <span class="provider-card-hint">
-              {{ p.hasKey ? t('密钥 {0}', p.keyHint) : t('未配置密钥') }}
-              · {{ store.enabledModelsOf(p.id).length }} {{ t('个模型') }}
+              {{ p.hasKey ? t('common.key', p.keyHint) : t('common.noKeyConfigured') }}
+              · {{ store.enabledModelsOf(p.id).length }} {{ t('common.models') }}
               <template v-if="testResult[p.id]"> · {{ testResult[p.id] }}</template>
             </span>
           </a-flex>
 
           <a-space :size="12" class="provider-card-actions" @click.stop>
             <a-button type="link" size="small" style="padding: 0" @click="openEdit(p)">
-              {{ t('配置') }}
+              {{ t('common.configure') }}
             </a-button>
             <a-button
               type="link"
@@ -594,10 +594,10 @@ function modelMeta(m: Model): string {
               :disabled="!p.hasKey"
               @click="runTest(p)"
             >
-              {{ t('测试') }}
+              {{ t('common.test') }}
             </a-button>
             <a style="color: var(--ant-color-error); font-size: 13px" @click="confirmRemove(p)">
-              {{ t('删除') }}
+              {{ t('common.deleteLabel') }}
             </a>
             <a-switch
               :checked="p.enabled"
@@ -631,7 +631,7 @@ function modelMeta(m: Model): string {
             </a-flex>
           </template>
           <div v-else style="font-size: 12px; opacity: 0.45; padding: 8px 0">
-            {{ t('未启用任何模型,点「配置」添加') }}
+            {{ t('messages.noModelsEnabledClickConfigureToAddOne') }}
           </div>
         </div>
       </div>
@@ -639,41 +639,46 @@ function modelMeta(m: Model): string {
 
     <a-drawer
       v-model:open="drawer.open"
-      :title="isEdit ? t('配置 — {0}', drawer.editing?.name) : t('添加供应商')"
+      :title="isEdit ? t('common.configureLabel', drawer.editing?.name) : t('common.addProvider')"
       size="large"
       destroy-on-close
     >
       <a-form layout="vertical">
-        <a-form-item v-if="!isEdit" :label="t('选择供应商')">
+        <a-form-item v-if="!isEdit" :label="t('common.selectProvider')">
           <a-select
             v-model:value="drawer.presetKey"
             :options="PRESETS.map((p) => ({ label: p.label, value: p.key }))"
           />
         </a-form-item>
 
-        <a-form-item :label="t('名称')" required>
-          <a-input v-model:value="drawer.name" :placeholder="t('如 OpenAI / 某中转站')" />
+        <a-form-item :label="t('common.name')" required>
+          <a-input v-model:value="drawer.name" :placeholder="t('messages.eGOpenaiCustomProxy')" />
         </a-form-item>
 
         <a-form-item label="Base URL">
-          <a-input v-model:value="drawer.baseUrl" :placeholder="t('留空使用官方默认端点')" />
-        </a-form-item>
-
-        <a-form-item :label="drawer.editing?.hasKey ? t('API Key(已保存,留空沿用)') : 'API Key'">
-          <a-input-password
-            v-model:value="drawer.apiKey"
-            autocomplete="off"
-            :placeholder="t('保存后只显示脱敏提示')"
+          <a-input
+            v-model:value="drawer.baseUrl"
+            :placeholder="t('messages.leaveBlankToUseTheOfficialDefaultEndpoint')"
           />
         </a-form-item>
 
-        <a-form-item :label="t('模型')">
+        <a-form-item
+          :label="drawer.editing?.hasKey ? t('messages.apiKeySavedLeaveBlankToKeep') : 'API Key'"
+        >
+          <a-input-password
+            v-model:value="drawer.apiKey"
+            autocomplete="off"
+            :placeholder="t('messages.onlyAMaskedIndicatorIsShownAfterSaving')"
+          />
+        </a-form-item>
+
+        <a-form-item :label="t('common.model')">
           <a-flex :gap="8">
             <a-select
               v-model:value="drawer.checked"
               mode="tags"
               style="flex: 1; min-width: 0"
-              :placeholder="t('预设已推荐常用模型;可拉取、搜索或手输模型 ID')"
+              :placeholder="t('messages.presetsRecommendCommonModelsFetchSearchOrEnterAModelId')"
               :options="drawer.candidates.map((m) => ({ label: m.displayName, value: m.modelId }))"
               :max-tag-count="6"
               allow-clear
@@ -684,18 +689,14 @@ function modelMeta(m: Model): string {
               @click="loadModels"
             >
               <template #icon><SyncOutlined /></template>
-              {{ t('加载模型') }}
+              {{ t('common.loadModels') }}
             </a-button>
           </a-flex>
         </a-form-item>
 
-        <a-form-item v-if="drawer.checked.length" :label="t('模型类型与能力')">
+        <a-form-item v-if="drawer.checked.length" :label="t('messages.modelTypesAndCapabilities')">
           <div class="caps-hint">
-            {{
-              t(
-                '类型决定模型用在哪个功能里;能力仅对话类模型可选——识图 = 图片输入,文件 = 文档输入,工具 = function calling。默认按模型名推断,可手动纠正'
-              )
-            }}
+            {{ t('messages.typeDeterminesWhereAModelIs') }}
           </div>
           <div class="caps-list" :style="{ borderColor: token.colorBorderSecondary }">
             <a-flex
@@ -724,8 +725,10 @@ function modelMeta(m: Model): string {
 
       <template #footer>
         <a-flex justify="flex-end" :gap="8">
-          <a-button @click="drawer.open = false">{{ t('取消') }}</a-button>
-          <a-button type="primary" :loading="drawer.saving" @click="save">{{ t('保存') }}</a-button>
+          <a-button @click="drawer.open = false">{{ t('common.cancel') }}</a-button>
+          <a-button type="primary" :loading="drawer.saving" @click="save">{{
+            t('common.save')
+          }}</a-button>
         </a-flex>
       </template>
     </a-drawer>

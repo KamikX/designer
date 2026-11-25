@@ -31,11 +31,11 @@ async function importProject(): Promise<void> {
     await store.load(true)
     if (result.warnings.length) {
       modal.warning({
-        title: t('项目已导入，部分选择不可用'),
+        title: t('messages.projectImportedSomeSelectionsAreUnavailable'),
         content: result.warnings.join('\n'),
         bodyStyle: { maxHeight: '60vh', overflowY: 'auto', overscrollBehavior: 'contain' }
       })
-    } else message.success(t('项目已导入'))
+    } else message.success(t('common.projectImported'))
     openProject(result.project.id)
   } catch (error) {
     message.error(uiMessage(error instanceof Error ? error.message : String(error)))
@@ -58,8 +58,8 @@ function openProject(id: string): void {
 
 function confirmRemove(p: Project): void {
   modal.confirm({
-    title: t('删除项目「{0}」?', p.name),
-    content: t('对话记录与设计稿会一并删除,不可恢复。'),
+    title: t('common.deleteProject', p.name),
+    content: t('messages.conversationHistoryAndDesignsWillAlsoBePermanentlyDeleted'),
     okType: 'danger',
     onOk: () => store.remove(p.id)
   })
@@ -81,35 +81,37 @@ function fromNow(time: string): string {
     <div v-if="store.loaded && store.projects.length === 0" class="home-empty">
       <div class="home-empty-inner">
         <AppstoreOutlined class="home-empty-icon" :style="{ color: token.colorTextQuaternary }" />
-        <h2 class="home-empty-title">{{ t('新建第一个项目') }}</h2>
+        <h2 class="home-empty-title">{{ t('messages.createYourFirstProject') }}</h2>
         <div class="home-empty-steps" :style="{ color: token.colorTextTertiary }">
           <div>
-            {{ t('1. 选技术栈与要做的端,给一句项目背景') }}
+            {{ t('messages.1ChooseATechnologyStackAndTargetAndDescribeYourProject') }}
           </div>
           <div>
-            {{ t('2. 用自然语言说要什么——AI 产出可运行的设计稿') }}
+            {{ t('messages.2DescribeWhatYouNeedAndAiWillCreateAWorkingDesign') }}
           </div>
           <div>
-            {{ t('3. 右侧实时预览,满意了导出') }}
+            {{ t('messages.3PreviewTheResultAndExportItWhenReady') }}
           </div>
         </div>
         <a-button type="primary" @click="createOpen = true">
           <template #icon><PlusOutlined /></template>
-          {{ t('新建项目') }}
+          {{ t('common.newProject') }}
         </a-button>
-        <a-button :loading="importing" @click="importProject">{{ t('导入项目') }}</a-button>
+        <a-button :loading="importing" @click="importProject">{{
+          t('common.importProject')
+        }}</a-button>
       </div>
     </div>
 
     <template v-else>
       <div class="home-head">
         <a-button style="float: right" :loading="importing" @click="importProject">{{
-          t('导入项目')
+          t('common.importProject')
         }}</a-button>
         <div>
-          <h1 class="home-title">{{ t('项目') }}</h1>
+          <h1 class="home-title">{{ t('common.projects') }}</h1>
           <div class="home-sub" :style="{ color: token.colorTextTertiary }">
-            {{ t('从一句需求开始,让 AI 帮你产出可交付的设计稿') }}
+            {{ t('messages.describeYourIdeaAndLetAiCreateADeliverableDesign') }}
           </div>
         </div>
       </div>
@@ -124,7 +126,7 @@ function fromNow(time: string): string {
           <span class="new-plus" :style="{ background: token.colorFillQuaternary }">
             <PlusOutlined />
           </span>
-          <span style="font-size: 13px">{{ t('新建项目') }}</span>
+          <span style="font-size: 13px">{{ t('common.newProject') }}</span>
         </button>
 
         <!-- 项目卡片 -->
@@ -138,7 +140,7 @@ function fromNow(time: string): string {
           <div class="card-body">
             <div class="card-name">{{ p.name }}</div>
             <div class="card-desc" :style="{ color: token.colorTextTertiary }">
-              {{ p.description || t('暂无描述') }}
+              {{ p.description || t('common.noDescription') }}
             </div>
             <ProjectTags
               class="card-tags"
@@ -159,7 +161,7 @@ function fromNow(time: string): string {
               class="card-busy"
               :style="{ color: token.colorPrimary }"
             >
-              <LoadingOutlined spin /> {{ t('生成中') }}
+              <LoadingOutlined spin /> {{ t('common.generatingLabel') }}
             </span>
             <button
               v-else

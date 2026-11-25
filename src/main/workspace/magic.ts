@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 /**
  * 按魔数识别文件格式。
  *
@@ -41,34 +42,169 @@ interface Signature {
 }
 
 const SIGNATURES: Signature[] = [
-  { bytes: [0x25, 0x50, 0x44, 0x46], info: { label: 'PDF 文档', readableAsDocument: true } },
-  { bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], info: { label: 'PNG 图片' } },
-  { bytes: [0xff, 0xd8, 0xff], info: { label: 'JPEG 图片' } },
-  { bytes: [0x47, 0x49, 0x46, 0x38], info: { label: 'GIF 图片' } },
+  {
+    bytes: [0x25, 0x50, 0x44, 0x46],
+    info: {
+      get label() {
+        return appText('workspace.magic.pdfDocument')
+      },
+      readableAsDocument: true
+    }
+  },
+  {
+    bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    info: {
+      get label() {
+        return appText('workspace.magic.pngImage')
+      }
+    }
+  },
+  {
+    bytes: [0xff, 0xd8, 0xff],
+    info: {
+      get label() {
+        return appText('workspace.magic.jpegImage')
+      }
+    }
+  },
+  {
+    bytes: [0x47, 0x49, 0x46, 0x38],
+    info: {
+      get label() {
+        return appText('workspace.magic.gifImage')
+      }
+    }
+  },
   // RIFF....WEBP:中间四字节是长度,跳过
   {
     bytes: [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x45, 0x42, 0x50],
-    info: { label: 'WebP 图片' }
+    info: {
+      get label() {
+        return appText('workspace.magic.webpImage')
+      }
+    }
   },
-  { bytes: [0x00, 0x00, 0x01, 0x00], info: { label: 'ICO 图标' } },
-  { bytes: [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66], info: { label: 'SQLite 数据库' } },
-  { bytes: [0x1f, 0x8b], info: { label: 'gzip 压缩包' } },
-  { bytes: [0x42, 0x5a, 0x68], info: { label: 'bzip2 压缩包' } },
-  { bytes: [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c], info: { label: '7z 压缩包' } },
-  { bytes: [0x52, 0x61, 0x72, 0x21], info: { label: 'RAR 压缩包' } },
-  { bytes: [0x7f, 0x45, 0x4c, 0x46], info: { label: 'ELF 可执行文件' } },
-  { bytes: [0xcf, 0xfa, 0xed, 0xfe], info: { label: 'Mach-O 可执行文件' } },
-  { bytes: [0x4d, 0x5a], info: { label: 'Windows 可执行文件' } },
-  { bytes: [0xca, 0xfe, 0xba, 0xbe], info: { label: 'Java class 文件' } },
-  { bytes: [0x00, 0x61, 0x73, 0x6d], info: { label: 'WebAssembly 模块' } },
-  { bytes: [0x00, 0x01, 0x00, 0x00, 0x00], info: { label: 'TrueType 字体' } },
-  { bytes: [0x77, 0x4f, 0x46, 0x46], info: { label: 'WOFF 字体' } },
-  { bytes: [0x77, 0x4f, 0x46, 0x32], info: { label: 'WOFF2 字体' } },
+  {
+    bytes: [0x00, 0x00, 0x01, 0x00],
+    info: {
+      get label() {
+        return appText('workspace.magic.icoIcon')
+      }
+    }
+  },
+  {
+    bytes: [0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66],
+    info: {
+      get label() {
+        return appText('workspace.magic.sqliteDatabase')
+      }
+    }
+  },
+  {
+    bytes: [0x1f, 0x8b],
+    info: {
+      get label() {
+        return appText('workspace.magic.gzipArchive')
+      }
+    }
+  },
+  {
+    bytes: [0x42, 0x5a, 0x68],
+    info: {
+      get label() {
+        return appText('workspace.magic.bzip2Archive')
+      }
+    }
+  },
+  {
+    bytes: [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c],
+    info: {
+      get label() {
+        return appText('workspace.magic.7zArchive')
+      }
+    }
+  },
+  {
+    bytes: [0x52, 0x61, 0x72, 0x21],
+    info: {
+      get label() {
+        return appText('workspace.magic.rarArchive')
+      }
+    }
+  },
+  {
+    bytes: [0x7f, 0x45, 0x4c, 0x46],
+    info: {
+      get label() {
+        return appText('workspace.magic.elfExecutable')
+      }
+    }
+  },
+  {
+    bytes: [0xcf, 0xfa, 0xed, 0xfe],
+    info: {
+      get label() {
+        return appText('workspace.magic.machOExecutable')
+      }
+    }
+  },
+  {
+    bytes: [0x4d, 0x5a],
+    info: {
+      get label() {
+        return appText('workspace.magic.windowsExecutable')
+      }
+    }
+  },
+  {
+    bytes: [0xca, 0xfe, 0xba, 0xbe],
+    info: {
+      get label() {
+        return appText('workspace.magic.javaClassFile')
+      }
+    }
+  },
+  {
+    bytes: [0x00, 0x61, 0x73, 0x6d],
+    info: {
+      get label() {
+        return appText('workspace.magic.webassemblyModule')
+      }
+    }
+  },
+  {
+    bytes: [0x00, 0x01, 0x00, 0x00, 0x00],
+    info: {
+      get label() {
+        return appText('workspace.magic.truetypeFont')
+      }
+    }
+  },
+  {
+    bytes: [0x77, 0x4f, 0x46, 0x46],
+    info: {
+      get label() {
+        return appText('workspace.magic.woffFont')
+      }
+    }
+  },
+  {
+    bytes: [0x77, 0x4f, 0x46, 0x32],
+    info: {
+      get label() {
+        return appText('workspace.magic.woff2Font')
+      }
+    }
+  },
   {
     // docx / xlsx / pptx / jar / epub 全是 zip 容器,魔数分不出来——
     // 只能如实说是 zip,具体类型交给后缀
     bytes: [0x50, 0x4b, 0x03, 0x04],
-    info: { label: 'zip 容器(docx / xlsx / 普通压缩包都是这个格式)' }
+    info: {
+      get label() {
+        return appText('workspace.magic.zipContainerUsedByDocxXlsxOrdinaryArchives')
+      }
+    }
   }
 ]
 

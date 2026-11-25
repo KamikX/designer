@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { t, uiMessage } from '@renderer/i18n'
+import { currentLanguage, t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { ArrowUpOutlined, PauseOutlined } from '@antdv-next/icons'
 import { useCollabStore } from '@renderer/stores/collab'
@@ -22,7 +22,7 @@ const draft = shallowRef('')
 
 /** 点成员 chip 往草稿里插「@角色名 」。已经写了一半就接在后面,补个空格分隔 */
 function mention(member: GroupRoleMeta): void {
-  const tag = `${createGroupMention(member)} `
+  const tag = `${createGroupMention(member, currentLanguage())} `
   if (!draft.value) draft.value = tag
   else draft.value = `${draft.value.replace(/\s+$/, '')} ${tag}`
 }
@@ -30,7 +30,7 @@ function mention(member: GroupRoleMeta): void {
 const mentionOptions = computed(() =>
   collab.mentionMembers.map((member) => ({
     label: member.name,
-    value: createGroupMention(member).slice(1)
+    value: createGroupMention(member, currentLanguage()).slice(1)
   }))
 )
 
@@ -97,10 +97,12 @@ function onKeydownCapture(e: KeyboardEvent): void {
     >
       <a-mentions
         v-model:value="draft"
-        :aria-label="t('群组消息')"
+        :aria-label="t('common.groupMessage')"
         :options="mentionOptions"
         class="gcomposer-input"
-        :placeholder="t('@产品经理 说说你要做什么;不 @ 任何人就只是留言')"
+        :placeholder="
+          t('messages.productManagerDescribeWhatYouNeedWithoutAMentionYourMessageIsOnlyANote')
+        "
         :auto-size="{ minRows: 2, maxRows: 8 }"
         variant="borderless"
         @keydown.enter="onEnter"
@@ -114,11 +116,17 @@ function onKeydownCapture(e: KeyboardEvent): void {
       </a-mentions>
 
       <div class="gcomposer-toolbar">
-        <a-tooltip :title="collab.chainingHere ? t('停止接力') : t('Enter 发送,Shift+Enter 换行')">
+        <a-tooltip
+          :title="
+            collab.chainingHere
+              ? t('common.stopRelay')
+              : t('messages.enterToSendShiftEnterForANewLine')
+          "
+        >
           <a-button
             v-if="collab.chainingHere"
             class="gcomposer-send"
-            :aria-label="t('暂停群组接力')"
+            :aria-label="t('common.pauseGroupRelay')"
             type="primary"
             shape="circle"
             @click="collab.abort()"
@@ -128,7 +136,7 @@ function onKeydownCapture(e: KeyboardEvent): void {
           <a-button
             v-else
             class="gcomposer-send"
-            :aria-label="t('发送群组消息')"
+            :aria-label="t('common.sendGroupMessage')"
             type="primary"
             shape="circle"
             :disabled="!draft.trim()"

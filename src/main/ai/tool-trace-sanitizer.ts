@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { createHash } from 'node:crypto'
 import { safePath } from './session-vfs'
 import { VfsError } from './vfs-error'
@@ -37,7 +38,7 @@ function designPath(input: Record<string, unknown>): string | null {
 /** 查询类:只保留长度,一个字都不留 */
 function queryLength(input: Record<string, unknown>): string | null {
   const query = str(input, 'query')
-  return query ? `查询 ${query.length} 字符` : null
+  return query ? appText('ai.toolTraceSanitizer.queryCharacters', query.length) : null
 }
 
 /**
@@ -69,7 +70,7 @@ function askUserCounts(input: Record<string, unknown>): string | null {
     const options = q && typeof q === 'object' ? (q as Record<string, unknown>).options : null
     return sum + (Array.isArray(options) ? options.length : 0)
   }, 0)
-  return `${questions.length} 题 ${optionCount} 选项`
+  return appText('ai.toolTraceSanitizer.questionsOptions', questions.length, optionCount)
 }
 
 /**
@@ -161,12 +162,19 @@ const CREDENTIAL_PATTERNS = [
  */
 export function redactTraceText(text: string): string {
   let out = text
-  for (const pattern of CREDENTIAL_PATTERNS) out = out.replace(pattern, '[凭证]')
+  for (const pattern of CREDENTIAL_PATTERNS)
+    out = out.replace(pattern, appText('ai.toolTraceSanitizer.credential'))
   // URL 整体打码(host 在白名单阶段已单独提取,这里出现的都是漏网的)
   out = out.replace(/https?:\/\/\S+/g, '[URL]')
-  out = out.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '[邮箱]')
+  out = out.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, appText('ai.toolTraceSanitizer.email'))
   // 绝对路径:*nix 两级以上、Windows 盘符路径
-  out = out.replace(/(?:^|[\s("'`])\/(?:[\w.@~-]+\/)+[\w.@~-]+/g, ' [路径]')
-  out = out.replace(/[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*/g, '[路径]')
+  out = out.replace(
+    /(?:^|[\s("'`])\/(?:[\w.@~-]+\/)+[\w.@~-]+/g,
+    appText('ai.toolTraceSanitizer.path')
+  )
+  out = out.replace(
+    /[A-Za-z]:\\(?:[^\\\s]+\\)*[^\\\s]*/g,
+    appText('ai.toolTraceSanitizer.pathText')
+  )
   return out.slice(0, 240)
 }

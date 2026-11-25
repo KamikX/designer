@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { App } from 'antdv-next'
-import { t, uiMessage } from '@renderer/i18n'
+import { currentLanguage, t, uiMessage } from '@renderer/i18n'
 import { decodeDesignDocument, MAX_DESIGN_DOCUMENT_BYTES } from '@shared/visual-guidance'
 import type { VisualStylePriority } from '@shared/types'
 
@@ -30,8 +30,13 @@ async function importFile(event: Event): Promise<void> {
   loading.value = true
   emit('loading', true)
   try {
-    if (file.size > MAX_DESIGN_DOCUMENT_BYTES) throw new Error(t('DESIGN.md 不能超过 64 KiB'))
-    const content = decodeDesignDocument(file.name, new Uint8Array(await file.arrayBuffer()))
+    if (file.size > MAX_DESIGN_DOCUMENT_BYTES)
+      throw new Error(t('messages.designMdMustNotExceed64Kib'))
+    const content = decodeDesignDocument(
+      file.name,
+      new Uint8Array(await file.arrayBuffer()),
+      currentLanguage()
+    )
     if (current !== generation) return
     designDocument.value = content
     filename.value = file.name
@@ -48,47 +53,41 @@ async function importFile(event: Event): Promise<void> {
 
 <template>
   <a-form-item
-    :label="t('视觉风格（可选）')"
-    :extra="
-      t('可描述色彩、明暗、信息密度、字体、圆角、动效等；无视觉资料时，AI 会在首次生成前询问。')
-    "
+    :label="t('common.visualStyle')"
+    :extra="t('messages.describeColorsLightDarkModeDensity')"
   >
     <a-textarea
       v-model:value="styleBrief"
       :rows="4"
-      :placeholder="t('如：深色工业感，高信息密度，紧凑无衬线字体，卡片近直角，动效克制')"
+      :placeholder="t('messages.eGDarkIndustrialStyleHigh')"
     />
   </a-form-item>
   <a-form-item
-    :label="t('DESIGN.md（可选）')"
-    :extra="
-      t(
-        '仅用于视觉规则，不改变技能选择、工作流程或技术与可访问性要求。支持 UTF-8 .md，最大 64 KiB。'
-      )
-    "
+    :label="t('common.designMdOptional')"
+    :extra="t('messages.visualRulesOnlySkillSelectionWorkflows')"
   >
     <input ref="input" type="file" accept=".md" hidden @change="importFile" />
     <a-space wrap>
       <a-button :loading="loading" @click="input?.click()">{{
-        designDocument ? t('替换文件') : t('导入 DESIGN.md')
+        designDocument ? t('common.replaceFile') : t('common.importDesignMd')
       }}</a-button>
       <span v-if="designDocument">{{ filename || 'DESIGN.md' }}</span>
       <a-button v-if="designDocument" :disabled="loading" @click="designDocument = ''">{{
-        t('移除')
+        t('common.remove')
       }}</a-button>
     </a-space>
     <pre v-if="designDocument" class="design-preview">{{ designDocument }}</pre>
   </a-form-item>
   <a-form-item
     v-if="designDocument"
-    :label="t('视觉规则冲突时优先使用')"
-    :extra="t('无冲突的规则会合并使用；当前对话中的明确要求优先。')"
+    :label="t('messages.whenVisualRulesConflictPrefer')"
+    :extra="t('messages.compatibleRulesAreCombinedExplicitRequests')"
   >
     <a-segmented
       v-model:value="priority"
       :options="[
-        { label: t('Visual style 优先'), value: 'styleBrief' },
-        { label: t('DESIGN.md 优先'), value: 'designDocument' }
+        { label: t('common.visualStyleFirst'), value: 'styleBrief' },
+        { label: t('common.designMdFirst'), value: 'designDocument' }
       ]"
     />
   </a-form-item>

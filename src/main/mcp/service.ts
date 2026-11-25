@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import type { McpServerInput, McpServerView, McpTransport } from '../../shared/types'
 import { parseMcpText, readMcpConfig, writeMcpConfig } from './config'
 import { allSecrets } from './secrets'
@@ -62,7 +63,7 @@ export function listMcpViews(): { servers: McpServerView[]; problem?: string } {
 
 export function upsertMcp(name: string, input: McpServerInput): McpServerView {
   const trimmed = name.trim()
-  if (!trimmed) throw new Error('服务名不能为空')
+  if (!trimmed) throw new Error(appText('messages.serviceNameCannotBeEmpty'))
   const config: McpServerConfig = {
     ...(input.transport !== 'stdio' ? { type: input.transport } : {}),
     ...(input.command ? { command: input.command } : {}),
@@ -97,10 +98,13 @@ export function removeMcp(name: string): void {
 
 /** 粘贴一段别的工具的配置,合并进 mcp.json。返回新增/覆盖的服务 */
 export function importMcpText(json: string): McpServerView[] {
-  const { servers: incoming, problem } = parseMcpText(json, '粘贴的配置')
+  const { servers: incoming, problem } = parseMcpText(
+    json,
+    appText('mcp.service.pastedConfiguration')
+  )
   if (problem) throw new Error(problem)
   const names = Object.keys(incoming)
-  if (names.length === 0) throw new Error('配置里没有任何服务。')
+  if (names.length === 0) throw new Error(appText('messages.theConfigurationContainsNoServices'))
   const { servers } = readMcpConfig()
   writeMcpConfig({ ...servers, ...incoming })
   return names.map((n) => toView(n, incoming[n]))

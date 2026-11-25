@@ -5,9 +5,11 @@ const router = useRouter()
 
 <template>
   <div class="page-pad">
-    <a-result status="404" title="404" :sub-title="t('页面不存在')">
+    <a-result status="404" title="404" :sub-title="t('common.pageNotFound')">
       <template #extra>
-        <a-button type="primary" @click="router.replace('/')">{{ t('回到首页') }}</a-button>
+        <a-button type="primary" @click="router.replace('/')">{{
+          t('common.backToHome')
+        }}</a-button>
       </template>
     </a-result>
   </div>

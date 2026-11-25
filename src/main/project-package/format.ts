@@ -1,3 +1,4 @@
+import type { Lang } from '../../shared/types'
 import AdmZip from 'adm-zip'
 import { createHash } from 'node:crypto'
 import { inflateRawSync } from 'node:zlib'
@@ -271,8 +272,8 @@ function unique<T>(rows: T[], key: (row: T) => string): Map<string, T> {
   return map
 }
 
-function validateRelationships(m: Manifest): void {
-  validateVisualGuidance(m.project)
+function validateRelationships(m: Manifest, lang: Lang): void {
+  validateVisualGuidance(m.project, lang)
   if (m.project.targets?.includes('components') && m.project.targets.length > 1)
     throw new Error('Invalid project targets')
   const cs = unique(m.conversations, (v) => v.id)
@@ -347,7 +348,7 @@ export interface ProjectPackage {
 }
 
 /** Parse metadata first, then resolve each version once using immutable payload references. */
-export function readPackage(data: Buffer): ProjectPackage {
+export function readPackage(data: Buffer, lang: Lang = 'zh-CN'): ProjectPackage {
   if (data.length > PACKAGE_LIMITS.compressed) throw new Error('Project package exceeds size limit')
   const zip = new AdmZip(data)
   const entries = zip.getEntries()
@@ -494,7 +495,7 @@ export function readPackage(data: Buffer): ProjectPackage {
     resolved.set(v.id, restored)
     m.artifacts.push(artifactSchema.parse(v))
   }
-  validateRelationships(m)
+  validateRelationships(m, lang)
   for (const asset of m.assets)
     checkTextAssets(textAsset(check(assetPath(asset), asset), asset.mime) ?? '')
   for (const lib of m.libraries)

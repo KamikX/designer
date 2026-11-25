@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 import { VfsError } from './vfs-error'
 
 /**
@@ -50,11 +51,14 @@ export function parsePatch(text: string): PatchOp[] {
 
   const start = lines.findIndex((l) => l.trim() === BEGIN)
   if (start < 0) {
-    throw new VfsError(`补丁必须以 "${BEGIN}" 开头。`)
+    throw new VfsError(
+      aiText('ai.patchFormat.thePatchMustBeginWith', BEGIN),
+      'PATCH_FORMAT_INVALID'
+    )
   }
   const stop = lines.findIndex((l, i) => i > start && l.trim() === END)
   if (stop < 0) {
-    throw new VfsError(`补丁必须以 "${END}" 结尾。`)
+    throw new VfsError(aiText('ai.patchFormat.thePatchMustEndWith', END), 'PATCH_FORMAT_INVALID')
   }
 
   const sections: Section[] = []
@@ -78,14 +82,18 @@ export function parsePatch(text: string): PatchOp[] {
     if (sections.length === 0) {
       if (line.trim() === '') continue
       throw new VfsError(
-        '补丁里出现了不属于任何文件的内容。每段之前要先写 "*** Update File: 路径"。'
+        aiText('ai.patchFormat.thePatchContainsContentOutsideAFileSectionBeginEachSectionWith'),
+        'PATCH_FORMAT_INVALID'
       )
     }
     sections[sections.length - 1].body.push(line)
   }
 
   if (sections.length === 0) {
-    throw new VfsError('补丁是空的,没有任何 Update / Add / Delete 段。')
+    throw new VfsError(
+      aiText('ai.patchFormat.thePatchIsEmptyNoUpdateAddDeleteSectionsWereFound'),
+      'PATCH_FORMAT_INVALID'
+    )
   }
 
   return sections.map(toOp)
@@ -100,7 +108,12 @@ function toOp(section: Section): PatchOp {
       .map((l) => {
         if (!l.startsWith('+')) {
           throw new VfsError(
-            `Add File 段(${section.path})里的每一行都要以 "+" 开头,发现:${JSON.stringify(l)}`
+            aiText(
+              'ai.patchFormat.everyLineInAddFileMustBeginWithFound',
+              section.path,
+              JSON.stringify(l)
+            ),
+            'TOOL_EXECUTION_FAILED'
           )
         }
         return l.slice(1)
@@ -128,7 +141,10 @@ function toHunks(section: Section): { before: string; after: string }[] {
     .filter((h): h is { before: string; after: string } => h !== null)
 
   if (hunks.length === 0) {
-    throw new VfsError(`Update File 段(${section.path})里没有任何改动行。`)
+    throw new VfsError(
+      aiText('ai.patchFormat.updateFileHasNoChangedLines', section.path),
+      'TOOL_EXECUTION_FAILED'
+    )
   }
   return hunks
 }
@@ -163,15 +179,21 @@ function toHunk(path: string, group: string[]): { before: string; after: string 
         break
       default:
         throw new VfsError(
-          `Update File 段(${path})里的行必须以空格 / "-" / "+" 开头,发现:${JSON.stringify(line)}`
+          aiText(
+            'ai.patchFormat.linesInUpdateFileMustBeginWithASpaceFound',
+            path,
+            JSON.stringify(line)
+          ),
+          'PATCH_FORMAT_INVALID'
         )
     }
   }
 
   if (!hasAnchor) {
     throw new VfsError(
-      `Update File 段(${path})里有一处只有新增行、没有任何上下文行,定位不到插入位置。` +
-        '请带上前后各几行原文作为上下文(以空格开头)。'
+      aiText('ai.patchFormat.updateFileHasAnInsertionWithout', path) +
+        aiText('ai.patchFormat.includeSeveralOriginalLinesBeforeAndAfterItAsContextPrefixedWith'),
+      'PATCH_FORMAT_INVALID'
     )
   }
   if (before.join('\n') === after.join('\n')) return null

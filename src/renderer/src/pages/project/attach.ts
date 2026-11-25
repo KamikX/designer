@@ -31,11 +31,7 @@ export function planAttachment(current: number, incoming: number): AttachPlan {
 export function composeMessageBody(text: string, paths: string[]): string {
   if (paths.length === 0) return text
   const list = paths.map((p) => `- ${p}`).join('\n')
-  return t(
-    '{0}\n\n附带文件(用 read_local_file / read_local_document 读取):\n{1}',
-    text,
-    list
-  ).trim()
+  return t('messages.attachedFilesReadWithReadLocalFileReadLocalDocument', text, list).trim()
 }
 
 /**
@@ -50,26 +46,24 @@ export function composeMessageBody(text: string, paths: string[]): string {
 export function composeMarks(text: string, marks: PreviewMark[]): string {
   if (marks.length === 0) return text
   const items = marks.map((mark) => renderMark(mark)).join('\n\n')
-  const head = t('用户在预览里标记了 {0} 处要改的元素:', marks.length)
-  const tail = t(
-    '带「源码」的直接按那个位置改;只有签名的用 search_files 按文本或 class 定位后再改。'
-  )
+  const head = t('messages.theUserMarkedElementsToChangeInThePreview', marks.length)
+  const tail = t('messages.forEntriesWithSourceLocationsEdit')
   return `${text}\n\n${head}\n\n${items}\n\n${tail}`.trim()
 }
 
 function renderMark(mark: PreviewMark): string {
   const { target } = mark
   const lines = [`[${mark.index}] ${target.tag}${target.id ? `#${target.id}` : ''}`]
-  if (target.source) lines.push(t('  源码:{0}', target.source))
-  if (target.text) lines.push(t('  文本:{0}', clean(target.text)))
+  if (target.source) lines.push(t('common.source', target.source))
+  if (target.text) lines.push(t('common.text', clean(target.text)))
   if (target.classes.length) lines.push(`  class:${clean(target.classes.join(' '))}`)
   const attrs = Object.entries(target.attrs)
   if (attrs.length)
-    lines.push(t('  属性:{0}', clean(attrs.map(([k, v]) => `${k}="${v}"`).join(' '))))
-  if (target.path) lines.push(t('  路径:{0}', clean(target.path)))
+    lines.push(t('common.attributes', clean(attrs.map(([k, v]) => `${k}="${v}"`).join(' '))))
+  if (target.path) lines.push(t('common.path', clean(target.path)))
   // 有源码坐标时原文就是冗余;没有时它是模型最后的定位线索
-  if (!target.source && target.html) lines.push(t('  原文:{0}', clean(target.html)))
-  lines.push(t('  备注:{0}', clean(mark.note) || '(没写备注,按上下文判断)'))
+  if (!target.source && target.html) lines.push(t('common.original', clean(target.html)))
+  lines.push(t('common.note', clean(mark.note) || t('messages.noNoteInferFromContext')))
   return lines.join('\n')
 }
 

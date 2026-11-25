@@ -1,3 +1,4 @@
+import { text as appText } from '../i18n'
 import { resolveConfig } from './config'
 import type { McpServerConfig } from './config'
 
@@ -42,7 +43,11 @@ export async function probeMcpServer(
   // 缺变量就不要连了:带着一个未展开的 ${TOKEN} 连上去,拿到的是一条和"没配密钥"
   // 毫不相干的认证错误,反而更难查
   if (missing.length) {
-    return { ok: false, error: `缺少环境变量:${missing.join('、')}`, missingEnv: missing }
+    return {
+      ok: false,
+      error: appText('messages.missingEnvironmentVariables', missing.join('、')),
+      missingEnv: missing
+    }
   }
 
   const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
@@ -54,9 +59,13 @@ export async function probeMcpServer(
     await withTimeout(
       client.connect(transport as never),
       TIMEOUT_MS,
-      `连接超时(${TIMEOUT_MS / 1000}s)。首次运行需要下载依赖,也可能是命令写错了。`
+      appText('messages.connectionTimedOutSTheFirst', TIMEOUT_MS / 1000)
     )
-    const listed = await withTimeout(client.listTools(), TIMEOUT_MS, '获取工具列表超时')
+    const listed = await withTimeout(
+      client.listTools(),
+      TIMEOUT_MS,
+      appText('messages.timedOutWhileFetchingTheToolList')
+    )
     return { ok: true, tools: listed.tools.map((t) => t.name) }
   } catch (err) {
     return { ok: false, error: describe(err, name) }
@@ -74,7 +83,7 @@ async function buildTransport(
   const type = config.type ?? (config.url ? 'http' : 'stdio')
 
   if (type === 'stdio') {
-    if (!config.command) throw new Error('stdio 类型必须给 command')
+    if (!config.command) throw new Error(appText('messages.theStdioTypeRequiresACommand'))
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
     return new StdioClientTransport({
       command: config.command,
@@ -86,7 +95,7 @@ async function buildTransport(
     })
   }
 
-  if (!config.url) throw new Error(`${type} 类型必须给 url`)
+  if (!config.url) throw new Error(appText('messages.theTypeRequiresAUrl', type))
   if (type === 'sse') {
     const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js')
     return new SSEClientTransport(new URL(config.url), {
@@ -103,11 +112,14 @@ async function buildTransport(
 /** 把底层错误翻成能照着改的话 */
 function describe(err: unknown, name: string): string {
   const text = err instanceof Error ? err.message : String(err)
-  if (/ENOENT/.test(text)) return `找不到命令(${text})。检查 command 拼写,或者该程序没装。`
-  if (/EACCES/.test(text)) return `没有执行权限:${text}`
-  if (/ECONNREFUSED|fetch failed/i.test(text)) return `连不上远端服务:${text}`
-  if (/401|403|unauthorized/i.test(text)) return `认证失败,多半是密钥没配对:${text}`
-  return `${name} 启动失败:${text}`
+  if (/ENOENT/.test(text))
+    return appText('messages.commandNotFoundCheckItsSpellingOrInstallTheProgram', text)
+  if (/EACCES/.test(text)) return appText('common.permissionDenied', text)
+  if (/ECONNREFUSED|fetch failed/i.test(text))
+    return appText('messages.cannotConnectToTheRemoteService', text)
+  if (/401|403|unauthorized/i.test(text))
+    return appText('messages.authenticationFailedCheckTheCredentials', text)
+  return appText('messages.failedToStart', name, text)
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

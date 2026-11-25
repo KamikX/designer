@@ -52,19 +52,20 @@ watch(open, async (isOpen) => {
 })
 
 const hint = computed(() => {
-  if (draft.value.trim() === '') return t('跟随全局设置({0})', globalLimit.value || '不限')
+  if (draft.value.trim() === '')
+    return t('messages.useGlobalSetting', globalLimit.value || t('common.unlimited'))
   const value = Number(draft.value)
-  if (!Number.isFinite(value) || value < 0) return t('请填 0 或正整数')
+  if (!Number.isFinite(value) || value < 0) return t('messages.enter0OrAPositiveInteger')
   return value === 0
-    ? t('不限次数,只剩上下文预算这一条熔断')
-    : t('本项目每轮最多 {0} 次工具调用', value)
+    ? t('messages.unlimitedCallsOnlyTheContextBudgetLimitApplies')
+    : t('messages.upToToolCallsPerTurnForThisProject', value)
 })
 
 async function save(): Promise<void> {
   const raw = draft.value.trim()
   const value = raw === '' ? null : Math.floor(Number(raw))
   if (value !== null && (!Number.isFinite(value) || value < 0)) {
-    message.warning(t('请填 0 或正整数,留空表示跟随全局'))
+    message.warning(t('messages.enter0OrAPositiveIntegerOrLeaveBlankToUseTheGlobalSetting'))
     return
   }
   if (saving.value || importing.value) return
@@ -76,7 +77,7 @@ async function save(): Promise<void> {
     await store.setVisualGuidance(projectId, { ...guidance })
     await store.setToolCallLimit(projectId, value)
     open.value = false
-    message.success(t('已保存,下一轮对话生效'))
+    message.success(t('messages.savedForTheNextTurn'))
   } catch (error) {
     message.error(uiMessage((error as Error).message))
   } finally {
@@ -86,40 +87,36 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <a-tooltip :title="t('项目设置')">
+  <a-tooltip :title="t('common.projectSettings')">
     <a-button type="text" size="small" @click="open = true">
       <template #icon><SettingOutlined /></template>
     </a-button>
   </a-tooltip>
   <a-modal
     v-model:open="open"
-    :title="t('项目设置')"
+    :title="t('common.projectSettings')"
     :width="600"
     :confirm-loading="saving"
     :ok-button-props="{ disabled: importing }"
-    :ok-text="t('保存')"
+    :ok-text="t('common.save')"
     @ok="save"
   >
     <a-form layout="vertical" class="proj-set">
-      <a-form-item :label="t('项目描述')">
+      <a-form-item :label="t('common.projectDescription')">
         <a-textarea
           v-model:value="description"
           :rows="3"
-          :placeholder="t('一句话说明这个项目要做什么,会作为 AI 的背景信息')"
+          :placeholder="t('messages.describeTheProjectForTheAi')"
         />
       </a-form-item>
       <a-form-item
-        :label="t('代码生成规则')"
-        :extra="t('每轮生成自动应用，保存后下一轮生效。不会自动安装依赖或开启联网。')"
+        :label="t('common.codeGenerationRules')"
+        :extra="t('messages.appliedToEveryGenerationStartingWith')"
       >
         <a-textarea
           v-model:value="codeInstructions"
           :rows="6"
-          :placeholder="
-            t(
-              '例如：使用 Zod 验证表单；通过 tailwind-variants 定义组件变体；所有界面文本使用翻译键。'
-            )
-          "
+          :placeholder="t('messages.forExampleValidateFormsWithZod')"
         />
       </a-form-item>
       <VisualGuidanceFields
@@ -129,10 +126,10 @@ async function save(): Promise<void> {
         v-model:priority="guidance.visualStylePriority"
         @loading="importing = $event"
       />
-      <a-form-item :label="t('单轮工具调用上限')" :extra="hint">
-        <a-input v-model:value="draft" :placeholder="t('留空跟随全局')" />
+      <a-form-item :label="t('messages.toolCallLimitPerTurn')" :extra="hint">
+        <a-input v-model:value="draft" :placeholder="t('messages.leaveBlankToUseGlobalSetting')" />
         <div :style="{ color: token.colorTextTertiary }">
-          {{ t('复杂改动需要更多次数;填 0 不限,单轮会更慢更贵。') }}
+          {{ t('messages.complexChangesNeedMoreCallsSet') }}
         </div>
       </a-form-item>
     </a-form>

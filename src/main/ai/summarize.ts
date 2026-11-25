@@ -1,3 +1,4 @@
+import { aiText } from '../i18n'
 /**
  * 文档提炼:用一个便宜的小模型把长文档压成"设计要用的东西"。
  *
@@ -29,35 +30,9 @@ const CHUNK_CHARS = 18000
 /** 最多分几块。再长的文档说明用户该自己挑重点了,不能无限烧钱 */
 const MAX_CHUNKS = 6
 
-export const DESIGN_SUMMARY_PROMPT = `
-你在为一位 UI 设计师读一份文档。他要照着这份文档做设计稿,所以你的任务
-**不是**写内容摘要,而是把"做设计要用到的东西"抽出来。
-
-按下面的结构输出,没有的条目直接省略,不要写"暂无":
-
-## 要做什么
-一两句话说清这是个什么产品、给谁用。
-
-## 页面 / 界面
-逐条列出文档里提到的页面或视图,每条注明它要展示什么、用户在上面做什么。
-
-## 数据与字段
-出现过的字段名、指标名、状态枚举,**用原文的叫法**。数值范围、上限下限
-也要带上。
-
-## 流程
-用户从哪一步走到哪一步,有分支就写清分支条件。
-
-## 明确的约束
-性能指标、合规要求、必须支持的设备或浏览器、品牌与配色要求——凡是文档
-里给了确切数字或名称的,**原样保留,不要概括**。
-
-## 存疑
-文档里没说清、但做设计必须知道的点。
-
-铁律:宁可多留一个具体数字,也不要为了简洁把它抹掉。"响应时间 < 200ms"
-不能写成"性能要求高";"主色 #1677ff"不能写成"蓝色系"。
-`.trim()
+export const DESIGN_SUMMARY_PROMPT = aiText(
+  'ai.summarize.youAreReadingADocumentForAUiDesignerWhoWillBuild'
+).trim()
 
 /**
  * 按段落边界分块。
@@ -92,9 +67,9 @@ export function buildChunkPrompt(
   total: number,
   hint?: string
 ): string {
-  const position = total > 1 ? `这是文档的第 ${index + 1} / ${total} 部分。\n\n` : ''
-  const purpose = hint?.trim() ? `设计师关心的是:${hint.trim()}\n\n` : ''
-  return `${position}${purpose}文档内容:\n\n${chunk}`
+  const position = total > 1 ? aiText('ai.summarize.thisIsDocumentSectionOf', index + 1, total) : ''
+  const purpose = hint?.trim() ? aiText('ai.summarize.theDesignerIsInterestedIn', hint.trim()) : ''
+  return aiText('ai.summarize.documentContent', position, purpose, chunk)
 }
 
 /** 真正调模型的那一步,由调用方注入,便于单测 */
@@ -123,10 +98,12 @@ export async function summarizeForDesign(
   const parts: string[] = []
   for (const [index, chunk] of chunks.entries()) {
     const out = await complete(
-      DESIGN_SUMMARY_PROMPT,
+      aiText('ai.summarize.youAreReadingADocumentForAUiDesignerWhoWillBuild').trim(),
       buildChunkPrompt(chunk, index, chunks.length, hint)
     )
-    parts.push(chunks.length > 1 ? `<!-- 第 ${index + 1} 部分 -->\n${out.trim()}` : out.trim())
+    parts.push(
+      chunks.length > 1 ? aiText('ai.summarize.section', index + 1, out.trim()) : out.trim()
+    )
   }
   return { text: parts.join('\n\n'), chunks: chunks.length }
 }

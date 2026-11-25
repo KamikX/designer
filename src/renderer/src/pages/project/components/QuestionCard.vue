@@ -114,18 +114,18 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
     <!-- 已答:只留摘要,不占地方 -->
     <template v-if="answer">
       <div v-if="answer.skipped" class="question-skipped">
-        {{ t('已跳过,AI 按自己的判断继续') }}
+        {{ t('messages.skippedAiWillContinueUsingItsOwnJudgment') }}
       </div>
       <template v-else>
         <div v-for="(q, i) in ask.questions" :key="i" class="question-summary">
           <span class="question-summary-label" :style="{ color: token.colorTextSecondary }">
             {{ q.header }}
           </span>
-          <span>{{ shown[i]?.join('、') || t('未选') }}</span>
+          <span>{{ shown[i]?.join('、') || t('common.notSelected') }}</span>
         </div>
         <div v-if="answer.notes" class="question-summary">
           <span class="question-summary-label" :style="{ color: token.colorTextSecondary }">
-            {{ t('补充') }}
+            {{ t('common.additionalDetails') }}
           </span>
           <span>{{ answer.notes }}</span>
         </div>
@@ -137,7 +137,9 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
       <div v-for="(q, i) in ask.questions" :key="i" class="question-block">
         <div class="question-title">
           {{ q.question }}
-          <span v-if="q.kind === 'multiple'" class="question-hint">{{ t('可多选') }}</span>
+          <span v-if="q.kind === 'multiple'" class="question-hint">{{
+            t('common.multipleSelectionsAllowed')
+          }}</span>
         </div>
 
         <div class="question-options">
@@ -177,7 +179,7 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
           v-model:value="custom[i]"
           :disabled="locked"
           size="small"
-          :placeholder="t('或者自己写一个…')"
+          :placeholder="t('messages.orEnterYourOwnAnswer')"
           style="margin-top: 6px"
         />
       </div>
@@ -192,7 +194,9 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
           autocomplete="off"
         />
         <div v-if="secret.help" class="question-secret-help">{{ secret.help }}</div>
-        <div class="question-secret-help">{{ t('加密保存在本机,不会出现在对话记录里') }}</div>
+        <div class="question-secret-help">
+          {{ t('messages.encryptedLocallyNeverIncludedInConversationHistory') }}
+        </div>
       </div>
 
       <div v-if="ask.notes" class="question-block">
@@ -201,12 +205,14 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
           v-model:value="notes"
           :disabled="locked"
           :rows="2"
-          :placeholder="ask.notes.placeholder ?? t('还有什么想让 AI 知道的?')"
+          :placeholder="ask.notes.placeholder ?? t('messages.anythingElseAiShouldKnow')"
         />
       </div>
 
       <div class="question-actions">
-        <a-button size="small" :disabled="locked" @click="submit(true)">{{ t('跳过') }}</a-button>
+        <a-button size="small" :disabled="locked" @click="submit(true)">{{
+          t('common.skip')
+        }}</a-button>
         <a-button
           type="primary"
           size="small"
@@ -214,10 +220,12 @@ const shown = computed(() => props.answer?.selections ?? selections.value)
           :loading="submitting"
           @click="submit(false)"
         >
-          {{ t('提交') }}
+          {{ t('common.submit') }}
         </a-button>
       </div>
-      <div v-if="stale" class="question-skipped">{{ t('这轮对话已结束,提问不再有效') }}</div>
+      <div v-if="stale" class="question-skipped">
+        {{ t('messages.thisTurnHasEndedTheQuestionIsNoLongerActive') }}
+      </div>
     </template>
   </div>
 </template>

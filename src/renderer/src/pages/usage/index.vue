@@ -21,19 +21,19 @@ const usage = useUsageStore()
 const RANGES = [
   {
     get label() {
-      return t('近 7 天')
+      return t('common.last7Days')
     },
     value: 7
   },
   {
     get label() {
-      return t('近 30 天')
+      return t('common.last30Days')
     },
     value: 30
   },
   {
     get label() {
-      return t('全部')
+      return t('common.allTime')
     },
     value: 0
   }
@@ -43,49 +43,49 @@ const range = ref<number>(7)
 const SCENES: { label: string; value: UsageScene | '' }[] = [
   {
     get label() {
-      return t('全部场景')
+      return t('common.allContexts')
     },
     value: ''
   },
   {
     get label() {
-      return t('设计')
+      return t('common.design')
     },
     value: 'design'
   },
   {
     get label() {
-      return t('聊天')
+      return t('common.chat')
     },
     value: 'chat'
   },
   {
     get label() {
-      return t('群组')
+      return t('common.group')
     },
     value: 'group'
   },
   {
     get label() {
-      return t('群组纪要')
+      return t('common.groupSummary')
     },
     value: 'group_digest'
   },
   {
     get label() {
-      return t('辅助模型')
+      return t('common.assistantModel')
     },
     value: 'assistant'
   },
   {
     get label() {
-      return t('文档提炼')
+      return t('common.documentSummary')
     },
     value: 'document_summary'
   },
   {
     get label() {
-      return t('连通性测试')
+      return t('common.connectionTest')
     },
     value: 'provider_test'
   }
@@ -111,11 +111,13 @@ function optionsOf(
 }
 
 const providerOptions = computed(() =>
-  optionsOf((r) => r.providerSlug || r.providerKey, providerKey.value, t('全部供应商'))
+  optionsOf((r) => r.providerSlug || r.providerKey, providerKey.value, t('common.allProviders'))
 )
-const modelOptions = computed(() => optionsOf((r) => r.modelId, modelId.value, t('全部模型')))
+const modelOptions = computed(() =>
+  optionsOf((r) => r.modelId, modelId.value, t('common.allModels'))
+)
 const projectOptions = computed(() =>
-  optionsOf((r) => r.projectKey, projectKey.value, t('全部项目'))
+  optionsOf((r) => r.projectKey, projectKey.value, t('common.allProjects'))
 )
 
 function fromDate(days: number): string | undefined {
@@ -151,20 +153,20 @@ const visibleRows = computed(() =>
 
 function hitRatioText(row: UsageDailyRow): string {
   const ratio = cacheHitRatio(row)
-  return ratio == null ? t('未报告') : `${Math.round(ratio * 100)}%`
+  return ratio == null ? t('common.notReported') : `${Math.round(ratio * 100)}%`
 }
 
 function confirmClear(): void {
   modal.confirm({
     get title() {
-      return t('清除全部模型用量?')
+      return t('messages.clearAllModelUsage')
     },
-    content: t('长期日聚合与去重数据将一起删除,不影响消息、版本和七天诊断明细。'),
-    okText: t('清除'),
+    content: t('messages.dailyAggregatesAndDeduplicationDataWill'),
+    okText: t('common.clear'),
     okType: 'danger',
     onOk: async () => {
       await usage.clear()
-      message.success(t('已清除'))
+      message.success(t('common.cleared'))
     }
   })
 }
@@ -173,15 +175,15 @@ function confirmClear(): void {
 <template>
   <div class="usage-page">
     <div class="usage-head">
-      <h2 class="usage-title">{{ t('模型用量') }}</h2>
+      <h2 class="usage-title">{{ t('common.modelUsage') }}</h2>
       <div class="usage-actions">
         <a-button size="small" @click="reload">
           <template #icon><ReloadOutlined /></template>
-          {{ t('刷新') }}
+          {{ t('common.refresh') }}
         </a-button>
         <a-button size="small" danger @click="confirmClear">
           <template #icon><DeleteOutlined /></template>
-          {{ t('清除用量') }}
+          {{ t('common.clearUsage') }}
         </a-button>
       </div>
     </div>
@@ -212,31 +214,31 @@ function confirmClear(): void {
     <div class="usage-stats">
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
-          {{ t('轮次') }}
+          {{ t('common.turns') }}
         </div>
         <div class="usage-stat-value">{{ usage.totals.runs.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
-          {{ t('模型请求') }}
+          {{ t('common.modelRequests') }}
         </div>
         <div class="usage-stat-value">{{ usage.totals.steps.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
-          {{ t('输入 token') }}
+          {{ t('common.inputTokens') }}
         </div>
         <div class="usage-stat-value">{{ usage.totals.inputTokens.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
-          {{ t('输出 token') }}
+          {{ t('common.outputTokens') }}
         </div>
         <div class="usage-stat-value">{{ usage.totals.outputTokens.toLocaleString() }}</div>
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
-          {{ t('平均每轮输入') }}
+          {{ t('messages.averageInputPerTurn') }}
         </div>
         <div class="usage-stat-value">
           {{ usage.totals.avgInputPerRun?.toLocaleString() ?? '—' }}
@@ -244,7 +246,7 @@ function confirmClear(): void {
       </div>
       <div class="usage-stat" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-stat-label" :style="{ color: token.colorTextTertiary }">
-          {{ t('平均每次请求输入') }}
+          {{ t('messages.averageInputPerRequest') }}
         </div>
         <div class="usage-stat-value">
           {{ usage.totals.avgInputPerStep?.toLocaleString() ?? '—' }}
@@ -253,19 +255,19 @@ function confirmClear(): void {
     </div>
 
     <a-spin :spinning="usage.loading">
-      <a-empty v-if="!visibleRows.length" :description="t('这个范围内没有用量记录')" />
+      <a-empty v-if="!visibleRows.length" :description="t('messages.noUsageRecordsInThisRange')" />
       <div v-else class="usage-table" :style="{ borderColor: token.colorBorderSecondary }">
         <div class="usage-row usage-row--head" :style="{ color: token.colorTextTertiary }">
-          <span>{{ t('日期') }}</span>
-          <span>{{ t('供应商 / 模型') }}</span>
-          <span>{{ t('场景') }}</span>
-          <span class="num">{{ t('轮 / 请求') }}</span>
-          <span class="num">{{ t('输入') }}</span>
-          <span class="num">{{ t('缓存读') }}</span>
-          <span class="num">{{ t('缓存写') }}</span>
-          <span class="num">{{ t('命中率') }}</span>
-          <span class="num">{{ t('输出') }}</span>
-          <span class="num">{{ t('思考') }}</span>
+          <span>{{ t('common.date') }}</span>
+          <span>{{ t('common.providerModel') }}</span>
+          <span>{{ t('common.context') }}</span>
+          <span class="num">{{ t('common.turnsRequests') }}</span>
+          <span class="num">{{ t('common.inputLabel') }}</span>
+          <span class="num">{{ t('common.cacheReadLabel') }}</span>
+          <span class="num">{{ t('common.cacheWriteLabel') }}</span>
+          <span class="num">{{ t('common.hitRate') }}</span>
+          <span class="num">{{ t('common.outputLabel') }}</span>
+          <span class="num">{{ t('common.reasoningLabel') }}</span>
         </div>
         <div
           v-for="row in visibleRows"

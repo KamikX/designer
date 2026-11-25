@@ -63,7 +63,7 @@ const testResult = ref('')
 
 async function save(): Promise<void> {
   if (mode.value === 's3' && (!form.endpoint.trim() || !form.bucket.trim())) {
-    message.warning(t('Endpoint 和 Bucket 必填'))
+    message.warning(t('messages.endpointAndBucketAreRequired'))
     return
   }
   saving.value = true
@@ -71,7 +71,7 @@ async function save(): Promise<void> {
     const next = await window.api.storage.setConfig(buildInput())
     hasSecret.value = next.s3?.hasSecret ?? false
     form.secretKey = ''
-    message.success(t('已保存'))
+    message.success(t('common.saved'))
   } finally {
     saving.value = false
   }
@@ -82,7 +82,7 @@ async function runTest(): Promise<void> {
   testResult.value = ''
   try {
     const r = await window.api.storage.test(buildInput())
-    testResult.value = r.ok ? t('✓ 连通,{0}ms', r.latencyMs ?? 0) : `✗ ${uiMessage(r.error)}`
+    testResult.value = r.ok ? t('common.connectedMs', r.latencyMs ?? 0) : `✗ ${uiMessage(r.error)}`
   } finally {
     testing.value = false
   }
@@ -92,19 +92,19 @@ async function runTest(): Promise<void> {
 <template>
   <div style="max-width: 560px">
     <a-form layout="vertical">
-      <a-form-item :label="t('存储位置')">
+      <a-form-item :label="t('common.storageLocation')">
         <a-segmented
           v-model:value="mode"
           :options="[
             {
               get label() {
-                return t('本地目录(默认)')
+                return t('common.localDirectoryDefault')
               },
               value: 'local'
             },
             {
               get label() {
-                return t('S3 兼容服务')
+                return t('common.s3CompatibleService')
               },
               value: 's3'
             }
@@ -116,7 +116,7 @@ async function runTest(): Promise<void> {
         <a-form-item label="Endpoint" required>
           <a-input
             v-model:value="form.endpoint"
-            :placeholder="t('https://minio.example.com 或 R2/OSS/COS 端点')"
+            :placeholder="t('messages.httpsMinioExampleComOrAnR2OssCosEndpoint')"
           />
         </a-form-item>
         <a-flex :gap="12">
@@ -124,30 +124,32 @@ async function runTest(): Promise<void> {
             <a-input v-model:value="form.bucket" />
           </a-form-item>
           <a-form-item label="Region" style="flex: 1">
-            <a-input v-model:value="form.region" :placeholder="t('留空为 auto')" />
+            <a-input v-model:value="form.region" :placeholder="t('messages.leaveBlankForAuto')" />
           </a-form-item>
         </a-flex>
         <a-form-item label="Access Key">
           <a-input v-model:value="form.accessKey" autocomplete="off" />
         </a-form-item>
-        <a-form-item :label="hasSecret ? t('Secret Key(已保存,留空沿用)') : 'Secret Key'">
+        <a-form-item
+          :label="hasSecret ? t('messages.secretKeySavedLeaveBlankToKeep') : 'Secret Key'"
+        >
           <a-input-password v-model:value="form.secretKey" autocomplete="off" />
         </a-form-item>
-        <a-form-item :label="t('自定义访问域名(CDN,可选)')">
+        <a-form-item :label="t('messages.customDomainCdnOptional')">
           <a-input v-model:value="form.publicBaseUrl" placeholder="https://cdn.example.com" />
         </a-form-item>
         <a-form-item>
           <a-space>
             <a-switch v-model:checked="form.forcePathStyle" size="small" />
-            <span>{{ t('Path-style 访问(MinIO 等自建服务需要开启)') }}</span>
+            <span>{{ t('messages.pathStyleAccessRequiredForSelfHostedServicesSuchAsMinio') }}</span>
           </a-space>
         </a-form-item>
       </template>
 
       <a-space>
-        <a-button type="primary" :loading="saving" @click="save">{{ t('保存') }}</a-button>
+        <a-button type="primary" :loading="saving" @click="save">{{ t('common.save') }}</a-button>
         <a-button v-if="mode === 's3'" :loading="testing" @click="runTest">{{
-          t('测试连接')
+          t('common.testConnection')
         }}</a-button>
         <span v-if="testResult">{{ testResult }}</span>
       </a-space>

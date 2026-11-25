@@ -8,7 +8,7 @@ import type {
   VisualStylePriority
 } from '@shared/types'
 
-export const STYLE_BRIEF_FIELD_LABEL = '视觉风格（可选）'
+export const STYLE_BRIEF_FIELD_LABEL = 'common.visualStyle'
 
 export interface CreateProjectForm {
   name: string

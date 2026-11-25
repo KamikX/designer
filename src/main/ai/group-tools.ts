@@ -1,3 +1,5 @@
+import { text as appText } from '../i18n'
+import { aiText } from '../i18n'
 import { tool } from 'ai'
 import type { ToolSet } from 'ai'
 import { z } from 'zod'
@@ -26,7 +28,7 @@ export function buildGroupHistoryTools(
   members: readonly GroupMentionMember[]
 ): ToolSet {
   const nameOf = (author: string | null | undefined): string => {
-    if (author === 'user' || !author) return '用户'
+    if (author === 'user' || !author) return appText('common.user')
     return members.find((member) => member.id === author)?.name ?? author
   }
   /** 每次调用现查库:接力过程中会不断有新消息落库,快照会读旧 */
@@ -46,16 +48,16 @@ export function buildGroupHistoryTools(
   return {
     list_group_messages: tool({
       description:
-        '列出本群组的全部历史消息(id / 发言人 / 字数 / 首行标题)。' +
-        '群聊记录里标注「已折叠」的旧发言,先用它找到消息 id,再用 read_group_message 读原文。',
+        aiText('ai.groupTools.listAllMessagesInThisGroupIdSpeakerCharacterCountFirstLine') +
+        aiText('ai.groupTools.forFoldedMessagesFindTheirIdsHereThenUseReadGroupMessage'),
       inputSchema: z.object({}),
       execute: async () => {
         const rows = completedMessages()
-        if (rows.length === 0) return '群里还没有消息。'
+        if (rows.length === 0) return aiText('ai.groupTools.theGroupHasNoMessagesYet')
         return rows
           .map((row) => {
             const title = row.text.split('\n', 1)[0].slice(0, 60)
-            return `${row.id} | ${row.name} | ${row.text.length} 字 | ${title}`
+            return aiText('ai.groupTools.characters', row.id, row.name, row.text.length, title)
           })
           .join('\n')
       }
@@ -63,8 +65,8 @@ export function buildGroupHistoryTools(
 
     read_group_message: tool({
       description:
-        '按行区间读取一条群消息的原文(消息 id 见群聊记录的折叠标注或 list_group_messages)。' +
-        `长文档**不要一次读完**:先读开头看目录,再按 start_line / end_line 取需要的章节,单次最多 ${MAX_READ_LINES} 行。`,
+        aiText('ai.groupTools.readAGroupMessageByLineRangeFindItsIdInFolded') +
+        aiText('ai.groupTools.doNotReadLongDocumentsAllAtOnceReadTheBeginningFor', MAX_READ_LINES),
       inputSchema: z.object({
         message_id: z.string(),
         start_line: z.number().int().min(1).optional(),
@@ -74,7 +76,10 @@ export function buildGroupHistoryTools(
         // 只认本群组的消息:message_id 是模型给的,当不可信输入
         const hit = completedMessages().find((row) => row.id === input.message_id)
         if (!hit)
-          return `错误:本群组里没有 id 为「${input.message_id}」的消息。先用 list_group_messages 查。`
+          return aiText(
+            'ai.groupTools.errorThisGroupHasNoMessageWithIdCheckListGroupMessages',
+            input.message_id
+          )
 
         const lines = hit.text.split('\n')
         const from = Math.max(1, input.start_line ?? 1)
@@ -84,15 +89,22 @@ export function buildGroupHistoryTools(
           from + MAX_READ_LINES - 1
         )
         if (from > lines.length)
-          return `错误:该消息只有 ${lines.length} 行,start_line=${from} 越界。`
+          return aiText(
+            'ai.groupTools.errorTheMessageHasOnlyLinesStartLineIsOutOfBounds',
+            lines.length,
+            from
+          )
 
         let body = lines.slice(from - 1, to).join('\n')
         if (body.length > MAX_RESULT_CHARS) {
-          body = `${body.slice(0, MAX_RESULT_CHARS)}\n\n…结果过长已截断,请缩小行区间。`
+          body = aiText(
+            'ai.groupTools.resultTruncatedRequestASmallerLineRange',
+            body.slice(0, MAX_RESULT_CHARS)
+          )
         }
         const note =
           from > 1 || to < lines.length
-            ? `\n\n---\n【${hit.name}】的这条消息共 ${lines.length} 行,当前看的是 ${from}-${to}。`
+            ? aiText('ai.groupTools.thisMessageByHasLinesShowing', hit.name, lines.length, from, to)
             : ''
         return body + note
       }

@@ -97,23 +97,23 @@ export function validateMemberDrafts(
   members: readonly MemberDraft[],
   validModelRowIds: ReadonlySet<string>
 ): string | null {
-  if (members.length === 0) return t('至少添加一位成员')
+  if (members.length === 0) return t('messages.addAtLeastOneMember')
 
   const names = new Set<string>()
   for (const member of members) {
     const name = member.name.trim()
     const length = [...name].length
-    if (length < 1 || length > 24) return t('成员名称长度需为 1–24 个字符')
+    if (length < 1 || length > 24) return t('messages.memberNamesMustContain124Characters')
     if (INVALID_NAME_CHARACTERS.test(name)) {
-      return t('成员名称不能包含 @、[、]、(、) 或换行')
+      return t('messages.memberNamesCannotContainOrLineBreaks')
     }
-    if (name === '用户') return t('成员名称不能使用“用户”')
-    if (names.has(name)) return t('成员名称不能重复')
+    if (name === '用户' || name.toLowerCase() === 'user') return t('messages.memberNamesCannotBe')
+    if (names.has(name)) return t('messages.memberNamesMustBeUnique')
     names.add(name)
 
-    if (!member.persona.trim()) return t('请填写“{0}”的人设', name)
+    if (!member.persona.trim()) return t('messages.enterAPersonaFor', name)
     if (!validModelRowIds.has(member.modelRowId)) {
-      return t('请为“{0}”选择支持工具调用的模型', name)
+      return t('messages.selectAModelWithToolSupportFor', name)
     }
   }
 

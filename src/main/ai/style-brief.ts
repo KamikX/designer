@@ -1,3 +1,5 @@
+import { localizedTools } from '../i18n'
+import { aiText } from '../i18n'
 import { promptText } from './prompts/i18n'
 import type { PromptLanguage } from './prompts/i18n'
 import { tool } from 'ai'
@@ -90,7 +92,7 @@ export async function restoreMarkerStyleIfArtifactFailed(input: {
     return false
   }
   const restored = await input.restore(input.commit.previousStyleBrief)
-  if (!restored) throw new Error('未能恢复项目视觉方向。')
+  if (!restored) throw new Error(aiText('ai.styleBrief.couldNotRestoreTheProjectSVisualDirection'))
   return true
 }
 
@@ -127,10 +129,14 @@ export async function commitMarkerStyleBrief(input: {
   }
 
   if (hasStyleProtocol && parser.hadUnclosedFile) {
-    throw new Error('文件标记未闭合，已拒绝保存视觉方向和文件改动。')
+    throw new Error(
+      aiText('ai.styleBrief.anUnclosedFileMarkerWasFoundVisualDirectionAndFileChangesWere')
+    )
   }
   if (parser.styleProtocolAfterFile) {
-    throw new Error('视觉方向或兜底风格标记必须先于文件输出，已拒绝保存和文件改动。')
+    throw new Error(
+      aiText('ai.styleBrief.visualDirectionOrFallbackStyleMustPrecedeFileOutputChangesWereNot')
+    )
   }
   // 旧 markers 会容忍并忽略非法路径；一旦声明 StyleBrief / fallback，
   // 文件与方向就是同一事务，必须在保存方向之前验证全部路径。
@@ -144,7 +150,7 @@ export async function commitMarkerStyleBrief(input: {
 
   // 首次生成不得把空清除标记当成风格确认；只有非空方向或显式 fallback 可放行。
   if (isInitialProject && hasFileOutput && !hasNonemptyStyleBrief && !parser.useStyleFallback) {
-    throw new Error('首次生成缺少整体视觉方向或兜底风格标记，已拒绝文件改动。')
+    throw new Error(aiText('ai.styleBrief.theFirstGenerationRequiresAVisual'))
   }
   if (
     clearsStyleBrief &&
@@ -153,7 +159,9 @@ export async function commitMarkerStyleBrief(input: {
     !input.designDocument?.trim() &&
     hasFileOutput
   ) {
-    throw new Error('清除视觉方向后必须在下一轮重新确认，已拒绝同轮文件改动。')
+    throw new Error(
+      aiText('ai.styleBrief.afterClearingVisualDirectionConfirmItAgainInTheNextTurnFile')
+    )
   }
 
   // 初始空项目里的空 marker 没有可清除的持久状态，fallback 也不应写回偏好。
@@ -165,10 +173,12 @@ export async function commitMarkerStyleBrief(input: {
   if (shouldSave) {
     try {
       const saved = await input.save(parser.pendingStyleBrief!)
-      if (!saved) throw new Error('项目不存在或未能保存。')
+      if (!saved) throw new Error(aiText('ai.styleBrief.theProjectDoesNotExistOrCouldNotBeSaved'))
       result.styleSaved = true
     } catch {
-      throw new Error('未能保存项目视觉方向，已丢弃本轮文件改动。')
+      throw new Error(
+        aiText('ai.styleBrief.couldNotSaveVisualDirectionFileChangesFromThisTurnWereDiscarded')
+      )
     }
   }
 
@@ -184,56 +194,69 @@ export function buildStyleBriefTools(
   context: StyleBriefToolContext | null,
   lang: PromptLanguage = 'zh-CN'
 ): ToolSet {
-  if (!context) return {}
+  if (!context) return localizedTools({}, lang)
 
-  return {
-    set_style_brief: tool({
-      description: promptText(lang, 'tools.set_style_brief.description'),
-      inputSchema: z.object({
-        styleBrief: z
-          .string()
-          .describe(promptText(lang, 'tools.set_style_brief.parameters.styleBrief'))
-      }),
-      execute: async (input) => {
-        const styleBrief = input.styleBrief.trim()
-        const wasWriteBlocked = context.vfs.isWriteBlocked()
-        if (wasWriteBlocked && !styleBrief) {
-          return "错误:首次整体视觉方向尚未确认；请通过 purpose: 'style-brief' 的 ask_user 跳过以使用兜底风格，或保存用户明确的非空整体方向。"
-        }
-        try {
-          const saved = await context.save(styleBrief)
-          if (!saved) throw new Error('项目不存在或未能保存。')
-          context.onSaved?.(styleBrief)
-        } catch {
-          const changes = context.vfs.changes()
-          context.vfs.blockWrites('未能保存项目视觉方向，本轮已丢弃文件改动且不再允许写入。', {
-            discardChanges: true,
-            permanent: true
-          })
-          context.onDiscard?.(changes)
-          return '错误:未能保存项目视觉方向，本轮文件改动已丢弃，后续写入已拒绝。'
-        }
+  return localizedTools(
+    {
+      set_style_brief: tool({
+        description: promptText(lang, 'tools.set_style_brief.description'),
+        inputSchema: z.object({
+          styleBrief: z
+            .string()
+            .describe(promptText(lang, 'tools.set_style_brief.parameters.styleBrief'))
+        }),
+        execute: async (input) => {
+          const styleBrief = input.styleBrief.trim()
+          const wasWriteBlocked = context.vfs.isWriteBlocked()
+          if (wasWriteBlocked && !styleBrief) {
+            return aiText(
+              'ai.styleBrief.errorTheInitialVisualDirectionIsUnconfirmedUseAskUserWithPurpose'
+            )
+          }
+          try {
+            const saved = await context.save(styleBrief)
+            if (!saved)
+              throw new Error(aiText('ai.styleBrief.theProjectDoesNotExistOrCouldNotBeSaved'))
+            context.onSaved?.(styleBrief)
+          } catch {
+            const changes = context.vfs.changes()
+            context.vfs.blockWrites(
+              aiText('ai.styleBrief.couldNotSaveTheVisualDirectionThisTurnSFileChangesWere'),
+              {
+                discardChanges: true,
+                permanent: true
+              }
+            )
+            context.onDiscard?.(changes)
+            return aiText('ai.styleBrief.errorCouldNotSaveTheVisualDirectionThisTurnSFileChanges')
+          }
 
-        if (!styleBrief && !context.designDocument?.trim() && context.initialHasFiles === false) {
-          const changes = context.vfs.changes()
-          context.vfs.blockWrites(
-            '视觉方向已清除且项目尚无设计稿；请在下一轮重新确认后再写文件。',
-            { discardChanges: true }
-          )
-          if (changes.length > 0) context.onDiscard?.(changes)
-        } else {
-          context.vfs.allowWrites()
+          if (!styleBrief && !context.designDocument?.trim() && context.initialHasFiles === false) {
+            const changes = context.vfs.changes()
+            context.vfs.blockWrites(
+              aiText('ai.styleBrief.visualDirectionClearedTheProjectHasNoDesignYetConfirmItAgain'),
+              { discardChanges: true }
+            )
+            if (changes.length > 0) context.onDiscard?.(changes)
+          } else {
+            context.vfs.allowWrites()
+          }
+          return styleBrief
+            ? aiText('ai.styleBrief.visualDirectionUpdatedForThisTurn', styleBrief)
+            : context.designDocument?.trim()
+              ? aiText('ai.styleBrief.visualStyleClearedContinueUsingTheVisualRulesInDesignMd')
+              : context.initialHasFiles === false
+                ? aiText(
+                    'ai.styleBrief.visualDirectionClearedTheProjectHasNoDesignYetConfirmTheOverall'
+                  )
+                : aiText(
+                    'ai.styleBrief.visualDirectionClearedForThisTurnContinueTheCurrentDesignSVisuals'
+                  )
         }
-        return styleBrief
-          ? `已更新视觉方向，本轮立即生效：${styleBrief}`
-          : context.designDocument?.trim()
-            ? '已清除 Visual style；继续使用 DESIGN.md 的视觉规则。'
-            : context.initialHasFiles === false
-              ? '已清除项目视觉方向；项目尚无设计稿，请在下一轮重新确认整体方向后再生成首稿。'
-              : '已清除项目视觉方向，本轮立即生效：后续将按当前设计稿处理。'
-      }
-    })
-  }
+      })
+    },
+    lang
+  )
 }
 
 function fallbackOptions(lang: PromptLanguage): Record<keyof StyleFallback, readonly string[]> {

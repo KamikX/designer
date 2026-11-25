@@ -1,3 +1,5 @@
+import { promptText } from './prompts/i18n'
+import { aiText } from '../i18n'
 import { generateText } from 'ai'
 import type { AdapterType } from '../../shared/types'
 import type { GroupMentionMember } from '../../shared/group-mentions'
@@ -52,7 +54,10 @@ export async function maybeUpdateGroupDigest(input: DigestUpdateInput): Promise<
     await updateDigest(input)
   } catch (err) {
     // 纪要是尽力而为的兜底,失败只意味着下一棒退回机械折叠
-    console.warn('[group-digest] 前情纪要更新失败:', err)
+    console.warn(
+      promptText('en-US', 'ai.groupDigest.groupDigestFailedToUpdateDiscussionDigest'),
+      err
+    )
   } finally {
     inflight.delete(input.conversationId)
   }
@@ -118,7 +123,11 @@ async function updateDigest(input: DigestUpdateInput): Promise<void> {
 /** 长文取头尾:中段多为过程性内容,结论在开头(摘要/假设)与结尾(交接) */
 function clip(text: string): string {
   if (text.length <= PER_MESSAGE_HEAD + PER_MESSAGE_TAIL) return text
-  return `${text.slice(0, PER_MESSAGE_HEAD)}\n……(中间从略)……\n${text.slice(-PER_MESSAGE_TAIL)}`
+  return aiText(
+    'ai.groupDigest.middleOmitted',
+    text.slice(0, PER_MESSAGE_HEAD),
+    text.slice(-PER_MESSAGE_TAIL)
+  )
 }
 
 export function digestPrompt(previous: string | null, fresh: TranscriptEntry[]): string {
@@ -127,7 +136,7 @@ export function digestPrompt(previous: string | null, fresh: TranscriptEntry[]):
   for (const entry of fresh) {
     const body = clip(entry.text)
     if (used + body.length > INPUT_MAX) {
-      blocks.push('(篇幅所限,更靠后的部分发言未列出)')
+      blocks.push(aiText('ai.groupDigest.laterMessagesWereOmittedForLength'))
       break
     }
     used += body.length
@@ -135,16 +144,16 @@ export function digestPrompt(previous: string | null, fresh: TranscriptEntry[]):
   }
 
   return [
-    '你是群聊纪要员。把下面的群聊发言压缩成一份「前情纪要」,供后续发言的成员快速了解此前的讨论。',
+    aiText('ai.groupDigest.youRecordGroupDiscussionsCompressThe'),
     [
-      '要求:',
-      '- 用 markdown,总长不超过 1500 字;',
-      '- 必须保留:用户的原始诉求、每位成员的关键结论与决策、已达成的一致口径、尚未解决的问题;',
-      '- 舍弃过程性内容;被后续发言推翻的旧结论只留一句「已被 xx 修订」;',
-      '- 直接输出纪要正文,不要任何解释或前言。'
+      aiText('ai.groupDigest.requirements'),
+      aiText('ai.groupDigest.useMarkdownKeepTheDigestWithin1500Characters'),
+      aiText('ai.groupDigest.preserveTheOriginalUserRequestEach'),
+      aiText('ai.groupDigest.omitProcessDetailsForSupersededConclusions'),
+      aiText('ai.groupDigest.outputOnlyTheDigestWithoutExplanationsOrAPreface')
     ].join('\n'),
-    previous ? `已有纪要(在其基础上合并更新):\n\n${previous}` : '',
-    `新增发言:\n\n${blocks.join('\n\n---\n\n')}`
+    previous ? aiText('ai.groupDigest.existingDigestMergeUpdatesIntoIt', previous) : '',
+    aiText('ai.groupDigest.newMessages', blocks.join('\n\n---\n\n'))
   ]
     .filter(Boolean)
     .join('\n\n')
