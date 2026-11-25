@@ -106,3 +106,18 @@ vue ≥ 3.5(bundle 用了 onWatcherCleanup)、antdv-next ≥ 1.0.4(更早没有 
   打不开。升级版本 = 改一处常量 + 回归验收。
 - **为什么不给 html 栈**:html 栈直出用户文件、不注入 import map(用户页面里
   可能自带一个,一个文档两个 import map 直接报错)。
+
+## Installed external npm libraries
+
+External libraries are prepared offline by `src/main/libraries/service.ts`. Installation
+includes the package root, manually configured subpaths, and concrete JavaScript subpaths
+from the package's public `exports` map (including browser/import conditions). For example,
+`tailwind-variants/lite` is bundled and mapped automatically when the package exports it.
+Browser-incompatible automatic entries are omitted; explicit entries still fail installation
+if they cannot be bundled. Wildcard exports and legacy paths require explicit subpaths.
+
+The persisted `entries` map remains the source for both preview imports and the model's
+available-import list. Existing installations must be refreshed with **Reinstall** in
+Settings → Libraries to discover additional exports. A failed rebuild preserves the
+previous prepared library. Reinstallation downloads dependencies and rebuilds the same
+exact package version; transitive versions may change within their declared ranges.

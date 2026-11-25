@@ -802,6 +802,7 @@
   "common.editInstructions": "编辑说明",
   "common.uninstallThisVersion": "卸载此版本？",
   "common.uninstall": "卸载",
+  "common.reinstallLibrary": "重新安装",
   "common.librarySaved": "依赖库已保存",
   "common.npmPackageName": "npm 包名",
   "common.exactVersion": "精确版本",

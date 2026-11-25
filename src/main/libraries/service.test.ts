@@ -39,9 +39,18 @@ vi.mock('@npmcli/arborist', () => ({
               }
             : {}),
           type: 'module',
-          exports: { '.': './index.js', './sub': './sub.js' }
+          exports: {
+            '.': './index.js',
+            './sub': './sub.js',
+            './lite': { types: './lite.d.ts', import: './sub.js' },
+            './node': './node.js',
+            './private': null,
+            './package.json': './package.json',
+            './wild/*': './*.js'
+          }
         })
       )
+      writeFileSync(join(pkg, 'node.js'), 'export { readFile } from "node:fs"')
       writeFileSync(join(pkg, 'shared.js'), 'export const shared = { value: 1 }')
       writeFileSync(
         join(pkg, 'index.js'),
@@ -150,6 +159,28 @@ describe('offline project libraries', () => {
     }
     expect(buildBootstrapHtml('react')).not.toContain('preview-fixture')
     expect(() => libraryFile(first, '../../library.json')).toThrow('Invalid library path')
+  })
+  it('discovers browser subpaths without manual configuration and exposes them to previews and prompts', async () => {
+    const lib = await installLibrary({ ...input(), subpaths: [] })
+    expect(Object.keys(lib.entries)).toEqual([
+      'preview-fixture',
+      'preview-fixture/sub',
+      'preview-fixture/lite'
+    ])
+    for (const stack of ['vue3', 'react'] as const) {
+      const html = buildBootstrapHtml(stack, '', [], resolveLibraries([input()], stack))
+      expect(html).toContain(
+        `"preview-fixture/lite":"./__libraries__/${lib.id}/${lib.entries['preview-fixture/lite']}"`
+      )
+    }
+    expect(libraryPrompt([input()], 'react')).toContain('preview-fixture/lite')
+    await expect(
+      installLibrary({ ...input(), subpaths: ['preview-fixture/node'] })
+    ).rejects.toThrow('node:fs')
+    expect(resolveLibraries([input()], 'react')[0].entries).toEqual(lib.entries)
+    const rebuilt = await installLibrary({ ...input(), subpaths: [] })
+    expect(rebuilt.ready).toBe(true)
+    expect(rebuilt.entries).toHaveProperty('preview-fixture/lite')
   })
   it('keeps only selected library instructions in prompts and blocks duplicate/incompatible references', async () => {
     await installLibrary(input())

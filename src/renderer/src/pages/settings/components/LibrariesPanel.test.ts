@@ -30,6 +30,7 @@ const update = vi.fn(
 const remove = vi.fn(async (ref: ExternalLibraryRef) => {
   structuredClone(ref)
 })
+const install = vi.fn(async (input: unknown) => structuredClone(input))
 const error = vi.fn()
 beforeEach(() => {
   vi.clearAllMocks()
@@ -42,6 +43,7 @@ beforeEach(() => {
       libraries: {
         list: vi.fn(async () => [lib]),
         update,
+        install,
         remove,
         onProgress: () => () => {}
       }
@@ -69,6 +71,27 @@ describe('library management IPC payloads', () => {
     )
     expect(error).not.toHaveBeenCalled()
     expect(wrapper.findComponent({ name: 'AModal' }).props('open')).toBe(false)
+  })
+  it('reinstalls an existing version with cloneable configuration to refresh its exports', async () => {
+    const wrapper = panel()
+    await flushPromises()
+    wrapper
+      .findAllComponents({ name: 'AButton' })
+      .find((button) => button.text() === '重新安装')!
+      .vm.$emit('click')
+    await flushPromises()
+    wrapper.findComponent({ name: 'AModal' }).vm.$emit('ok')
+    await flushPromises()
+    expect(install).toHaveBeenCalledWith({
+      name: lib.name,
+      version: lib.version,
+      stacks: lib.stacks,
+      description: lib.description,
+      instructions: lib.instructions,
+      subpaths: [],
+      css: []
+    })
+    expect(error).not.toHaveBeenCalled()
   })
   it('uninstalls a listed reactive library using only cloneable name and version fields', async () => {
     const wrapper = panel()

@@ -171,6 +171,37 @@ function optionalPeer(
   return null
 }
 
+// Only concrete JavaScript exports are automatic; wildcard and legacy paths remain explicit.
+function publicSubpaths(name: string, manifest: { exports?: unknown }): string[] {
+  const target = (value: unknown): string | undefined => {
+    if (typeof value === 'string') return value
+    if (Array.isArray(value)) return value.map(target).find(Boolean)
+    if (value && typeof value === 'object') {
+      for (const [condition, entry] of Object.entries(value)) {
+        if (['browser', 'import', 'default', 'module'].includes(condition)) {
+          const found = target(entry)
+          if (found) return found
+        }
+      }
+    }
+    return undefined
+  }
+  if (!manifest.exports || typeof manifest.exports !== 'object') return []
+  return Object.entries(manifest.exports)
+    .filter(([path, value]) => {
+      const file = target(value)
+      return (
+        path.startsWith('./') &&
+        !path.includes('*') &&
+        relativePath.safeParse(path.slice(2)).success &&
+        !!file &&
+        /\.(?:[cm]?js|jsx|tsx?)$/.test(file) &&
+        !/\.d\.[cm]?ts$/.test(file)
+      )
+    })
+    .map(([path]) => `${name}/${path.slice(2)}`)
+}
+
 export async function installLibrary(
   raw: InstallLibraryInput,
   progress: (event: LibraryProgress) => void = () => {}
@@ -182,15 +213,6 @@ export async function installLibrary(
     throw new Error('This package is managed by the built-in preview runtime.')
   const id = libraryId(input)
   if (active.has(id)) throw new Error('This library is already being installed.')
-  let existing: InstalledLibrary | null = null
-  if (existsSync(directory(input))) {
-    try {
-      existing = readLibrary(input)
-    } catch {
-      /* A damaged catalog entry may be repaired by reinstalling. */
-    }
-  }
-  if (existing?.ready) throw new Error('This version is already installed.')
   active.add(id)
   let temp = join(ROOT, `.install-${id}`)
   const emit = (stage: LibraryProgress['stage'], message: string): void =>
@@ -226,7 +248,12 @@ export async function installLibrary(
     emit('building', 'Preparing offline browser modules…')
     const entries: Record<string, string> = {}
     const entryPoints: Record<string, string> = {}
-    for (const [index, spec] of [...new Set([input.name, ...input.subpaths])].entries()) {
+    const manifest = JSON.parse(
+      readFileSync(join(temp, 'node_modules', input.name, 'package.json'), 'utf8')
+    ) as { exports?: unknown }
+    const explicit = new Set([input.name, ...input.subpaths])
+    const automatic = new Set(publicSubpaths(input.name, manifest).filter((p) => !explicit.has(p)))
+    for (const [index, spec] of [...explicit, ...automatic].entries()) {
       const file = `entry-${index}`
       entries[spec] = `${file}.js`
       entryPoints[file] = `library-entry:${spec}`
@@ -250,10 +277,10 @@ export async function installLibrary(
     const { build } = await import('esbuild')
     const missingPeers = new Map<string, string>()
     const attemptedPeers = new Set<string>()
-    const compile = (): Promise<BuildResult<{ metafile: true }>> =>
+    const compile = (points = entryPoints): Promise<BuildResult<{ metafile: true }>> =>
       build({
         absWorkingDir: temp,
-        entryPoints,
+        entryPoints: points,
         outdir: join(temp, 'dist'),
         bundle: true,
         platform: 'browser',
@@ -317,7 +344,27 @@ export async function installLibrary(
         result = await compile()
         break
       } catch (error) {
-        if (!missingPeers.size || pass === 9) throw error
+        if (!missingPeers.size) {
+          // A package can expose Node-only modules alongside its browser API.
+          // Omit incompatible automatic exports, but never hide explicit entry failures.
+          let removed = false
+          for (const spec of automatic) {
+            const key = entries[spec].replace(/\.js$/, '')
+            try {
+              await compile({ [key]: entryPoints[key] })
+            } catch {
+              delete entryPoints[key]
+              delete entries[spec]
+              automatic.delete(spec)
+              removed = true
+            }
+          }
+          if (!removed) throw error
+          rmSync(join(temp, 'dist'), { recursive: true, force: true })
+          result = await compile()
+          break
+        }
+        if (pass === 9) throw error
         const add = [...missingPeers].map(([name, range]) => {
           attemptedPeers.add(name)
           return `${name}@${range}`
@@ -352,9 +399,18 @@ export async function installLibrary(
     const styles = files.filter((p) => p.endsWith('.css'))
     const metadata = { ...input, id, entries, styles, files, installedAt: new Date().toISOString() }
     writeFileSync(join(temp, 'library.json'), JSON.stringify(metadata, null, 2))
-    // Failed installs never become visible in the catalog. Reinstall can repair missing dist files.
-    rmSync(directory(input), { recursive: true, force: true })
-    renameSync(temp, directory(input))
+    // Keep the previous prepared version usable if publishing a rebuild fails.
+    const destination = directory(input)
+    const backup = `${destination}.backup-${randomUUID()}`
+    const replacing = existsSync(destination)
+    if (replacing) renameSync(destination, backup)
+    try {
+      renameSync(temp, destination)
+    } catch (error) {
+      if (replacing) renameSync(backup, destination)
+      throw error
+    }
+    if (replacing) rmSync(backup, { recursive: true, force: true })
     emit('ready', 'Library is ready for offline previews.')
     return readLibrary(input)
   } catch (error) {

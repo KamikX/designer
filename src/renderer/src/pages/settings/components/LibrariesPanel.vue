@@ -50,6 +50,10 @@ function edit(lib: InstalledLibrary | null): void {
   progress.value = null
   open.value = true
 }
+function reinstall(lib: InstalledLibrary): void {
+  edit(lib)
+  editing.value = null
+}
 const lines = (text: string): string[] =>
   text
     .split('\n')
@@ -116,7 +120,10 @@ async function remove(lib: InstalledLibrary): Promise<void> {
       >
       <p>{{ lib.description }}</p>
       <a-space
-        ><a-button size="small" @click="edit(lib)">{{ t('common.editInstructions') }}</a-button>
+        ><a-button size="small" @click="reinstall(lib)">{{
+          t('common.reinstallLibrary')
+        }}</a-button>
+        <a-button size="small" @click="edit(lib)">{{ t('common.editInstructions') }}</a-button>
         <a-popconfirm :title="t('common.uninstallThisVersion')" @confirm="remove(lib)"
           ><a-button size="small" danger>{{ t('common.uninstall') }}</a-button></a-popconfirm
         >

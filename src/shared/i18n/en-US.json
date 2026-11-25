@@ -802,6 +802,7 @@
   "common.editInstructions": "Edit instructions",
   "common.uninstallThisVersion": "Uninstall this version?",
   "common.uninstall": "Uninstall",
+  "common.reinstallLibrary": "Reinstall",
   "common.librarySaved": "Library saved",
   "common.npmPackageName": "npm package name",
   "common.exactVersion": "Exact version",
