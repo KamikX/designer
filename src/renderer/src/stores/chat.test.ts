@@ -267,3 +267,99 @@ describe('version-aware send', () => {
     expect(send.mock.calls[0][0]).not.toHaveProperty('baseArtifactId')
   })
 })
+
+describe('message deletion', () => {
+  function setupDeletion(): {
+    store: ReturnType<typeof useChatStore>
+    remove: ReturnType<typeof vi.fn>
+  } {
+    const store = useChatStore()
+    store.conversationId = 'c'
+    store.messages = ['a', 'b'].map((id) => ({
+      id,
+      conversationId: 'c',
+      role: 'user',
+      parts: [{ type: 'text', text: id }],
+      status: 'complete',
+      usage: null,
+      providerSlug: null,
+      modelId: null,
+      artifactId: null,
+      author: null,
+      createdAt: ''
+    }))
+    const remove = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { chat: { deleteMessages: remove, send: vi.fn() } }
+    })
+    return { store, remove }
+  }
+
+  it('updates visible messages and transient data only after successful persistence', async () => {
+    const { store, remove } = setupDeletion()
+    let finish!: () => void
+    remove.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    )
+    store.activities.a = []
+    store.reasoning.a = 'reasoning'
+    const pending = store.deleteMessages('c', ['a'])
+    expect(store.messages).toHaveLength(2)
+    expect(store.deleting).toBe(true)
+    finish()
+    await pending
+    expect(remove).toHaveBeenCalledWith({ conversationId: 'c', messageIds: ['a'] })
+    expect(store.messages.map((message) => message.id)).toEqual(['b'])
+    expect(store.activities.a).toBeUndefined()
+    expect(store.reasoning.a).toBeUndefined()
+    expect(store.deleting).toBe(false)
+  })
+
+  it('preserves messages and transient data on failure', async () => {
+    const { store, remove } = setupDeletion()
+    remove.mockRejectedValue(new Error('failure'))
+    store.reasoning.a = 'keep'
+    await expect(store.deleteMessages('c', ['a'])).rejects.toThrow('failure')
+    expect(store.messages).toHaveLength(2)
+    expect(store.reasoning.a).toBe('keep')
+    expect(store.deleting).toBe(false)
+  })
+
+  it('does not modify another conversation when deletion completes in the background', async () => {
+    const { store, remove } = setupDeletion()
+    let finish!: () => void
+    remove.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve
+      })
+    )
+    const pending = store.deleteMessages('c', ['a'])
+    store.conversationId = 'other'
+    const current = [...store.messages]
+    store.messages = current
+    finish()
+    await pending
+    expect(store.messages).toHaveLength(2)
+    expect(store.deletingConversations).toEqual([])
+  })
+
+  it('blocks deletion during submission, streaming and another deletion, and blocks sending during deletion', async () => {
+    const { store, remove } = setupDeletion()
+    store.sendingConversations = ['c']
+    await expect(store.deleteMessages('c', ['a'])).rejects.toThrow()
+    store.sendingConversations = []
+    seedStream(store)
+    store.streams.c = { ...store.streams['c-background'], conversationId: 'c' }
+    await expect(store.deleteMessages('c', ['a'])).rejects.toThrow()
+    store.streams = {}
+    store.deletingConversations = ['c']
+    await expect(store.deleteMessages('c', ['a'])).rejects.toThrow()
+    store.selected = { providerId: 'p', modelId: 'm' }
+    await store.send('new message')
+    expect(window.api.chat.send).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+  })
+})

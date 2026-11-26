@@ -12,7 +12,8 @@ import { splitMessageStream } from '@renderer/components/message-segments'
 import { isActiveToolState } from '@renderer/stores/chat'
 import type { AskUserAnswer, Message } from '@shared/types'
 
-const props = defineProps<{ message: Message }>()
+const props = defineProps<{ message: Message; deleteDisabled?: boolean }>()
+const emit = defineEmits<{ delete: [] }>()
 
 const { token } = theme.useToken()
 const chatStore = useChatStore()
@@ -78,6 +79,16 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
     <!-- 用户气泡右对齐,复制按钮摆左边;AI 的在气泡内底部(见下) -->
     <span v-if="isUser" class="message-copy">
       <CopyButton :text="textContent" :label="t('common.copyThisMessage')" />
+      <a-button
+        type="text"
+        size="small"
+        :disabled="deleteDisabled"
+        :title="t('chatMessages.deleteOne')"
+        :aria-label="t('chatMessages.deleteOne')"
+        @click="emit('delete')"
+      >
+        <template #icon><DeleteOutlined /></template>
+      </a-button>
     </span>
 
     <!--
@@ -192,6 +203,19 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
         <CopyButton :text="textContent" :label="t('common.copyThisResponse')" />
       </span>
 
+      <a-button
+        v-if="!isUser"
+        class="message-delete"
+        type="text"
+        size="small"
+        :disabled="deleteDisabled"
+        :title="t('chatMessages.deleteOne')"
+        :aria-label="t('chatMessages.deleteOne')"
+        @click="emit('delete')"
+      >
+        <template #icon><DeleteOutlined /></template>
+      </a-button>
+
       <!-- 运行诊断入口:阶段耗时、工具时间线、详细 token 都在抽屉里 -->
       <button
         v-if="canDiagnose"
@@ -235,7 +259,8 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
  * 复制按钮 hover 才现身:一屏十几条消息,常驻图标会把版面吵散。
  * 键盘焦点也要现身,否则 tab 到一个看不见的按钮上。
  */
-.message-copy {
+.message-copy,
+.message-delete {
   opacity: 0;
   transition: opacity 0.15s;
   color: inherit;
@@ -247,7 +272,9 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
 }
 
 .message:hover .message-copy,
-.message-copy:focus-within {
+.message-copy:focus-within,
+.message:hover .message-delete,
+.message-delete:focus-visible {
   opacity: 1;
 }
 

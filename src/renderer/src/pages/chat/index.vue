@@ -12,7 +12,7 @@ import {
   SelectOutlined
 } from '@antdv-next/icons'
 import { useChatStore } from '@renderer/stores/chat'
-import MessageItem from '../project/components/MessageItem.vue'
+import MessageHistory from '../project/components/MessageHistory.vue'
 import Composer from '../project/components/Composer.vue'
 import type { ChatAttachment } from '@renderer/stores/chat'
 import type { Conversation } from '@shared/types'
@@ -151,8 +151,11 @@ watch(
 )
 
 watch(
-  () => [chatStore.messages.length, chatStore.messages.at(-1)?.parts.at(-1)],
-  () => scrollToBottom(true)
+  () => [chatStore.messages.length, chatStore.messages.at(-1)?.parts.at(-1)] as const,
+  (now, before) => {
+    if (now[0] < before[0]) return
+    scrollToBottom(true)
+  }
 )
 
 function scrollToBottom(smooth: boolean): void {
@@ -235,7 +238,7 @@ function scrollToBottom(smooth: boolean): void {
     <!-- 会话页:消息在上,输入框贴底 -->
     <div v-else class="chat-main">
       <div ref="listEl" class="chat-messages">
-        <MessageItem v-for="m in chatStore.messages" :key="m.id" :message="m" />
+        <MessageHistory />
         <a-alert
           v-if="chatStore.error"
           type="error"
@@ -245,7 +248,7 @@ function scrollToBottom(smooth: boolean): void {
         />
       </div>
       <div class="chat-composer">
-        <Composer @send="send" />
+        <Composer :disabled="chatStore.deleting || chatStore.sending" @send="send" />
       </div>
     </div>
   </div>

@@ -1171,6 +1171,7 @@ export interface DesignerApi {
   }
   chat: {
     listMessages: (conversationId: string) => Promise<Message[]>
+    deleteMessages: (input: { conversationId: string; messageIds: string[] }) => Promise<void>
     send: (input: SendChatInput) => Promise<SendChatResult>
     abort: (streamId: string) => Promise<void>
     /** 回答 AI 的提问,工具循环收到后继续往下跑 */

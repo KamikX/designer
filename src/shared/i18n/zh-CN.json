@@ -986,5 +986,15 @@
   "versions.confirmDelete": "删除版本 v{0}？",
   "versions.irreversible": "删除后无法恢复。",
   "versions.keepLast": "必须保留至少一个版本。",
-  "versions.unavailable": "当前无法删除版本。"
+  "versions.unavailable": "当前无法删除版本。",
+  "chatMessages.busy": "请等待当前操作完成后再删除消息。",
+  "chatMessages.invalidSelection": "所选消息不属于支持的会话。",
+  "chatMessages.select": "选择消息",
+  "chatMessages.selectAll": "全选",
+  "chatMessages.selected": "已选择 {0} 条",
+  "chatMessages.delete": "删除消息",
+  "chatMessages.deleteOne": "删除此消息",
+  "chatMessages.confirm": "永久删除 {0} 条消息？",
+  "chatMessages.explanation": "这些消息将不再发送给模型，且无法恢复。项目文件、版本和视觉指导将保留。",
+  "chatMessages.selectOne": "选择此消息"
 }

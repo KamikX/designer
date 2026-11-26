@@ -107,6 +107,7 @@ const api: DesignerApi = {
   },
   chat: {
     listMessages: (conversationId) => ipcRenderer.invoke('chat:list-messages', conversationId),
+    deleteMessages: (input) => ipcRenderer.invoke('chat:delete-messages', input),
     send: (input) => ipcRenderer.invoke('chat:send', input),
     abort: (streamId) => ipcRenderer.invoke('chat:abort', streamId),
     answerQuestion: (questionId, answer) =>

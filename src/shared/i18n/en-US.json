@@ -986,5 +986,15 @@
   "versions.confirmDelete": "Delete version v{0}?",
   "versions.irreversible": "Deletion is permanent and cannot be undone.",
   "versions.keepLast": "At least one version must remain.",
-  "versions.unavailable": "Versions cannot be deleted right now."
+  "versions.unavailable": "Versions cannot be deleted right now.",
+  "chatMessages.busy": "Wait for the current operation to finish before deleting messages.",
+  "chatMessages.invalidSelection": "The selected messages do not belong to a supported conversation.",
+  "chatMessages.select": "Select messages",
+  "chatMessages.selectAll": "Select all",
+  "chatMessages.selected": "{0} selected",
+  "chatMessages.delete": "Delete messages",
+  "chatMessages.deleteOne": "Delete this message",
+  "chatMessages.confirm": "Permanently delete selected messages ({0})?",
+  "chatMessages.explanation": "These messages will no longer be sent to the model. This cannot be undone. Project files, versions and visual guidance will be preserved.",
+  "chatMessages.selectOne": "Select message"
 }

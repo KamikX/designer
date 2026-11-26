@@ -124,6 +124,7 @@ export const useChatStore = defineStore('chat', {
     streams: {} as Record<string, StreamState>,
     error: '' as string,
     sendingConversations: [] as string[],
+    deletingConversations: [] as string[],
     /** 当前项目 id。选择要按项目存,存的时候得知道存给谁 */
     projectId: '' as string,
     /** 工作台模型选择。跟着项目走,进项目时从 project.settings 恢复 */
@@ -174,6 +175,9 @@ export const useChatStore = defineStore('chat', {
     },
     sending(state): boolean {
       return state.sendingConversations.includes(state.conversationId)
+    },
+    deleting(state): boolean {
+      return state.deletingConversations.includes(state.conversationId)
     },
     awaitingAnswer(state): boolean {
       return state.pendingQuestionId !== ''
@@ -493,12 +497,39 @@ export const useChatStore = defineStore('chat', {
       await window.api.chat.answerQuestion(questionId, plain)
     },
 
+    async deleteMessages(conversationId: string, messageIds: string[]): Promise<void> {
+      if (
+        this.deletingConversations.includes(conversationId) ||
+        this.sendingConversations.includes(conversationId) ||
+        this.streams[conversationId]
+      ) {
+        throw new Error(t('chatMessages.busy'))
+      }
+      const ids = [...new Set(messageIds)]
+      this.deletingConversations.push(conversationId)
+      try {
+        await window.api.chat.deleteMessages({ conversationId, messageIds: ids })
+        if (this.conversationId !== conversationId) return
+        const removed = new Set(ids)
+        this.messages = this.messages.filter((message) => !removed.has(message.id))
+        for (const id of ids) {
+          delete this.activities[id]
+          delete this.reasoning[id]
+        }
+      } finally {
+        this.deletingConversations = this.deletingConversations.filter(
+          (id) => id !== conversationId
+        )
+      }
+    },
+
     async send(text: string, attachments: ChatAttachment[] = []): Promise<void> {
       const artifact = useArtifactStore()
       if (
         !this.selected ||
         this.streaming ||
         this.sending ||
+        this.deleting ||
         (!text.trim() && attachments.length === 0) ||
         (this.projectId && (artifact.projectId !== this.projectId || artifact.loading))
       )

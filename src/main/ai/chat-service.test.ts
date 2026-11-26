@@ -179,7 +179,7 @@ vi.mock('./string-edits', async (importOriginal) => {
   }
 })
 
-import { sendChat } from './chat-service'
+import { sendChat, isConversationChatRunning } from './chat-service'
 
 type V3StreamResult = Awaited<ReturnType<InstanceType<typeof MockLanguageModelV3>['doStream']>>
 type V3StreamPart = V3StreamResult['stream'] extends ReadableStream<infer P> ? P : never
@@ -260,8 +260,11 @@ describe('致命一致性错误', () => {
       providerId: 'prov-1',
       modelId: 'model-row-1'
     })
+    expect(isConversationChatRunning('c1')).toBe(true)
+    expect(isConversationChatRunning('other')).toBe(false)
     await vi.waitFor(() => {
       expect(obs.runFinishes.length).toBe(1)
+      expect(isConversationChatRunning('c1')).toBe(false)
     })
 
     // 有效编辑确实提交过(第一次 file-patch 事件已发)
@@ -334,7 +337,10 @@ describe('designer language snapshot', () => {
     }
     expect(requests[0].tools).toEqual(requests[1].tools)
     sendChat(sender, input)
-    await vi.waitFor(() => expect(obs.runFinishes).toHaveLength(2))
+    await vi.waitFor(() => {
+      expect(obs.runFinishes).toHaveLength(2)
+      expect(isConversationChatRunning('c1')).toBe(false)
+    })
     expect(requests).toHaveLength(3)
     expect(systemText(requests[2])).toContain('选项名称和选项释义一律使用中文')
     const ask = requests[2].tools?.find(

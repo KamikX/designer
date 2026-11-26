@@ -117,6 +117,12 @@ function countToolCalls(steps: readonly StepResult<ToolSet>[]): number {
 }
 
 const running = new Map<string, AbortController>()
+const runningConversations = new Map<string, string>()
+
+export function isConversationChatRunning(conversationId: string): boolean {
+  return [...runningConversations.values()].includes(conversationId)
+}
+
 const runningProjects = new Map<string, string>()
 
 export function isProjectChatRunning(projectId: string): boolean {
@@ -248,6 +254,7 @@ function sendChatInLanguage(sender: WebContents, input: SendChatInput): SendChat
   const streamId = randomUUID()
   const abort = new AbortController()
   running.set(streamId, abort)
+  runningConversations.set(streamId, conversation.id)
   if (project) runningProjects.set(streamId, project.id)
 
   /**
@@ -893,6 +900,7 @@ function sendChatInLanguage(sender: WebContents, input: SendChatInput): SendChat
       // stdio 的 MCP 是子进程,不关就常驻;close 自己兜错,不会抛
       void mcp?.close()
       running.delete(streamId)
+      runningConversations.delete(streamId)
       runningProjects.delete(streamId)
     }
   }

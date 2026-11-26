@@ -1,7 +1,8 @@
-import { asc, eq, sql } from 'drizzle-orm'
+import { asc, eq, inArray, sql } from 'drizzle-orm'
 import type { ChatUsage, Message, MessagePart } from '../../../shared/types'
 import { getDb } from '../index'
-import { messages } from '../schema'
+import { artifacts, conversations, messages } from '../schema'
+import { text } from '../../i18n'
 import type { MessageRow } from '../schema'
 
 /** 消息仓储。parts / usage 在库里是 JSON 文本,转换收口在这一层。 */
@@ -107,4 +108,51 @@ export function markStaleStreamingAsError(): void {
     .set({ status: 'error', updatedAt: sql`(datetime('now'))` })
     .where(eq(messages.status, 'streaming'))
     .run()
+}
+
+export function deleteMessages(input: unknown): void {
+  const value = input as { conversationId?: unknown; messageIds?: unknown } | null
+  if (
+    !value ||
+    typeof value.conversationId !== 'string' ||
+    !value.conversationId ||
+    !Array.isArray(value.messageIds) ||
+    value.messageIds.length === 0 ||
+    !value.messageIds.every((id): id is string => typeof id === 'string' && id.length > 0)
+  )
+    throw new Error(text('chatMessages.invalidSelection'))
+
+  const conversationId = value.conversationId
+  const ids = new Set(value.messageIds)
+  const db = getDb()
+  db.transaction((tx) => {
+    const conversation = tx
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .get()
+    if (!conversation || !['chat', 'design'].includes(conversation.kind)) {
+      throw new Error(text('chatMessages.invalidSelection'))
+    }
+    const history = tx
+      .select()
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .all()
+    if (history.some((message) => message.status === 'streaming')) {
+      throw new Error(text('chatMessages.busy'))
+    }
+    const selected = history.filter((message) => ids.has(message.id))
+    if (selected.length !== ids.size) throw new Error(text('chatMessages.invalidSelection'))
+    // Chunking keeps large history selections below SQLite's bound-parameter limit.
+    const selectedIds = selected.map((message) => message.id)
+    for (let offset = 0; offset < selectedIds.length; offset += 500) {
+      const chunk = selectedIds.slice(offset, offset + 500)
+      tx.update(artifacts)
+        .set({ messageId: null, updatedAt: sql`(datetime('now'))` })
+        .where(inArray(artifacts.messageId, chunk))
+        .run()
+      tx.delete(messages).where(inArray(messages.id, chunk)).run()
+    }
+  })
 }

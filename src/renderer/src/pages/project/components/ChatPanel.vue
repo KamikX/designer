@@ -6,7 +6,7 @@ import { MessageOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { useChatStore } from '@renderer/stores/chat'
 import { useProviderStore } from '@renderer/stores/provider'
-import MessageItem from './MessageItem.vue'
+import MessageHistory from './MessageHistory.vue'
 import Composer from './Composer.vue'
 import type { Project } from '@shared/types'
 
@@ -36,8 +36,11 @@ watch(
 )
 
 watch(
-  () => [chatStore.messages.length, chatStore.messages.at(-1)?.parts.at(-1)],
-  () => scrollToBottom(true),
+  () => [chatStore.messages.length, chatStore.messages.at(-1)?.parts.at(-1)] as const,
+  (now, before) => {
+    if (now[0] < before[0]) return
+    scrollToBottom(true)
+  },
   { deep: false }
 )
 
@@ -84,7 +87,7 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
         </div>
       </div>
 
-      <MessageItem v-for="m in chatStore.messages" :key="m.id" :message="m" />
+      <MessageHistory />
 
       <a-alert
         v-if="chatStore.error"
@@ -100,6 +103,7 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
         :disabled="
           noModel ||
           chatStore.sending ||
+          chatStore.deleting ||
           artifactStore.loading ||
           artifactStore.projectId !== project.id
         "

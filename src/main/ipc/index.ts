@@ -74,10 +74,15 @@ import {
   updateProvider
 } from '../db/repo/provider'
 import { listModels, setModelSelection } from '../db/repo/model'
-import { listMessages } from '../db/repo/message'
+import { deleteMessages, listMessages } from '../db/repo/message'
 import { testProvider } from '../ai/registry'
 import { fetchRemoteModels } from '../ai/model-catalog'
-import { abortChat, sendChat, isProjectChatRunning } from '../ai/chat-service'
+import {
+  abortChat,
+  sendChat,
+  isProjectChatRunning,
+  isConversationChatRunning
+} from '../ai/chat-service'
 import { answerQuestion } from '../ai/ask-user'
 import { catalog, marketStatus } from '../market'
 import { scanSkills } from '../skills/scan'
@@ -259,6 +264,14 @@ export function registerIpc(): void {
   ipcMain.handle('model:set-selection', (_e, providerId: string, selections: ModelSelection[]) =>
     setModelSelection(providerId, selections)
   )
+
+  ipcMain.handle('chat:delete-messages', (_e, input: unknown) => {
+    const conversationId = (input as { conversationId?: unknown } | null)?.conversationId
+    if (typeof conversationId === 'string' && isConversationChatRunning(conversationId)) {
+      throw new Error(appText('chatMessages.busy'))
+    }
+    deleteMessages(input)
+  })
 
   ipcMain.handle('chat:list-messages', (_e, conversationId: string) => listMessages(conversationId))
   // sender 从事件对象上取:流式增量必须发回发起请求的那个窗口
