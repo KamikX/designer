@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { t } from '@renderer/i18n'
-import { theme } from 'antdv-next'
-import { EyeOutlined, HighlightOutlined, ReloadOutlined } from '@antdv-next/icons'
+import { App, theme } from 'antdv-next'
+import { CodeOutlined, EyeOutlined, HighlightOutlined, ReloadOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { MAX_MARKS, useAnnotationStore } from '@renderer/stores/annotation'
 import type { MarkTarget } from '@renderer/stores/annotation'
+import type { Project } from '@shared/types'
+import { parseSourceLocation } from './source-location'
+import type { SourceLocation } from './source-location'
 
 /**
  * 预览面板。iframe 指向 preview://artifact/<id>/,主进程从 DB 直出文件。
@@ -19,7 +22,10 @@ import type { MarkTarget } from '@renderer/stores/annotation'
  * 所有拾取与徽标都在 preview/annotate-runtime.ts 里,这里只负责收发和输入。
  */
 
-defineProps<{ actionsTarget: HTMLElement | null }>()
+const props = defineProps<{ actionsTarget: HTMLElement | null; stack: Project['stack'] }>()
+const emit = defineEmits<{ openSource: [location: SourceLocation] }>()
+const { message: appMessage } = App.useApp()
+const sourcePicking = ref(false)
 
 const { token } = theme.useToken()
 const store = useArtifactStore()
@@ -43,8 +49,23 @@ function post(message: Record<string, unknown>): void {
 }
 
 function toggleAnnotate(): void {
+  sourcePicking.value = false
   annotation.enabled = !annotation.enabled
   post({ __previewCmd: 'annotate', on: annotation.enabled })
+}
+
+function toggleSource(): void {
+  if (props.stack !== 'vue3') return
+  annotation.enabled = false
+  sourcePicking.value = !sourcePicking.value
+  post({ __previewCmd: 'source', on: sourcePicking.value })
+}
+
+function syncMode(): void {
+  post({
+    __previewCmd: sourcePicking.value ? 'source' : 'annotate',
+    on: sourcePicking.value || annotation.enabled
+  })
 }
 
 /** 徽标画在 iframe 里,所以每次增删都要把整份清单同步过去 */
@@ -105,6 +126,8 @@ function endLoad(): void {
 watch(
   src,
   (next) => {
+    sourcePicking.value = false
+    picked.value = null
     annotation.syncArtifact(store.currentId)
     next ? beginLoad() : endLoad()
   },
@@ -125,13 +148,13 @@ watch(
 function onMessage(e: MessageEvent): void {
   if (!e.data?.__preview) return
   // 标注消息带元素签名,来源要认准是我们这个 iframe
-  const fromFrame = e.source === frame.value?.contentWindow
+  const fromFrame = !!frame.value?.contentWindow && e.source === frame.value.contentWindow
 
   if (e.data.type === 'ready') {
     endLoad()
     // iframe 重载后运行时是全新的:标注态和已有徽标都得重新告诉它一遍
     if (fromFrame) {
-      post({ __previewCmd: 'annotate', on: annotation.enabled })
+      syncMode()
       syncMarks()
       // 挂载成功 = 这个版本恢复了,把它之前的报错从下一轮 prompt 里撤掉。
       // 挂载后才发生的异步错误会重新上报,清早了也不会丢
@@ -141,8 +164,24 @@ function onMessage(e: MessageEvent): void {
     }
     return
   }
+  if (e.data.type === 'source:pick') {
+    if (!fromFrame || !sourcePicking.value || props.stack !== 'vue3') return
+    const location = parseSourceLocation(e.data.source)
+    if (!location || !store.files.some((file) => file.path === location.path)) {
+      appMessage.warning(t('messages.elementSourceUnavailable'))
+      return
+    }
+    sourcePicking.value = false
+    syncMode()
+    emit('openSource', location)
+    return
+  }
+  if (e.data.type === 'source:cancel') {
+    if (fromFrame) sourcePicking.value = false
+    return
+  }
   if (e.data.type === 'annotate:pick') {
-    if (!fromFrame) return
+    if (!fromFrame || !annotation.enabled || sourcePicking.value) return
     if (annotation.marks.length >= MAX_MARKS) return
     picked.value = e.data.target as MarkTarget
     note.value = ''
@@ -191,6 +230,25 @@ onBeforeUnmount(() => {
             @click="toggleAnnotate"
           >
             <template #icon><HighlightOutlined /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip
+          :title="
+            stack !== 'vue3'
+              ? t('messages.openElementInCodeVueOnly')
+              : sourcePicking
+                ? t('messages.exitSourcePickingOrPressEsc')
+                : t('messages.openElementInCode')
+          "
+        >
+          <a-button
+            size="small"
+            shape="circle"
+            :disabled="stack !== 'vue3'"
+            :type="sourcePicking ? 'primary' : 'default'"
+            @click="toggleSource"
+          >
+            <template #icon><CodeOutlined /></template>
           </a-button>
         </a-tooltip>
         <a-tooltip :title="t('common.refreshPreview')">
@@ -266,6 +324,9 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Keep the guidance neutral because the toolbar button already identifies annotation mode. -->
+      <div v-if="sourcePicking" class="preview-tip">
+        {{ t('messages.clickElementToOpenCode') }}
+      </div>
       <div v-if="annotation.enabled" class="preview-tip">
         {{ t('messages.clickAnElementAndDescribeThe') }}
       </div>

@@ -13,6 +13,10 @@ const mock = vi.hoisted(() => ({
   command: () => {},
   save: vi.fn().mockResolvedValue(undefined),
   updateOptions: vi.fn(),
+  setPosition: vi.fn(),
+  revealPositionInCenter: vi.fn(),
+  focus: vi.fn(),
+  highlighterReady: () => Promise.resolve(),
   models: new Map<string, { uri: { path: string }; content: string; getLineCount: () => number }>()
 }))
 vi.mock('@renderer/components/config/config', () => ({
@@ -21,7 +25,7 @@ vi.mock('@renderer/components/config/config', () => ({
 vi.mock('@renderer/composables/useCodeEdits', () => ({ useCodeEdits: () => ({ save: mock.save }) }))
 vi.mock('@renderer/monaco/highlighter', () => ({
   applyTheme: vi.fn(),
-  ensureHighlighter: vi.fn().mockResolvedValue(undefined)
+  ensureHighlighter: () => mock.highlighterReady()
 }))
 vi.mock('@renderer/monaco/setup', () => ({
   monaco: {
@@ -43,6 +47,9 @@ vi.mock('@renderer/monaco/setup', () => ({
         },
         createDecorationsCollection: () => ({ set: vi.fn(), clear: vi.fn() }),
         updateOptions: mock.updateOptions,
+        setPosition: mock.setPosition,
+        revealPositionInCenter: mock.revealPositionInCenter,
+        focus: mock.focus,
         revealLine: vi.fn(),
         revealLineInCenterIfOutsideViewport: vi.fn(),
         dispose: vi.fn()
@@ -56,6 +63,7 @@ vi.mock('@renderer/monaco/vfs', () => ({
     const model = mock.models.get(path) ?? {
       uri: { path: `/${path}` },
       content,
+      validatePosition: (position: unknown) => position,
       getLineCount: () => 1
     }
     model.content = content
@@ -87,6 +95,10 @@ beforeEach(() => {
   mock.command = () => {}
   mock.save.mockClear()
   mock.updateOptions.mockClear()
+  mock.setPosition.mockClear()
+  mock.revealPositionInCenter.mockClear()
+  mock.focus.mockClear()
+  mock.highlighterReady = () => Promise.resolve()
 })
 
 async function setup(path = 'App.vue'): Promise<{
@@ -175,6 +187,54 @@ describe('manual code editor', () => {
     store.saving = true
     mock.command()
     expect(mock.save).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+})
+
+describe('preview source navigation', () => {
+  it('waits for Monaco initialization before navigating without creating drafts', async () => {
+    let ready!: () => void
+    mock.highlighterReady = () => new Promise<void>((resolve) => (ready = resolve))
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    store.currentId = 'v1'
+    store.files = [{ path: 'shared/components/PageHeader.vue', content: 'original' }]
+    store.selectedPath = store.files[0].path
+    const wrapper = mount(CodeViewer, {
+      props: {
+        navigation: {
+          projectId: 'p',
+          artifactId: 'v1',
+          path: store.selectedPath,
+          line: 8,
+          column: 3
+        }
+      }
+    })
+    expect(mock.setPosition).not.toHaveBeenCalled()
+    ready()
+    await flushPromises()
+    expect(mock.setPosition).toHaveBeenCalledWith({ lineNumber: 8, column: 3 })
+    expect(mock.revealPositionInCenter).toHaveBeenCalledWith({ lineNumber: 8, column: 3 })
+    expect(mock.focus).toHaveBeenCalledOnce()
+    expect(wrapper.emitted('navigated')).toHaveLength(1)
+    expect(store.dirty).toBe(false)
+    await wrapper.setProps({ navigation: null })
+    store.selectedPath = ''
+    store.selectedPath = store.files[0].path
+    await flushPromises()
+    expect(mock.focus).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it.each([
+    { projectId: 'other', artifactId: 'v1', path: 'App.vue' },
+    { projectId: 'p', artifactId: 'old', path: 'App.vue' },
+    { projectId: 'p', artifactId: 'v1', path: 'theme.css' }
+  ])('ignores a navigation request for a different owner or file: %j', async (target) => {
+    const { wrapper } = await setup()
+    await wrapper.setProps({ navigation: { ...target, line: 8, column: 3 } })
+    expect(mock.setPosition).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

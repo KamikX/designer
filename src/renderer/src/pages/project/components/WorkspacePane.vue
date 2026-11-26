@@ -10,6 +10,7 @@ import FileTree from './FileTree.vue'
 import VersionPicker from './VersionPicker.vue'
 import CodeViewer from './CodeViewer.vue'
 import PreviewPane from './PreviewPane.vue'
+import type { SourceLocation, SourceNavigation } from './source-location'
 import type { ExternalLibraryRef, PreviewLib, Project } from '@shared/types'
 
 const props = defineProps<{ project: Project }>()
@@ -22,6 +23,25 @@ const store = useArtifactStore()
 const activeTab = ref('preview')
 const { save, discard } = useCodeEdits()
 const previewActionsTarget = ref<HTMLElement | null>(null)
+
+const sourceNavigation = ref<SourceNavigation | null>(null)
+
+function openSource(location: SourceLocation): void {
+  if (!store.files.some((file) => file.path === location.path)) return
+  sourceNavigation.value = {
+    ...location,
+    projectId: store.projectId,
+    artifactId: store.currentId
+  }
+  store.selectedPath = location.path
+  activeTab.value = 'code'
+}
+
+watch(
+  () => [props.project.id, store.currentId],
+  () => (sourceNavigation.value = null),
+  { flush: 'sync' }
+)
 
 // 文件树宽度持久化:拖过一次之后每次进来都是自己调好的宽度。
 // 默认给得偏窄——设计稿通常就几个文件,树再宽也是空的,那点宽度
@@ -252,13 +272,19 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
             <div class="file-tree"><FileTree /></div>
           </a-splitter-panel>
           <a-splitter-panel :min="320">
-            <div class="code-view"><CodeViewer /></div>
+            <div class="code-view">
+              <CodeViewer :navigation="sourceNavigation" @navigated="sourceNavigation = null" />
+            </div>
           </a-splitter-panel>
         </a-splitter>
       </template>
 
       <template v-else>
-        <PreviewPane :actions-target="previewActionsTarget" />
+        <PreviewPane
+          :actions-target="previewActionsTarget"
+          :stack="project.stack"
+          @open-source="openSource"
+        />
       </template>
     </div>
   </div>

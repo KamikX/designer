@@ -8,6 +8,10 @@ import { monaco } from '@renderer/monaco/setup'
 import { applyTheme, ensureHighlighter } from '@renderer/monaco/highlighter'
 import { applyPatch, getModel, setContent, setScope } from '@renderer/monaco/vfs'
 import type { ChatStreamEvent } from '@shared/types'
+import type { SourceNavigation } from './source-location'
+
+const props = defineProps<{ navigation?: SourceNavigation | null }>()
+const emit = defineEmits<{ navigated: [] }>()
 
 /**
  * Keep a single editor and switch pooled models so file changes preserve undo history.
@@ -100,6 +104,7 @@ watch(
 
 /** 换文件:只换 model,编辑器实例不动 */
 watch(() => store.selectedPath, syncModel)
+watch(() => props.navigation, navigateToSource)
 
 // 换项目:整池清掉再重建。路由只变 id 时组件不会卸载,不清就会串味
 watch(
@@ -162,6 +167,22 @@ function syncModel(): void {
   } finally {
     syncing = false
   }
+  navigateToSource()
+}
+
+function navigateToSource(): void {
+  const target = props.navigation
+  if (!editor || !target) return
+  if (target.projectId !== store.projectId || target.artifactId !== store.currentId) return
+  if (store.selectedPath !== target.path || !isShowing(target.path)) return
+  const position = editor.getModel()!.validatePosition({
+    lineNumber: target.line,
+    column: target.column
+  })
+  editor.setPosition(position)
+  editor.revealPositionInCenter(position)
+  editor.focus()
+  emit('navigated')
 }
 
 /** 改动行高亮,2s 后自动褪去 */

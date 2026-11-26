@@ -100,3 +100,47 @@ describe('标注运行时', () => {
     expect(clicked).toBe(1)
   })
 })
+
+describe('source picker runtime', () => {
+  it.each(['button', 'span'])(
+    'reports source coordinates for %s without annotating or activating the page',
+    async (tag) => {
+      document.body.innerHTML =
+        '<button data-antd-src="shared/components/PageHeader.vue:8:3"><span>Header</span></button>'
+      await command({ __previewCmd: 'source', on: true })
+      let clicked = 0
+      document.querySelector('button')!.addEventListener('click', () => clicked++)
+      const picked = nextMessage('source:pick')
+      document.querySelector(tag)!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      expect(await picked).toMatchObject({ source: 'shared/components/PageHeader.vue:8:3' })
+      expect(clicked).toBe(0)
+    }
+  )
+
+  it('reports missing locations and cancels source selection with Escape', async () => {
+    document.body.innerHTML = '<button>Unknown</button>'
+    await command({ __previewCmd: 'source', on: true })
+    const picked = nextMessage('source:pick')
+    document.querySelector('button')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(await picked).toMatchObject({ source: '' })
+    const cancelled = nextMessage('source:cancel')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await cancelled
+    expect(document.documentElement.classList.contains('__antd-annotating')).toBe(false)
+    let clicked = 0
+    document.querySelector('button')!.addEventListener('click', () => clicked++)
+    document.querySelector('button')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(clicked).toBe(1)
+  })
+
+  it('switches back to annotation mode and supports toggling off', async () => {
+    document.body.innerHTML = '<button>Header</button>'
+    await command({ __previewCmd: 'source', on: true })
+    await command({ __previewCmd: 'annotate', on: true })
+    const picked = nextMessage('annotate:pick')
+    document.querySelector('button')!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(await picked).toHaveProperty('target')
+    await command({ __previewCmd: 'source', on: false })
+    expect(document.documentElement.classList.contains('__antd-annotating')).toBe(false)
+  })
+})

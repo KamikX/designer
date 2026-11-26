@@ -49,6 +49,7 @@ export const ANNOTATE_RUNTIME = `
 <script>
 (function () {
   var on = false
+  var mode = 'annotate'
   /** 父窗口给的标记:{ id, index, selector } */
   var marks = []
   var hoverBox = null
@@ -205,7 +206,11 @@ export const ANNOTATE_RUNTIME = `
       if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation()
       var el = e.target
       if (!el || el.nodeType !== 1) return
-      parent.postMessage({ __preview: true, type: 'annotate:pick', target: describe(el) }, '*')
+      if (mode === 'source') {
+        parent.postMessage({ __preview: true, type: 'source:pick', source: describe(el).source }, '*')
+      } else {
+        parent.postMessage({ __preview: true, type: 'annotate:pick', target: describe(el) }, '*')
+      }
     },
     true
   )
@@ -217,7 +222,7 @@ export const ANNOTATE_RUNTIME = `
       if (!on || e.key !== 'Escape') return
       e.preventDefault()
       setMode(false)
-      parent.postMessage({ __preview: true, type: 'annotate:cancel' }, '*')
+      parent.postMessage({ __preview: true, type: mode === 'source' ? 'source:cancel' : 'annotate:cancel' }, '*')
     },
     true
   )
@@ -273,7 +278,8 @@ export const ANNOTATE_RUNTIME = `
   window.addEventListener('message', function (e) {
     var data = e.data
     if (!data || !data.__previewCmd) return
-    if (data.__previewCmd === 'annotate') {
+    if (data.__previewCmd === 'annotate' || data.__previewCmd === 'source') {
+      mode = data.__previewCmd
       setMode(!!data.on)
       return
     }
