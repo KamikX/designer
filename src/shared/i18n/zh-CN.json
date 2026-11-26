@@ -981,5 +981,10 @@
   "code.invalidEdits": "代码更改无效",
   "code.invalidVersion": "设计版本无效",
   "code.saveUnavailable": "当前无法保存代码",
-  "code.generating": "生成期间无法编辑代码"
+  "code.generating": "生成期间无法编辑代码",
+  "versions.delete": "删除版本 v{0}",
+  "versions.confirmDelete": "删除版本 v{0}？",
+  "versions.irreversible": "删除后无法恢复。",
+  "versions.keepLast": "必须保留至少一个版本。",
+  "versions.unavailable": "当前无法删除版本。"
 }

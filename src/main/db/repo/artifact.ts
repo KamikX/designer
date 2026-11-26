@@ -2,7 +2,7 @@ import { text } from '../../i18n'
 import { asc, desc, eq, sql } from 'drizzle-orm'
 import type { Artifact, ArtifactFile } from '../../../shared/types'
 import { getDb } from '../index'
-import { artifactFiles, artifacts } from '../schema'
+import { artifactFiles, artifacts, messages, projects } from '../schema'
 import type { ArtifactRow } from '../schema'
 
 /**
@@ -137,5 +137,44 @@ export function saveArtifactEdits(input: unknown): Artifact {
     writes,
     deletes: new Set(),
     summary: 'Manual code edits'
+  })
+}
+
+export function deleteArtifact(input: unknown): Artifact[] {
+  if (!input || typeof input !== 'object') throw new Error(text('code.invalidVersion'))
+  const { projectId, artifactId } = input as Record<string, unknown>
+  if (typeof projectId !== 'string' || !projectId || typeof artifactId !== 'string' || !artifactId)
+    throw new Error(text('code.invalidVersion'))
+  return getDb().transaction((tx) => {
+    const versions = tx
+      .select()
+      .from(artifacts)
+      .where(eq(artifacts.projectId, projectId))
+      .orderBy(desc(artifacts.version))
+      .all()
+    if (!versions.some((version) => version.id === artifactId))
+      throw new Error(text('code.invalidVersion'))
+    if (versions.length <= 1) throw new Error(text('versions.keepLast'))
+    const remaining = versions.filter((version) => version.id !== artifactId)
+    const project = tx.select().from(projects).where(eq(projects.id, projectId)).get()!
+    if (project.settings?.selectedArtifactId === artifactId) {
+      tx.update(projects)
+        .set({ settings: { ...project.settings, selectedArtifactId: remaining[0].id } })
+        .where(eq(projects.id, projectId))
+        .run()
+    }
+    // Snapshots are self-contained, so removing ancestry does not alter surviving files.
+    tx.update(artifacts)
+      .set({ baseArtifactId: null })
+      .where(eq(artifacts.baseArtifactId, artifactId))
+      .run()
+    tx.update(messages).set({ artifactId: null }).where(eq(messages.artifactId, artifactId)).run()
+    tx.delete(artifacts).where(eq(artifacts.id, artifactId)).run()
+    return remaining.map((version) =>
+      toView({
+        ...version,
+        baseArtifactId: version.baseArtifactId === artifactId ? null : version.baseArtifactId
+      })
+    )
   })
 }

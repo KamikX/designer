@@ -69,6 +69,8 @@ export const useArtifactStore = defineStore('artifact', {
     drafts: {} as Record<string, string>,
     draftBaseId: '',
     saving: false,
+    deleting: false,
+    deleteRequestId: 0,
     exporting: false
   }),
 
@@ -81,6 +83,7 @@ export const useArtifactStore = defineStore('artifact', {
       return (
         state.loading ||
         state.saving ||
+        state.deleting ||
         !state.currentId ||
         state.pending.length > 0 ||
         state.pendingDeletes.length > 0 ||
@@ -185,6 +188,8 @@ export const useArtifactStore = defineStore('artifact', {
       this.projectId = projectId
       this.discardEdits()
       this.saving = false
+      this.deleting = false
+      this.deleteRequestId++
       this.pending = []
       this.pendingDeletes = []
       this.artifacts = []
@@ -350,6 +355,36 @@ export const useArtifactStore = defineStore('artifact', {
       await this.select(artifactId)
       if (projectId !== this.projectId || this.requestId !== requestId + 1) return
       this.resetPending()
+    },
+
+    async deleteVersion(artifactId: string): Promise<void> {
+      if (
+        this.editingBlocked ||
+        this.artifacts.length <= 1 ||
+        !this.artifacts.some((version) => version.id === artifactId) ||
+        (artifactId === this.currentId && this.dirty)
+      )
+        throw new Error(t('versions.unavailable'))
+      const projectId = this.projectId
+      const requestId = this.requestId
+      const deleteRequestId = ++this.deleteRequestId
+      this.deleting = true
+      try {
+        const remaining = await window.api.artifact.delete({ projectId, artifactId })
+        if (this.projectId !== projectId || this.requestId !== requestId) return
+        this.artifacts = remaining
+        if (this.currentId === artifactId) {
+          // A deleted snapshot must stop being visible even if loading its replacement fails.
+          this.currentId = ''
+          this.files = []
+          this.selectedPath = ''
+          this.discardEdits()
+          await this.select(remaining[0].id)
+        }
+      } finally {
+        if (this.projectId === projectId && this.deleteRequestId === deleteRequestId)
+          this.deleting = false
+      }
     },
 
     async exportCurrent(): Promise<string | null> {

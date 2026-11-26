@@ -41,10 +41,12 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 const getProject = vi.fn<(id: string) => Promise<Project | null>>()
 const saveSettings = vi.fn().mockResolvedValue(undefined)
 const list = vi.fn<(projectId: string) => Promise<Artifact[]>>()
+const removeVersion = vi.fn()
 const saveEdits = vi.fn()
 const files = vi.fn<(artifactId: string) => Promise<ArtifactFile[]>>()
 
 beforeEach(() => {
+  removeVersion.mockReset()
   saveEdits.mockReset()
   list.mockReset()
   files.mockReset()
@@ -53,7 +55,7 @@ beforeEach(() => {
   Object.defineProperty(window, 'api', {
     configurable: true,
     value: {
-      artifact: { list, files, saveEdits },
+      artifact: { list, files, saveEdits, delete: removeVersion },
       project: { get: getProject, saveSettings }
     } as unknown as DesignerApi
   })
@@ -389,5 +391,92 @@ describe('manual drafts', () => {
     store.editFile('new.ts', 'ignored')
     await store.saveEdits()
     expect(saveEdits).not.toHaveBeenCalled()
+  })
+})
+
+describe('version deletion', () => {
+  function seed(): ReturnType<typeof useArtifactStore> {
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    store.artifacts = [artifact('v2', 2), artifact('v1', 1)]
+    store.currentId = 'v2'
+    store.files = [file('index.html', 'new')]
+    return store
+  }
+
+  it('loads the newest survivor when deleting the displayed version', async () => {
+    const store = seed()
+    removeVersion.mockResolvedValue([artifact('v1', 1)])
+    files.mockResolvedValue([file('index.html', 'old')])
+    await store.deleteVersion('v2')
+    expect(removeVersion).toHaveBeenCalledWith({ projectId: 'p', artifactId: 'v2' })
+    expect(store.currentId).toBe('v1')
+    expect(store.files[0].content).toBe('old')
+    expect(saveSettings).toHaveBeenCalledWith('p', { selectedArtifactId: 'v1' })
+    expect(store.deleting).toBe(false)
+  })
+
+  it('preserves selection and drafts when deleting another version', async () => {
+    const store = seed()
+    store.editFile('index.html', 'draft')
+    removeVersion.mockResolvedValue([artifact('v2', 2)])
+    await store.deleteVersion('v1')
+    expect(store.currentId).toBe('v2')
+    expect(store.drafts['index.html']).toBe('draft')
+    expect(files).not.toHaveBeenCalled()
+  })
+
+  it('preserves state on failure and releases the lock', async () => {
+    const store = seed()
+    removeVersion.mockRejectedValue(new Error('failed'))
+    await expect(store.deleteVersion('v2')).rejects.toThrow('failed')
+    expect(store.artifacts).toHaveLength(2)
+    expect(store.currentId).toBe('v2')
+    expect(store.deleting).toBe(false)
+  })
+
+  it('does not retain deleted files if loading the replacement fails', async () => {
+    const store = seed()
+    removeVersion.mockResolvedValue([artifact('v1', 1)])
+    files.mockRejectedValue(new Error('read failed'))
+    await store.deleteVersion('v2')
+    expect(store.currentId).toBe('')
+    expect(store.files).toEqual([])
+    expect(store.loadError).toBe('read failed')
+  })
+
+  it('ignores a deletion response after switching projects', async () => {
+    const store = seed()
+    const pending = deferred<Artifact[]>()
+    removeVersion.mockReturnValue(pending.promise)
+    const deleting = store.deleteVersion('v2')
+    list.mockResolvedValue([artifact('other', 1)])
+    files.mockResolvedValue([file('other.html', 'other')])
+    await store.loadForProject('other-project')
+    pending.resolve([artifact('v1', 1)])
+    await deleting
+    expect(store.projectId).toBe('other-project')
+    expect(store.currentId).toBe('other')
+  })
+
+  it('blocks last-version deletion, dirty active version and concurrent operations', async () => {
+    const store = seed()
+    for (const field of ['loading', 'saving', 'deleting'] as const) {
+      store[field] = true
+      await expect(store.deleteVersion('v1')).rejects.toThrow()
+      store[field] = false
+    }
+    const chat = useChatStore()
+    chat.projectId = 'p'
+    chat.conversationId = 'c'
+    chat.sendingConversations = ['c']
+    await expect(store.deleteVersion('v1')).rejects.toThrow()
+    chat.sendingConversations = []
+    store.editFile('index.html', 'draft')
+    await expect(store.deleteVersion('v2')).rejects.toThrow()
+    store.discardEdits()
+    store.artifacts = [artifact('v2', 2)]
+    await expect(store.deleteVersion('v2')).rejects.toThrow()
+    expect(removeVersion).not.toHaveBeenCalled()
   })
 })

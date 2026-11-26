@@ -2,12 +2,26 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { t } from '@renderer/i18n'
+import { App } from 'antdv-next'
 import { createPinia, setActivePinia } from 'pinia'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { useChatStore } from '@renderer/stores/chat'
 import VersionPicker from './VersionPicker.vue'
 
+const confirm = vi.fn()
+const confirmEdits = vi.hoisted(() => vi.fn().mockResolvedValue(true))
+vi.mock('@renderer/composables/useCodeEdits', () => ({
+  useCodeEdits: () => ({ confirmEdits })
+}))
+
 beforeEach(() => {
+  confirm.mockReset()
+  confirmEdits.mockReset().mockResolvedValue(true)
+  vi.spyOn(App, 'useApp').mockReturnValue({
+    modal: { confirm },
+    message: { error: vi.fn() }
+  } as unknown as ReturnType<typeof App.useApp>)
   setActivePinia(createPinia())
 })
 
@@ -91,6 +105,80 @@ describe('version picker', () => {
           .findAll('.version-option')
           .every((item) => item.attributes('disabled') !== undefined)
       ).toBe(true)
+    }
+  })
+})
+
+describe('version deletion confirmation', () => {
+  it('requires confirmation and cancellation does not delete', async () => {
+    const store = seed()
+    const remove = vi.spyOn(store, 'deleteVersion').mockResolvedValue()
+    const wrapper = mountPicker()
+    await wrapper.find(`button[aria-label="${t('versions.delete', 2)}"]`).trigger('click')
+    await flushPromises()
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(confirm.mock.calls[0][0].title).toContain('v2')
+    expect(remove).not.toHaveBeenCalled()
+    confirm.mock.calls[0][0].onCancel()
+    await flushPromises()
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  it('deletes only the confirmed version', async () => {
+    const store = seed()
+    const remove = vi.spyOn(store, 'deleteVersion').mockResolvedValue()
+    const wrapper = mountPicker()
+    await wrapper.find(`button[aria-label="${t('versions.delete', 1)}"]`).trigger('click')
+    await flushPromises()
+    await confirm.mock.calls[0][0].onOk()
+    expect(remove).toHaveBeenCalledWith('v1')
+  })
+
+  it('disables deletion of the last version with an explanation', () => {
+    const store = seed()
+    store.artifacts = store.artifacts.slice(0, 1)
+    const button = mountPicker().find(`button[aria-label="${t('versions.delete', 2)}"]`)
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.attributes('title')).toBe(t('versions.keepLast'))
+  })
+
+  it('resolves unsaved edits before showing deletion confirmation', async () => {
+    seed()
+    confirmEdits.mockResolvedValue(false)
+    const wrapper = mountPicker()
+    await wrapper.find(`button[aria-label="${t('versions.delete', 2)}"]`).trigger('click')
+    await flushPromises()
+    expect(confirmEdits).toHaveBeenCalledOnce()
+    expect(confirm).not.toHaveBeenCalled()
+  })
+})
+
+describe('deletion guards', () => {
+  it('does not delete after the project changes during confirmation', async () => {
+    const store = seed()
+    const remove = vi.spyOn(store, 'deleteVersion').mockResolvedValue()
+    const wrapper = mountPicker()
+    await wrapper.find(`button[aria-label="${t('versions.delete', 2)}"]`).trigger('click')
+    await flushPromises()
+    await wrapper.setProps({ projectId: 'other' })
+    await confirm.mock.calls[0][0].onOk()
+    expect(remove).not.toHaveBeenCalled()
+  })
+
+  it('blocks deletion while generating or deleting', async () => {
+    const store = seed()
+    const chat = useChatStore()
+    chat.projectId = 'p'
+    chat.conversationId = 'c'
+    const wrapper = mountPicker()
+    for (const phase of ['generating', 'deleting']) {
+      chat.sendingConversations = phase === 'generating' ? ['c'] : []
+      store.deleting = phase === 'deleting'
+      await flushPromises()
+      const button = wrapper.find(`button[aria-label="${t('versions.delete', 2)}"]`)
+      expect(button.attributes('disabled')).toBeDefined()
+      await button.trigger('click')
+      expect(confirm).not.toHaveBeenCalled()
     }
   })
 })

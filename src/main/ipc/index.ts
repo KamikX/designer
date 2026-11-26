@@ -84,7 +84,12 @@ import { scanSkills } from '../skills/scan'
 import { addRoot, grantPaths, listRoots, removeRoot } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
 import { clearPreviewError, reportPreviewError } from '../preview/errors'
-import { getArtifactFiles, listArtifacts, saveArtifactEdits } from '../db/repo/artifact'
+import {
+  deleteArtifact,
+  getArtifactFiles,
+  listArtifacts,
+  saveArtifactEdits
+} from '../db/repo/artifact'
 import { exportArtifact } from '../artifact-export'
 import { exportProjectPackage, openProjectPackage } from '../project-package/service'
 import { importAsset, importImage, testStorage } from '../storage/service'
@@ -345,6 +350,17 @@ export function registerIpc(): void {
     )
       throw new Error(appText('code.generating'))
     return saveArtifactEdits(input)
+  })
+  ipcMain.handle('artifact:delete', (_e, input: unknown) => {
+    if (
+      input &&
+      typeof input === 'object' &&
+      'projectId' in input &&
+      typeof input.projectId === 'string' &&
+      isProjectChatRunning(input.projectId)
+    )
+      throw new Error(appText('code.generating'))
+    return deleteArtifact(input)
   })
   ipcMain.handle('artifact:list', (_e, projectId: string) => listArtifacts(projectId))
   ipcMain.handle('artifact:files', (_e, artifactId: string) => getArtifactFiles(artifactId))

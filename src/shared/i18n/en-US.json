@@ -981,5 +981,10 @@
   "code.invalidEdits": "Invalid code edits",
   "code.invalidVersion": "Invalid design version",
   "code.saveUnavailable": "Cannot save code right now",
-  "code.generating": "Cannot edit code during generation"
+  "code.generating": "Cannot edit code during generation",
+  "versions.delete": "Delete version v{0}",
+  "versions.confirmDelete": "Delete version v{0}?",
+  "versions.irreversible": "Deletion is permanent and cannot be undone.",
+  "versions.keepLast": "At least one version must remain.",
+  "versions.unavailable": "Versions cannot be deleted right now."
 }

@@ -1202,6 +1202,7 @@ export interface DesignerApi {
     revoke: (id: string) => Promise<void>
   }
   artifact: {
+    delete: (input: { projectId: string; artifactId: string }) => Promise<Artifact[]>
     list: (projectId: string) => Promise<Artifact[]>
     files: (artifactId: string) => Promise<ArtifactFile[]>
     saveEdits: (input: {

@@ -141,6 +141,7 @@ const api: DesignerApi = {
     revoke: (id) => ipcRenderer.invoke('workspace:revoke', id)
   },
   artifact: {
+    delete: (input) => ipcRenderer.invoke('artifact:delete', input),
     list: (projectId) => ipcRenderer.invoke('artifact:list', projectId),
     files: (artifactId) => ipcRenderer.invoke('artifact:files', artifactId),
     saveEdits: (input) => ipcRenderer.invoke('artifact:save-edits', input),
