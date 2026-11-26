@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCodeEdits } from '@renderer/composables/useCodeEdits'
 import LibraryPicker from '@renderer/components/libraries/LibraryPicker.vue'
 import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
@@ -19,6 +20,7 @@ const props = defineProps<{ project: Project }>()
 const { token } = theme.useToken()
 const store = useArtifactStore()
 const activeTab = ref('preview')
+const { save, discard } = useCodeEdits()
 const previewActionsTarget = ref<HTMLElement | null>(null)
 
 // 文件树宽度持久化:拖过一次之后每次进来都是自己调好的宽度。
@@ -122,7 +124,7 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
   <div class="workspace" :style="{ background: token.colorBgContainer }">
     <!-- hairline-b 是 base.css 的半像素发丝线:给这条工具栏一个下边界,
          否则 segmented 像浮在代码/预览区上面,两块内容之间没有交代 -->
-    <div class="workspace-header hairline-b">
+    <div class="workspace-header hairline-b" :class="{ 'code-mode': activeTab === 'code' }">
       <a-segmented
         v-model:value="activeTab"
         size="small"
@@ -142,7 +144,26 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
         ]"
       />
 
-      <div ref="previewActionsTarget" class="workspace-preview-actions" />
+      <div v-if="activeTab === 'code'" class="code-actions">
+        <span v-if="store.dirty">{{ t('code.unsaved') }}</span>
+        <a-button size="small" :disabled="!store.dirty || store.editingBlocked" @click="discard">
+          {{ t('code.discard') }}
+        </a-button>
+        <a-button
+          size="small"
+          type="primary"
+          :loading="store.saving"
+          :disabled="!store.dirty || store.editingBlocked"
+          @click="save().catch(() => {})"
+        >
+          {{ t('common.save') }}
+        </a-button>
+      </div>
+      <div
+        v-show="activeTab !== 'code'"
+        ref="previewActionsTarget"
+        class="workspace-preview-actions"
+      />
 
       <div class="workspace-header-end">
         <VersionPicker :project-id="project.id" />
@@ -197,6 +218,11 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
       show-icon
       :message="uiMessage(store.loadError)"
       style="margin-top: 12px"
+    />
+    <a-alert
+      v-if="activeTab === 'preview' && store.dirty"
+      type="info"
+      :message="t('code.savedPreview')"
     />
     <div class="workspace-body">
       <!-- 和对话侧、首页同一副空态骨架(淡图标 + 真 h3 + 13px 说明)。
@@ -272,6 +298,22 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
 
 .workspace-preview-actions {
   justify-self: center;
+}
+
+.workspace-header.code-mode {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.code-mode .workspace-header-end {
+  margin-left: auto;
+}
+
+.code-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
 }
 
 .workspace-header-end {

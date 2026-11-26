@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCodeEdits, useCodeEditNavigation } from '@renderer/composables/useCodeEdits'
 import { t } from '@renderer/i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '@renderer/stores/project'
@@ -13,6 +14,9 @@ import ProjectTags from '@renderer/components/project/ProjectTags.vue'
  * 项目工作台:左对话 / 右预览与代码,中间分割条可拖拽调宽。
  * 左右各自滚动,整页不滚——对话与预览是两条独立的阅读流。
  */
+
+const { confirmEdits } = useCodeEdits()
+useCodeEditNavigation(confirmEdits)
 
 const route = useRoute()
 const router = useRouter()

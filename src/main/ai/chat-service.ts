@@ -117,6 +117,11 @@ function countToolCalls(steps: readonly StepResult<ToolSet>[]): number {
 }
 
 const running = new Map<string, AbortController>()
+const runningProjects = new Map<string, string>()
+
+export function isProjectChatRunning(projectId: string): boolean {
+  return [...runningProjects.values()].includes(projectId)
+}
 
 export function sendChat(sender: WebContents, input: SendChatInput): SendChatResult {
   return withLanguage(resolvePromptLanguage(readConfig().lang), () =>
@@ -243,6 +248,7 @@ function sendChatInLanguage(sender: WebContents, input: SendChatInput): SendChat
   const streamId = randomUUID()
   const abort = new AbortController()
   running.set(streamId, abort)
+  if (project) runningProjects.set(streamId, project.id)
 
   /**
    * 运行追踪:设计会话记 design,纯聊天记 chat。采集器只观察不干预,
@@ -887,6 +893,7 @@ function sendChatInLanguage(sender: WebContents, input: SendChatInput): SendChat
       // stdio 的 MCP 是子进程,不关就常驻;close 自己兜错,不会抛
       void mcp?.close()
       running.delete(streamId)
+      runningProjects.delete(streamId)
     }
   }
 

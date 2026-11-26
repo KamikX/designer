@@ -5,6 +5,7 @@ import {
   FolderOutlined,
   FolderOpenOutlined
 } from '@antdv-next/icons'
+import { t } from '@renderer/i18n'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { useProjectStore } from '@renderer/stores/project'
 import { exportDirName, sanitizeName } from '@shared/export-name'
@@ -112,6 +113,12 @@ function onSelect(keys: (string | number)[]): void {
         <FileOutlined v-else-if="(node as unknown as TreeNode).isLeaf" />
         <FolderOpenOutlined v-else-if="expandedKeys.includes((node as unknown as TreeNode).key)" />
         <FolderOutlined v-else />
+        <span
+          v-if="Object.hasOwn(store.drafts, (node as unknown as TreeNode).key)"
+          :title="t('code.modified')"
+          :aria-label="t('code.modified')"
+          >*</span
+        >
         <span class="file-node-title">{{ (node as unknown as TreeNode).title }}</span>
       </span>
     </template>

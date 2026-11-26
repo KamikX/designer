@@ -1,4 +1,6 @@
+import { t } from '@renderer/i18n'
 import { defineStore } from 'pinia'
+import { useChatStore } from './chat'
 import type { Artifact, ArtifactFile, ChatStreamEvent } from '@shared/types'
 
 /**
@@ -64,10 +66,28 @@ export const useArtifactStore = defineStore('artifact', {
     previewEpoch: 0,
     /** 当前在代码视图中选中的文件路径 */
     selectedPath: '' as string,
+    drafts: {} as Record<string, string>,
+    draftBaseId: '',
+    saving: false,
     exporting: false
   }),
 
   getters: {
+    dirty(state): boolean {
+      return Object.keys(state.drafts).length > 0
+    },
+    editingBlocked(state): boolean {
+      const chat = useChatStore()
+      return (
+        state.loading ||
+        state.saving ||
+        !state.currentId ||
+        state.pending.length > 0 ||
+        state.pendingDeletes.length > 0 ||
+        (chat.projectId === state.projectId && chat.sending) ||
+        Object.values(chat.streams).some((stream) => stream.projectId === state.projectId)
+      )
+    },
     current(state): Artifact | null {
       return state.artifacts.find((a) => a.id === state.currentId) ?? null
     },
@@ -91,6 +111,7 @@ export const useArtifactStore = defineStore('artifact', {
       return [...merged.values()].sort((a, b) => a.path.localeCompare(b.path))
     },
     selectedContent(state): string {
+      if (Object.hasOwn(state.drafts, state.selectedPath)) return state.drafts[state.selectedPath]
       const pendingHit = state.pending.find((f) => f.path === state.selectedPath)
       if (pendingHit) return pendingHit.content
       return state.files.find((f) => f.path === state.selectedPath)?.content ?? ''
@@ -98,6 +119,57 @@ export const useArtifactStore = defineStore('artifact', {
   },
 
   actions: {
+    editFile(path: string, content: string): void {
+      if (this.editingBlocked) return
+      const original = this.files.find((file) => file.path === path)
+      if (!original) return
+      if (original.content === content) delete this.drafts[path]
+      else {
+        this.draftBaseId = this.currentId
+        this.drafts = { ...this.drafts, [path]: content }
+      }
+    },
+
+    discardEdits(): void {
+      this.drafts = {}
+      this.draftBaseId = ''
+    },
+
+    async saveEdits(): Promise<void> {
+      if (!this.dirty) return
+      if (this.editingBlocked) throw new Error(t('code.saveUnavailable'))
+      const projectId = this.projectId
+      const baseArtifactId = this.draftBaseId
+      const requestId = this.requestId
+      const edits = Object.entries(this.drafts).map(([path, content]) => ({ path, content }))
+      this.saving = true
+      try {
+        const saved = await window.api.artifact.saveEdits({
+          projectId,
+          baseArtifactId,
+          files: edits
+        })
+        if (this.projectId !== projectId || this.requestId !== requestId) return
+        // Commit the persisted snapshot locally so a follow-up read failure cannot duplicate a save.
+        const contents = new Map(edits.map((file) => [file.path, file.content]))
+        this.files = this.files.map((file) => ({
+          ...file,
+          content: contents.get(file.path) ?? file.content
+        }))
+        this.artifacts = [
+          saved,
+          ...this.artifacts.filter((artifact) => artifact.id !== saved.id)
+        ].sort((a, b) => b.version - a.version)
+        this.currentId = saved.id
+        this.discardEdits()
+        window.api.project
+          .saveSettings(projectId, { selectedArtifactId: saved.id })
+          .catch((error) => console.error('[artifact] Cannot save version selection:', error))
+      } finally {
+        if (this.projectId === projectId && this.requestId === requestId) this.saving = false
+      }
+    },
+
     /**
      * 换项目。
      *
@@ -111,6 +183,8 @@ export const useArtifactStore = defineStore('artifact', {
       this.loading = true
       this.loadError = ''
       this.projectId = projectId
+      this.discardEdits()
+      this.saving = false
       this.pending = []
       this.pendingDeletes = []
       this.artifacts = []

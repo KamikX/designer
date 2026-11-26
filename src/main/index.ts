@@ -151,7 +151,7 @@ app.on('window-all-closed', () => {
 })
 
 // WAL 模式下干净地关闭连接，才会把 -wal 文件合并回主库
-app.on('before-quit', () => {
+app.on('will-quit', () => {
   closeDb()
 })
 

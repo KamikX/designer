@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCodeEdits } from '@renderer/composables/useCodeEdits'
 import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { setPatchListener, useArtifactStore } from '@renderer/stores/artifact'
@@ -9,17 +10,15 @@ import { applyPatch, getModel, setContent, setScope } from '@renderer/monaco/vfs
 import type { ChatStreamEvent } from '@shared/types'
 
 /**
- * 代码查看器:只读 Monaco + Shiki 高亮。
- *
- * 编辑器实例只建一次,切文件换 model。两种更新观感:
- * - 旧协议(全文流式):内容持续增长,贴底滚动,还是"打字机写代码"。
- * - 新协议(工具局部编辑):就地 applyEdits,滚到改动处并闪一下高亮——
- *   全文重写没了之后,这才是让人看清"改了哪"的方式。
+ * Keep a single editor and switch pooled models so file changes preserve undo history.
+ * Programmatic updates are suppressed to keep AI streaming separate from manual drafts.
  */
 
 const { token } = theme.useToken()
 const { dark } = useAppConfig()
 const store = useArtifactStore()
+const { save } = useCodeEdits()
+let syncing = false
 
 const host = ref<HTMLElement | null>(null)
 const loading = ref(true)
@@ -39,8 +38,8 @@ onMounted(async () => {
 
   editor = monaco.editor.create(host.value, {
     value: '',
-    readOnly: true,
-    domReadOnly: true,
+    readOnly: store.editingBlocked,
+    domReadOnly: store.editingBlocked,
     automaticLayout: true, // splitter 拖拽时自己重排
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
@@ -71,6 +70,13 @@ onMounted(async () => {
     wrappingIndent: 'indent',
     padding: { top: 8, bottom: 8 }
   })
+  editor.onDidChangeModelContent(() => {
+    if (syncing || !editor || !store.selectedPath) return
+    store.editFile(store.selectedPath, editor.getValue())
+  })
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+    if (!store.editingBlocked) void save().catch(() => {})
+  })
   decorations = editor.createDecorationsCollection()
   applyTheme(dark.value)
   syncModel()
@@ -85,6 +91,12 @@ onBeforeUnmount(() => {
 })
 
 watch(dark, (value) => applyTheme(value))
+watch(
+  () => store.editingBlocked,
+  (blocked) => {
+    editor?.updateOptions({ readOnly: blocked, domReadOnly: blocked })
+  }
+)
 
 /** 换文件:只换 model,编辑器实例不动 */
 watch(() => store.selectedPath, syncModel)
@@ -108,7 +120,14 @@ watch(
       syncModel()
       return
     }
-    if (!setContent(store.selectedPath, content)) return
+    syncing = true
+    let changed: boolean
+    try {
+      changed = setContent(store.selectedPath, content)
+    } finally {
+      syncing = false
+    }
+    if (!changed) return
     if (store.streamingFiles) editor.revealLine(editor.getModel()?.getLineCount() ?? 1)
   }
 )
@@ -118,7 +137,13 @@ watch(
  * model 就成新内容了,oldText 锚点再也定位不到,只能退回全量替换。
  */
 function handlePatch(patch: Extract<ChatStreamEvent, { type: 'file-patch' }>): void {
-  const hit = applyPatch(patch.path, patch.oldText, patch.newText, patch.replaceAll)
+  syncing = true
+  let hit: ReturnType<typeof applyPatch>
+  try {
+    hit = applyPatch(patch.path, patch.oldText, patch.newText, patch.replaceAll)
+  } finally {
+    syncing = false
+  }
   // 命不中说明这个文件还没建 model,等它被选中时 getModel 直接拿新内容建
   if (!hit || !editor || !isShowing(patch.path)) return
   editor.revealLineInCenterIfOutsideViewport(hit.startLine)
@@ -131,7 +156,12 @@ function isShowing(path: string): boolean {
 
 function syncModel(): void {
   if (!editor) return
-  editor.setModel(store.selectedPath ? getModel(store.selectedPath, store.selectedContent) : null)
+  syncing = true
+  try {
+    editor.setModel(store.selectedPath ? getModel(store.selectedPath, store.selectedContent) : null)
+  } finally {
+    syncing = false
+  }
 }
 
 /** 改动行高亮,2s 后自动褪去 */

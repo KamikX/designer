@@ -1204,6 +1204,11 @@ export interface DesignerApi {
   artifact: {
     list: (projectId: string) => Promise<Artifact[]>
     files: (artifactId: string) => Promise<ArtifactFile[]>
+    saveEdits: (input: {
+      projectId: string
+      baseArtifactId: string
+      files: ArtifactFile[]
+    }) => Promise<Artifact>
     /** 弹目录选择框导出整棵文件树,返回导出目录;用户取消返回 null */
     exportTo: (artifactId: string) => Promise<string | null>
   }

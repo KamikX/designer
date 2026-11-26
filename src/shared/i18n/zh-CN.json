@@ -966,5 +966,15 @@
   "preview.reactRootRequired": "App.tsx 需要默认导出根组件",
   "preview.missingAntdvNext": "页面用了 {0} 等 antdv-next 组件,但本项目没有勾选 antdv-next 依赖包。在工作台右上角的「依赖包」里勾上它,或者改用原生元素实现。",
   "preview.stylesheetFailed": "样式加载失败:",
-  "preview.vendorDependencyMissing": "预览运行时缺少依赖: "
+  "preview.vendorDependencyMissing": "预览运行时缺少依赖: ",
+  "code.unsaved": "代码更改尚未保存",
+  "code.unsavedPrompt": "是否将代码更改保存为新版本后继续？",
+  "code.discard": "放弃更改",
+  "code.discardPrompt": "放弃所有未保存的代码更改？",
+  "code.modified": "已修改",
+  "code.savedPreview": "预览显示最后保存的版本。",
+  "code.invalidEdits": "代码更改无效",
+  "code.invalidVersion": "设计版本无效",
+  "code.saveUnavailable": "当前无法保存代码",
+  "code.generating": "生成期间无法编辑代码"
 }

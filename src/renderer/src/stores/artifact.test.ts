@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import type { Artifact, ArtifactFile, ChatStreamEvent, DesignerApi, Project } from '@shared/types'
 import { useArtifactStore } from './artifact'
+import { useChatStore } from './chat'
 
 /**
  * 这条边以前没人测:chat.test.ts 明写"只测活动相位,不把画布拖下水",
@@ -40,9 +41,11 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 const getProject = vi.fn<(id: string) => Promise<Project | null>>()
 const saveSettings = vi.fn().mockResolvedValue(undefined)
 const list = vi.fn<(projectId: string) => Promise<Artifact[]>>()
+const saveEdits = vi.fn()
 const files = vi.fn<(artifactId: string) => Promise<ArtifactFile[]>>()
 
 beforeEach(() => {
+  saveEdits.mockReset()
   list.mockReset()
   files.mockReset()
   getProject.mockReset().mockResolvedValue(null)
@@ -50,7 +53,7 @@ beforeEach(() => {
   Object.defineProperty(window, 'api', {
     configurable: true,
     value: {
-      artifact: { list, files },
+      artifact: { list, files, saveEdits },
       project: { get: getProject, saveSettings }
     } as unknown as DesignerApi
   })
@@ -270,5 +273,121 @@ describe('persisted version selection', () => {
     await store.loadForProject('p')
     expect(store.currentId).toBe('new')
     expect(files).not.toHaveBeenCalledWith('foreign')
+  })
+})
+
+describe('manual drafts', () => {
+  function seed(): ReturnType<typeof useArtifactStore> {
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    store.currentId = 'v1'
+    store.artifacts = [artifact('v1', 1)]
+    store.files = [file('index.html', 'old'), file('theme.css', 'styles')]
+    store.selectedPath = 'index.html'
+    return store
+  }
+
+  it('keeps edits across file switches and clears dirty state when undone', () => {
+    const store = seed()
+    store.editFile('index.html', 'new')
+    store.selectedPath = 'theme.css'
+    store.editFile('theme.css', 'new styles')
+    store.selectedPath = 'index.html'
+    expect(store.selectedContent).toBe('new')
+    expect(store.files[0].content).toBe('old')
+    store.editFile('index.html', 'old')
+    store.editFile('theme.css', 'styles')
+    expect(store.dirty).toBe(false)
+  })
+
+  it('saves all edits as one version and selects it for subsequent operations', async () => {
+    const store = seed()
+    store.editFile('index.html', 'new')
+    store.editFile('theme.css', '')
+    saveEdits.mockResolvedValue(artifact('v2', 2))
+    await store.saveEdits()
+    expect(saveEdits).toHaveBeenCalledWith({
+      projectId: 'p',
+      baseArtifactId: 'v1',
+      files: [file('index.html', 'new'), file('theme.css', '')]
+    })
+    expect(store.currentId).toBe('v2')
+    expect(store.files).toEqual([file('index.html', 'new'), file('theme.css', '')])
+    expect(store.dirty).toBe(false)
+    expect(store.saving).toBe(false)
+    expect(saveSettings).toHaveBeenCalledWith('p', { selectedArtifactId: 'v2' })
+    const chat = useChatStore()
+    chat.projectId = 'p'
+    chat.conversationId = 'c'
+    chat.selected = { providerId: 'provider', modelId: 'model' }
+    const send = vi
+      .fn()
+      .mockResolvedValue({ streamId: 's', userMessageId: 'u', assistantMessageId: 'a' })
+    Object.assign(window.api, { chat: { send } })
+    await chat.send('Continue editing')
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ baseArtifactId: 'v2' }))
+  })
+
+  it('preserves drafts after a failed save', async () => {
+    const store = seed()
+    store.editFile('index.html', 'new')
+    saveEdits.mockRejectedValue(new Error('disk full'))
+    await expect(store.saveEdits()).rejects.toThrow('disk full')
+    expect(store.selectedContent).toBe('new')
+    expect(store.currentId).toBe('v1')
+    expect(store.dirty).toBe(true)
+    expect(store.saving).toBe(false)
+  })
+
+  it('ignores a save result arriving after another project was loaded', async () => {
+    const store = seed()
+    store.editFile('index.html', 'new')
+    const response = deferred<Artifact>()
+    saveEdits.mockReturnValue(response.promise)
+    const saving = store.saveEdits()
+    list.mockResolvedValue([])
+    await store.loadForProject('other')
+    response.resolve(artifact('v2', 2))
+    await saving
+    expect(store.projectId).toBe('other')
+    expect(store.currentId).toBe('')
+    expect(store.files).toEqual([])
+    expect(store.saving).toBe(false)
+  })
+
+  it('blocks editing from submission through the end of generation', () => {
+    const store = seed()
+    const chat = useChatStore()
+    chat.projectId = 'p'
+    chat.conversationId = 'c'
+    chat.sendingConversations = ['c']
+    store.editFile('index.html', 'ignored')
+    expect(store.dirty).toBe(false)
+    chat.sendingConversations = []
+    chat.streams = {
+      c: {
+        streamId: 's',
+        projectId: 'p',
+        conversationId: 'c',
+        assistantMessageId: 'a',
+        parts: [],
+        activities: [],
+        reasoning: ''
+      }
+    }
+    store.editFile('index.html', 'ignored')
+    expect(store.dirty).toBe(false)
+    chat.streams = {}
+    store.editFile('index.html', 'accepted')
+    expect(store.dirty).toBe(true)
+    store.discardEdits()
+    expect(store.selectedContent).toBe('old')
+  })
+
+  it('does not save a clean snapshot or introduce unknown files', async () => {
+    const store = seed()
+    store.editFile('new.ts', 'ignored')
+    await store.saveEdits()
+    expect(saveEdits).not.toHaveBeenCalled()
   })
 })

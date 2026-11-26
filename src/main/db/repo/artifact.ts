@@ -1,3 +1,4 @@
+import { text } from '../../i18n'
 import { asc, desc, eq, sql } from 'drizzle-orm'
 import type { Artifact, ArtifactFile } from '../../../shared/types'
 import { getDb } from '../index'
@@ -60,7 +61,7 @@ export function getArtifactFiles(artifactId: string): ArtifactFile[] {
 
 export function createArtifactVersion(input: {
   projectId: string
-  messageId: string
+  messageId: string | null
   baseArtifactId: string | null
   writes: Map<string, string>
   deletes: Set<string>
@@ -103,5 +104,38 @@ export function createArtifactVersion(input: {
     }
 
     return toView(artifact)
+  })
+}
+
+export function saveArtifactEdits(input: unknown): Artifact {
+  if (!input || typeof input !== 'object') throw new Error(text('code.invalidEdits'))
+  const { projectId, baseArtifactId, files } = input as Record<string, unknown>
+  if (typeof projectId !== 'string' || typeof baseArtifactId !== 'string' || !Array.isArray(files))
+    throw new Error(text('code.invalidEdits'))
+  const base = getArtifact(baseArtifactId)
+  if (!base || base.projectId !== projectId) throw new Error(text('code.invalidVersion'))
+  const original = new Map(getArtifactFiles(baseArtifactId).map((f) => [f.path, f.content]))
+  const writes = new Map<string, string>()
+  const seen = new Set<string>()
+  for (const file of files) {
+    if (
+      !file ||
+      typeof file.path !== 'string' ||
+      typeof file.content !== 'string' ||
+      !original.has(file.path) ||
+      seen.has(file.path)
+    )
+      throw new Error(text('code.invalidEdits'))
+    seen.add(file.path)
+    if (original.get(file.path) !== file.content) writes.set(file.path, file.content)
+  }
+  if (!writes.size) return base
+  return createArtifactVersion({
+    projectId,
+    baseArtifactId,
+    messageId: null,
+    writes,
+    deletes: new Set(),
+    summary: 'Manual code edits'
   })
 }

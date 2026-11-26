@@ -966,5 +966,15 @@
   "preview.reactRootRequired": "App.tsx must default-export a root component",
   "preview.missingAntdvNext": "The page uses {0} and other antdv-next components, but antdv-next is not enabled for this project. Enable it in “Libraries” at the top right of the workspace, or use native elements.",
   "preview.stylesheetFailed": "Stylesheet failed to load:",
-  "preview.vendorDependencyMissing": "Preview runtime dependency missing: "
+  "preview.vendorDependencyMissing": "Preview runtime dependency missing: ",
+  "code.unsaved": "Unsaved code changes",
+  "code.unsavedPrompt": "Save your code changes as a new version before continuing?",
+  "code.discard": "Discard changes",
+  "code.discardPrompt": "Discard all unsaved code changes?",
+  "code.modified": "Modified",
+  "code.savedPreview": "Preview shows the last saved version.",
+  "code.invalidEdits": "Invalid code edits",
+  "code.invalidVersion": "Invalid design version",
+  "code.saveUnavailable": "Cannot save code right now",
+  "code.generating": "Cannot edit code during generation"
 }

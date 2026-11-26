@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCodeEdits } from '@renderer/composables/useCodeEdits'
 import { t, uiMessage } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import {
@@ -219,12 +220,24 @@ function onPick(e: Event): void {
   input.value = ''
 }
 
-function send(): void {
+const { confirmEdits } = useCodeEdits()
+let confirmingSend = false
+
+async function send(): Promise<void> {
   const text = draft.value.trim()
   // 只标了几处、一个字没打也该能发:标注本身就是需求("这几处改掉")
   const hasContent =
     text || attachments.value.length > 0 || localFiles.value.length > 0 || marks.value.length > 0
-  if (!hasContent || chatStore.streaming || props.disabled) return
+  if (!hasContent || chatStore.streaming || props.disabled || confirmingSend) return
+
+  confirmingSend = true
+  let proceed: boolean
+  try {
+    proceed = await confirmEdits()
+  } finally {
+    confirmingSend = false
+  }
+  if (!proceed || chatStore.streaming || props.disabled) return
 
   const files = attachments.value
   const body = composeMarks(

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useCodeEdits } from '@renderer/composables/useCodeEdits'
 import { DownOutlined } from '@antdv-next/icons'
 import { t } from '@renderer/i18n'
 import { useArtifactStore } from '@renderer/stores/artifact'
@@ -8,9 +9,11 @@ const props = defineProps<{ projectId: string }>()
 const store = useArtifactStore()
 const chat = useChatStore()
 const open = ref(false)
+const { confirmEdits } = useCodeEdits()
 const busy = computed(
   () =>
     store.loading ||
+    store.saving ||
     store.streamingFiles ||
     (chat.projectId === props.projectId && chat.sending) ||
     Object.values(chat.streams).some((stream) => stream.projectId === props.projectId)
@@ -25,10 +28,10 @@ watch(
   () => (open.value = false)
 )
 
-function select(id: string): void {
-  if (busy.value) return
+async function select(id: string): Promise<void> {
+  if (busy.value || id === store.currentId) return
   open.value = false
-  void store.select(id)
+  if (await confirmEdits()) await store.select(id)
 }
 
 function localDate(value: string): string {

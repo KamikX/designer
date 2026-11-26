@@ -77,14 +77,14 @@ import { listModels, setModelSelection } from '../db/repo/model'
 import { listMessages } from '../db/repo/message'
 import { testProvider } from '../ai/registry'
 import { fetchRemoteModels } from '../ai/model-catalog'
-import { abortChat, sendChat } from '../ai/chat-service'
+import { abortChat, sendChat, isProjectChatRunning } from '../ai/chat-service'
 import { answerQuestion } from '../ai/ask-user'
 import { catalog, marketStatus } from '../market'
 import { scanSkills } from '../skills/scan'
 import { addRoot, grantPaths, listRoots, removeRoot } from '../workspace/roots'
 import type { RootScope } from '../workspace/roots'
 import { clearPreviewError, reportPreviewError } from '../preview/errors'
-import { getArtifactFiles, listArtifacts } from '../db/repo/artifact'
+import { getArtifactFiles, listArtifacts, saveArtifactEdits } from '../db/repo/artifact'
 import { exportArtifact } from '../artifact-export'
 import { exportProjectPackage, openProjectPackage } from '../project-package/service'
 import { importAsset, importImage, testStorage } from '../storage/service'
@@ -335,6 +335,17 @@ export function registerIpc(): void {
   )
   ipcMain.handle('workspace:revoke', (_e, id: string) => removeRoot(id))
 
+  ipcMain.handle('artifact:save-edits', (_e, input: unknown) => {
+    if (
+      input &&
+      typeof input === 'object' &&
+      'projectId' in input &&
+      typeof input.projectId === 'string' &&
+      isProjectChatRunning(input.projectId)
+    )
+      throw new Error(appText('code.generating'))
+    return saveArtifactEdits(input)
+  })
   ipcMain.handle('artifact:list', (_e, projectId: string) => listArtifacts(projectId))
   ipcMain.handle('artifact:files', (_e, artifactId: string) => getArtifactFiles(artifactId))
   ipcMain.handle('artifact:export', (_e, artifactId: string) => exportArtifact(artifactId))

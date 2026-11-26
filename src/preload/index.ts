@@ -143,6 +143,7 @@ const api: DesignerApi = {
   artifact: {
     list: (projectId) => ipcRenderer.invoke('artifact:list', projectId),
     files: (artifactId) => ipcRenderer.invoke('artifact:files', artifactId),
+    saveEdits: (input) => ipcRenderer.invoke('artifact:save-edits', input),
     exportTo: (artifactId) => ipcRenderer.invoke('artifact:export', artifactId)
   },
   storage: {
