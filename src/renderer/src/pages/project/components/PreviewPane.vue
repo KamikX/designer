@@ -19,6 +19,8 @@ import type { MarkTarget } from '@renderer/stores/annotation'
  * 所有拾取与徽标都在 preview/annotate-runtime.ts 里,这里只负责收发和输入。
  */
 
+defineProps<{ actionsTarget: HTMLElement | null }>()
+
 const { token } = theme.useToken()
 const store = useArtifactStore()
 const annotation = useAnnotationStore()
@@ -172,6 +174,33 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="preview-pane">
+    <Teleport v-if="src && actionsTarget" :to="actionsTarget">
+      <div class="preview-actions">
+        <!-- 标注态是一种"模式",按钮要一直亮着提示它开着,不然用户会以为页面点不动了 -->
+        <a-tooltip
+          :title="
+            annotation.enabled
+              ? t('messages.exitAnnotationOrPressEsc')
+              : t('messages.markElementsToChange')
+          "
+        >
+          <a-button
+            size="small"
+            shape="circle"
+            :type="annotation.enabled ? 'primary' : 'default'"
+            @click="toggleAnnotate"
+          >
+            <template #icon><HighlightOutlined /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :title="t('common.refreshPreview')">
+          <a-button size="small" shape="circle" @click="refresh">
+            <template #icon><ReloadOutlined /></template>
+          </a-button>
+        </a-tooltip>
+      </div>
+    </Teleport>
+
     <a-alert
       v-if="runtimeError"
       type="error"
@@ -236,40 +265,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!--
-        悬浮控件挂在**画框里**,不是挂在整个面板上。
-        挂面板上时它们是按面板顶部定位的,而错误条一出现就顶在面板顶部——
-        两颗圆钮正好压住 alert 的关闭 ×,报错之后就再也关不掉了。
-        放进画框后天然让开错误条,DOM 顺序也让它们压在骨架屏上面(加载中要能点刷新)。
-      -->
-      <div v-if="src" class="preview-actions">
-        <!-- 标注态是一种"模式",按钮要一直亮着提示它开着,不然用户会以为页面点不动了 -->
-        <a-tooltip
-          :title="
-            annotation.enabled
-              ? t('messages.exitAnnotationOrPressEsc')
-              : t('messages.markElementsToChange')
-          "
-        >
-          <a-button
-            size="small"
-            shape="circle"
-            :type="annotation.enabled ? 'primary' : 'default'"
-            @click="toggleAnnotate"
-          >
-            <template #icon><HighlightOutlined /></template>
-          </a-button>
-        </a-tooltip>
-        <a-tooltip :title="t('common.refreshPreview')">
-          <a-button size="small" shape="circle" @click="refresh">
-            <template #icon><ReloadOutlined /></template>
-          </a-button>
-        </a-tooltip>
-      </div>
-
-      <!-- "标注模式开着"这件事由右上角那颗 primary 按钮表达就够了;
-           说明条只是一句话,再铺一整条品牌蓝就是拿颜色当装饰。
-           这里改成抬起的暖面 + 冷描边 + shadow-md,靠材质浮在设计稿之上 -->
+      <!-- Keep the guidance neutral because the toolbar button already identifies annotation mode. -->
       <div v-if="annotation.enabled" class="preview-tip">
         {{ t('messages.clickAnElementAndDescribeThe') }}
       </div>
@@ -336,7 +332,7 @@ onBeforeUnmount(() => {
  * 的 #fff,暗色模式下就是一大块刺眼的白。
  */
 .preview-frame {
-  /* 悬浮的动作钮与标注说明条都按这一层定位 */
+  /* Keep annotation guidance anchored to the preview content. */
   position: relative;
   flex: 1;
   min-height: 0;
@@ -392,10 +388,8 @@ onBeforeUnmount(() => {
 }
 
 .preview-actions {
-  position: absolute;
-  right: 10px;
-  top: 10px;
   display: flex;
+  align-items: center;
   gap: 6px;
 }
 
@@ -451,7 +445,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  /* 刷新按钮要压在它上面,否则加载中点不到 */
   z-index: 1;
 }
 

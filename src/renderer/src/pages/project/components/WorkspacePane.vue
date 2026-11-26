@@ -19,6 +19,7 @@ const props = defineProps<{ project: Project }>()
 const { token } = theme.useToken()
 const store = useArtifactStore()
 const activeTab = ref('preview')
+const previewActionsTarget = ref<HTMLElement | null>(null)
 
 // 文件树宽度持久化:拖过一次之后每次进来都是自己调好的宽度。
 // 默认给得偏窄——设计稿通常就几个文件,树再宽也是空的,那点宽度
@@ -141,46 +142,53 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
         ]"
       />
 
-      <VersionPicker :project-id="project.id" />
+      <div ref="previewActionsTarget" class="workspace-preview-actions" />
 
-      <!-- 依赖包创建后也能改:老项目不用重建就能用上组件库 -->
-      <a-popover v-if="project.stack !== 'html'" trigger="click" placement="bottomRight">
-        <template #content>
-          <div class="libs-pop">
-            <div class="libs-pop-title">
-              {{ t('messages.librariesLoadedAutomaticallyInPreview') }}
+      <div class="workspace-header-end">
+        <VersionPicker :project-id="project.id" />
+
+        <!-- 依赖包创建后也能改:老项目不用重建就能用上组件库 -->
+        <a-popover v-if="project.stack !== 'html'" trigger="click" placement="bottomRight">
+          <template #content>
+            <div class="libs-pop">
+              <div class="libs-pop-title">
+                {{ t('messages.librariesLoadedAutomaticallyInPreview') }}
+              </div>
+              <label
+                v-for="opt in project.stack === 'vue3' ? LIB_OPTIONS : []"
+                :key="opt.value"
+                class="libs-pop-row"
+              >
+                <a-checkbox
+                  :checked="libDraft.includes(opt.value)"
+                  @change="toggleLib(opt.value)"
+                />
+                <span class="libs-pop-name">{{ opt.label }}</span>
+                <span class="libs-pop-meta" :style="{ color: token.colorTextTertiary }">
+                  {{ opt.hint }}
+                </span>
+              </label>
+              <LibraryPicker
+                :key="project.id"
+                :model-value="project.externalLibraries ?? []"
+                :disabled="externalSaving"
+                :stack="project.stack"
+                @update:model-value="saveExternalLibraries"
+              />
             </div>
-            <label
-              v-for="opt in project.stack === 'vue3' ? LIB_OPTIONS : []"
-              :key="opt.value"
-              class="libs-pop-row"
-            >
-              <a-checkbox :checked="libDraft.includes(opt.value)" @change="toggleLib(opt.value)" />
-              <span class="libs-pop-name">{{ opt.label }}</span>
-              <span class="libs-pop-meta" :style="{ color: token.colorTextTertiary }">
-                {{ opt.hint }}
-              </span>
-            </label>
-            <LibraryPicker
-              :key="project.id"
-              :model-value="project.externalLibraries ?? []"
-              :disabled="externalSaving"
-              :stack="project.stack"
-              @update:model-value="saveExternalLibraries"
-            />
-          </div>
-        </template>
-        <a-tooltip :title="t('common.libraries')">
-          <button class="libs-btn" :style="{ color: token.colorTextSecondary }" type="button">
-            <AppstoreAddOutlined />
-            <span
-              v-if="libDraft.length + (project.externalLibraries?.length ?? 0)"
-              class="libs-badge tabular"
-              >{{ libDraft.length + (project.externalLibraries?.length ?? 0) }}</span
-            >
-          </button>
-        </a-tooltip>
-      </a-popover>
+          </template>
+          <a-tooltip :title="t('common.libraries')">
+            <button class="libs-btn" :style="{ color: token.colorTextSecondary }" type="button">
+              <AppstoreAddOutlined />
+              <span
+                v-if="libDraft.length + (project.externalLibraries?.length ?? 0)"
+                class="libs-badge tabular"
+                >{{ libDraft.length + (project.externalLibraries?.length ?? 0) }}</span
+              >
+            </button>
+          </a-tooltip>
+        </a-popover>
+      </div>
     </div>
 
     <a-alert
@@ -224,7 +232,7 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
       </template>
 
       <template v-else>
-        <PreviewPane />
+        <PreviewPane :actions-target="previewActionsTarget" />
       </template>
     </div>
   </div>
@@ -247,15 +255,32 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
  * 短于它分隔的内容,就不像结构而像一处装饰。
  */
 .workspace-header {
-  flex-wrap: wrap;
   flex-shrink: 0;
   gap: 12px;
-  display: flex;
+  display: grid;
+  /* Equal side columns keep the actions centered over the preview regardless of toolbar content. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   margin: 0 -12px;
   /* 原来的高度由 tabs 的内边距撑出来;换成紧凑的 segmented 后自己补 */
   padding: 8px 12px;
+}
+
+.workspace-header > :first-child {
+  justify-self: start;
+}
+
+.workspace-preview-actions {
+  justify-self: center;
+}
+
+.workspace-header-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
 }
 
 .libs-btn {
