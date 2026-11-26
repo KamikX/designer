@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const state = vi.hoisted(() => ({
   root: `/tmp/designer-libraries-test-${process.pid}-${Math.random().toString(16).slice(2)}`,
@@ -9,6 +10,7 @@ const state = vi.hoisted(() => ({
   unsupported: false,
   optional: false,
   undeclared: false,
+  vueFlags: false,
   additions: [] as string[][]
 }))
 vi.mock('../paths', () => ({ DATA_DIR: state.root }))
@@ -57,6 +59,17 @@ vi.mock('@npmcli/arborist', () => ({
         'import React from "react"; import { jsx } from "react/jsx-runtime"; export { shared } from "./shared.js"; export const react = React; export const render = jsx;'
       )
       writeFileSync(join(pkg, 'sub.js'), 'export { shared } from "./shared.js"')
+      if (state.vueFlags)
+        writeFileSync(
+          join(pkg, 'index.js'),
+          `export function install(app) {
+            app.provide('flags', {
+              options: __VUE_OPTIONS_API__,
+              devtools: __VUE_PROD_DEVTOOLS__,
+              hydration: __VUE_PROD_HYDRATION_MISMATCH_DETAILS__
+            })
+          }`
+        )
       if (state.optional)
         writeFileSync(
           join(pkg, 'index.js'),
@@ -117,11 +130,28 @@ beforeEach(() => {
   state.unsupported = false
   state.optional = false
   state.undeclared = false
+  state.vueFlags = false
   state.additions = []
 })
 afterAll(() => rmSync(state.root, { recursive: true, force: true }))
 
 describe('offline project libraries', () => {
+  it('installs Vue plugins without requiring compile-time flags in the preview global scope', async () => {
+    state.vueFlags = true
+    const lib = await installLibrary(input())
+    const code = readFileSync(libraryFile(lib, lib.entries['preview-fixture']), 'utf8')
+    expect(code).not.toMatch(/__VUE_(OPTIONS_API|PROD_DEVTOOLS|PROD_HYDRATION_MISMATCH_DETAILS)__/)
+    const plugin = await import(
+      pathToFileURL(libraryFile(lib, lib.entries['preview-fixture'])).href
+    )
+    const provide = vi.fn()
+    plugin.install({ provide })
+    expect(provide).toHaveBeenCalledWith('flags', {
+      options: true,
+      devtools: false,
+      hydration: false
+    })
+  })
   it('rejects version ranges, traversal, unrelated subpaths and reserved runtimes', async () => {
     expect(installSchema.safeParse({ ...input(), version: '^1.0.0' }).success).toBe(false)
     expect(installSchema.safeParse({ ...input(), css: ['../secret'] }).success).toBe(false)

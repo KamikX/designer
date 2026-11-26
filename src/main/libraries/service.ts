@@ -289,7 +289,13 @@ export async function installLibrary(
         metafile: true,
         logLevel: 'silent',
         conditions: ['browser', 'import'],
-        define: { 'process.env.NODE_ENV': '"production"' },
+        // Vue ecosystem bundler builds expect these flags even when Vue itself is external.
+        define: {
+          'process.env.NODE_ENV': '"production"',
+          __VUE_OPTIONS_API__: 'true',
+          __VUE_PROD_DEVTOOLS__: 'false',
+          __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'false'
+        },
         loader: {
           '.woff': 'file',
           '.woff2': 'file',
@@ -492,7 +498,11 @@ export function exportLibraryFiles(lib: InstalledLibrary): Map<string, Buffer> {
 }
 
 /** Rollback owns only directories created by this import, never an existing installation. */
-export function importPreparedLibrary(value: unknown, files: Map<string, Buffer>): () => void {
+export function importPreparedLibrary(
+  value: unknown,
+  files: Map<string, Buffer>,
+  onReuse?: (library: InstalledLibrary) => void
+): () => void {
   const metadata = metadataSchema.parse(value)
   if (metadata.id !== libraryId(metadata) || active.has(metadata.id))
     throw new Error('Invalid or busy library')
@@ -515,7 +525,15 @@ export function importPreparedLibrary(value: unknown, files: Map<string, Buffer>
       JSON.stringify(comparable(existing)) === JSON.stringify(comparable(metadata))
     const oldFiles = exportLibraryFiles(existing)
     if (!sameMetadata || [...files].some(([path, bytes]) => !oldFiles.get(path)?.equals(bytes))) {
-      throw new Error(`Library content conflict: ${metadata.name}@${metadata.version}`)
+      // Rebuilds may differ for the same version; preserve shared files used by other projects.
+      const compatible =
+        existing.ready &&
+        metadata.stacks.every((stack) => existing.stacks.includes(stack)) &&
+        Object.keys(metadata.entries).every((entry) => Object.hasOwn(existing.entries, entry)) &&
+        (!metadata.styles.length || existing.styles.length > 0)
+      if (!onReuse || !compatible)
+        throw new Error(`Library content conflict: ${metadata.name}@${metadata.version}`)
+      onReuse(existing)
     }
     return () => {}
   }

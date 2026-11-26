@@ -219,7 +219,11 @@ function serveFileSet({
 
   // vue3 / react:入口出引导页,其余文件按名直出(引导页里 fetch 用)
   if (isEntry && stack !== 'html') {
-    return html(buildBootstrapHtml(stack, theme, libs, external, currentLanguage()))
+    // Detect presence from the VFS so a missing optional hook never hides a broken import.
+    const appSetup = (['app.setup.ts', 'app.setup.js'] as const).find((path) =>
+      files.some((file) => file.path === path)
+    )
+    return html(buildBootstrapHtml(stack, theme, libs, external, currentLanguage(), appSetup))
   }
 
   const requested = filePath === '' ? 'index.html' : filePath
