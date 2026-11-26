@@ -44,7 +44,9 @@ onMounted(async () => {
     value: '',
     readOnly: store.editingBlocked,
     domReadOnly: store.editingBlocked,
-    automaticLayout: true, // splitter 拖拽时自己重排
+    colorDecorators: true,
+    defaultColorDecorators: 'always',
+    automaticLayout: true, // Keep the editor sized to its panel when dragging the splitter.
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     fontSize: 13,
@@ -54,22 +56,22 @@ onMounted(async () => {
     smoothScrolling: true,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
 
-    // 左边槽位:Monaco 默认给行号留 5 位数字的宽度,再加字形边距和
-    // 装饰列,一共吃掉一百多像素——设计稿最多几百行,3 位足够;
-    // 只读查看器也不会有断点图标
+    // Monaco's default five-digit line numbers, glyph margin, and decoration column
+    // consume over 100 pixels. Three digits suffice for designs of a few hundred lines,
+    // and this viewer does not need breakpoint icons.
     lineNumbersMinChars: 3,
     glyphMargin: false,
     lineDecorationsWidth: 4,
     folding: true,
     showFoldingControls: 'mouseover',
 
-    // 右边槽位:概览标尺在只读场景没什么用,占的宽度还让左右看着不对称
+    // Hide the overview ruler to save space and keep the viewer's margins balanced.
     overviewRulerLanes: 0,
     overviewRulerBorder: false,
     hideCursorInOverviewRuler: true,
     scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
 
-    // 面板本来就窄,还挂着一长串 Tailwind 类名;不折行就得一直横向拖
+    // Wrap long Tailwind class lists to avoid constant horizontal scrolling in this narrow panel.
     wordWrap: 'on',
     wrappingIndent: 'indent',
     padding: { top: 8, bottom: 8 }
@@ -89,7 +91,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   setPatchListener(null)
   if (flashTimer) clearTimeout(flashTimer)
-  // model 归 vfs 池统一管,这里只销毁视图
+  // The VFS pool owns the models, so only dispose the editor view here.
   editor?.dispose()
   editor = null
 })
@@ -102,11 +104,11 @@ watch(
   }
 )
 
-/** 换文件:只换 model,编辑器实例不动 */
+/** Reuse the editor instance when switching files to preserve its view configuration. */
 watch(() => store.selectedPath, syncModel)
 watch(() => props.navigation, navigateToSource)
 
-// 换项目:整池清掉再重建。路由只变 id 时组件不会卸载,不清就会串味
+// Reset the model pool on project changes because route ID changes do not unmount this component.
 watch(
   () => store.projectId,
   (id) => {
@@ -116,7 +118,7 @@ watch(
   }
 )
 
-// 全文流式增长:内容对不上就整体校正,并贴底滚动
+// Reconcile streamed content with the model and follow new lines while streaming.
 watch(
   () => store.selectedContent,
   (content) => {
@@ -138,8 +140,8 @@ watch(
 )
 
 /**
- * 工具局部编辑。由 store 在更新自己那份内容**之前**同步调用——晚一步
- * model 就成新内容了,oldText 锚点再也定位不到,只能退回全量替换。
+ * The store calls this synchronously before updating its content so oldText anchors
+ * still match the model. Calling later would require falling back to full replacement.
  */
 function handlePatch(patch: Extract<ChatStreamEvent, { type: 'file-patch' }>): void {
   syncing = true
@@ -149,7 +151,7 @@ function handlePatch(patch: Extract<ChatStreamEvent, { type: 'file-patch' }>): v
   } finally {
     syncing = false
   }
-  // 命不中说明这个文件还没建 model,等它被选中时 getModel 直接拿新内容建
+  // If no model exists yet, getModel will use the updated content when the file is selected.
   if (!hit || !editor || !isShowing(patch.path)) return
   editor.revealLineInCenterIfOutsideViewport(hit.startLine)
   flash(hit.startLine, hit.endLine)
@@ -185,7 +187,7 @@ function navigateToSource(): void {
   emit('navigated')
 }
 
-/** 改动行高亮,2s 后自动褪去 */
+/** Briefly highlight changed lines to help users locate edits, then clear them after two seconds. */
 function flash(startLine: number, endLine: number): void {
   if (!decorations) return
   decorations.set([
@@ -215,7 +217,7 @@ function flash(startLine: number, endLine: number): void {
 </template>
 
 <style scoped>
-/* 不加横向 padding:编辑器就该铺满自己的框,两边留白反而像没对齐 */
+/* Avoid horizontal padding so the editor fills its frame and stays visually aligned. */
 .code-viewer {
   height: 100%;
   overflow: hidden;
@@ -229,7 +231,7 @@ function flash(startLine: number, endLine: number): void {
 </style>
 
 <style>
-/* Monaco 的 decoration 挂在编辑器内部 DOM 上,scoped 选择器命不中 */
+/* Monaco decorations live in its internal DOM, so scoped selectors cannot reach them. */
 .code-patch-flash {
   background: color-mix(in srgb, var(--app-primary) 18%, transparent);
 }

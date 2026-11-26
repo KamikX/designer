@@ -55,6 +55,8 @@ onMounted(async () => {
     value: '',
     readOnly: false,
     domReadOnly: false,
+    colorDecorators: true,
+    defaultColorDecorators: 'always',
     automaticLayout: true,
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
