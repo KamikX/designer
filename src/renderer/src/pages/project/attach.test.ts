@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MAX_FILES_AT_ONCE } from '@shared/limits'
-import { composeMarks, composeMessageBody, planAttachment } from './attach'
+import { composeCodeSelections, composeMarks, composeMessageBody, planAttachment } from './attach'
 import type { MarkTarget, PreviewMark } from '@renderer/stores/annotation'
 
 describe('planAttachment', () => {
@@ -129,4 +129,24 @@ describe('composeMarks', () => {
     expect(out).toContain('[1] ')
     expect(out).toContain('[2] ')
   })
+})
+
+it('composes only the code positions with an explicit scope instruction', () => {
+  expect(composeCodeSelections('Change this', [])).toBe('Change this')
+  const output = composeCodeSelections('Change this', [
+    {
+      id: '1',
+      projectId: 'p',
+      artifactId: 'v1',
+      path: 'App.vue',
+      startLine: 1,
+      startColumn: 3,
+      endLine: 4,
+      endColumn: 1
+    }
+  ])
+  expect(output.startsWith('Change this')).toBe(true)
+  expect(output).toContain('App.vue:1:3–4:1')
+  expect(output).not.toContain('v1')
+  expect(output).not.toContain('```')
 })

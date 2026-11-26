@@ -1,3 +1,5 @@
+import { codeSelectionLabel } from '@renderer/stores/code-selection'
+import type { CodeSelection } from '@renderer/stores/code-selection'
 import { t } from '@renderer/i18n'
 import { MAX_FILES_AT_ONCE } from '@shared/limits'
 import type { PreviewMark } from '@renderer/stores/annotation'
@@ -76,4 +78,12 @@ function clean(value: string): string {
     .replace(/`{3,}/g, (fence) => '\\`'.repeat(fence.length))
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+export function composeCodeSelections(text: string, selections: CodeSelection[]): string {
+  if (!selections.length) return text
+  const locations = selections
+    .map((selection) => `- ${clean(codeSelectionLabel(selection))}`)
+    .join('\n')
+  return `${text}\n\n${t('code.selectionContext')}\n${locations}`.trim()
 }

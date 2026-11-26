@@ -26,7 +26,9 @@ import { reconcileNames } from '@renderer/stores/selection'
 import { MAX_FILES_AT_ONCE } from '@shared/limits'
 import { useAnnotationStore } from '@renderer/stores/annotation'
 import type { MarkTarget } from '@renderer/stores/annotation'
-import { composeMarks, composeMessageBody, planAttachment } from '../attach'
+import type { CodeSelection } from '@renderer/stores/code-selection'
+import { useCodeSelectionStore, codeSelectionLabel } from '@renderer/stores/code-selection'
+import { composeCodeSelections, composeMarks, composeMessageBody, planAttachment } from '../attach'
 import type { GrantedRoot, InstalledSkill, McpServerView, RootScope } from '@shared/types'
 
 /**
@@ -37,7 +39,10 @@ import type { GrantedRoot, InstalledSkill, McpServerView, RootScope } from '@sha
  */
 
 const props = defineProps<{ disabled?: boolean }>()
-const emit = defineEmits<{ send: [text: string, attachments: ChatAttachment[]] }>()
+const emit = defineEmits<{
+  send: [text: string, attachments: ChatAttachment[]]
+  openCodeSelection: [selection: CodeSelection]
+}>()
 
 const { token } = theme.useToken()
 const router = useRouter()
@@ -45,6 +50,16 @@ const { message } = App.useApp()
 const chatStore = useChatStore()
 const providerStore = useProviderStore()
 const annotation = useAnnotationStore()
+const codeSelections = useCodeSelectionStore()
+const ranges = computed(() =>
+  codeSelections.selections.filter((item) => item.projectId === chatStore.projectId)
+)
+
+function openCodeSelection(selection: CodeSelection): void {
+  codeSelections.validate()
+  if (ranges.value.some((range) => range.id === selection.id))
+    emit('openCodeSelection', { ...selection })
+}
 
 const draft = ref('')
 
@@ -59,10 +74,13 @@ const marks = computed(() => (chatStore.projectId ? annotation.marks : []))
 
 const hasContent = computed(
   () =>
-    !!draft.value.trim() ||
-    attachments.value.length > 0 ||
-    localFiles.value.length > 0 ||
-    marks.value.length > 0
+    (!ranges.value.length ||
+      !!draft.value.trim() ||
+      marks.value.some((mark) => !!mark.note.trim())) &&
+    (!!draft.value.trim() ||
+      attachments.value.length > 0 ||
+      localFiles.value.length > 0 ||
+      marks.value.length > 0)
 )
 const incompleteMarks = computed(() => marks.value.filter((mark) => !mark.note.trim()))
 const annotationWarning = ref(false)
@@ -249,6 +267,8 @@ async function send(): Promise<void> {
   if (!hasContent.value || chatStore.streaming || props.disabled || confirmingSend) return
   if (!validateAnnotations()) return
 
+  codeSelections.validate()
+  const rangeIds = ranges.value.map((range) => range.id)
   confirmingSend = true
   let proceed: boolean
   try {
@@ -256,18 +276,28 @@ async function send(): Promise<void> {
   } finally {
     confirmingSend = false
   }
+  if (proceed) {
+    codeSelections.validate()
+    if (rangeIds.some((id) => !ranges.value.some((range) => range.id === id))) {
+      message.warning(t('code.selectionExpired'))
+      return
+    }
+  }
   if (!proceed || chatStore.streaming || props.disabled || !hasContent.value) return
   if (!validateAnnotations()) return
   annotationWarning.value = false
   const text = draft.value.trim()
 
   const files = attachments.value
-  const body = composeMarks(
-    composeMessageBody(
-      text,
-      localFiles.value.map((f) => f.path)
+  const body = composeCodeSelections(
+    composeMarks(
+      composeMessageBody(
+        text,
+        localFiles.value.map((f) => f.path)
+      ),
+      marks.value
     ),
-    marks.value
+    ranges.value
   )
 
   draft.value = ''
@@ -275,6 +305,7 @@ async function send(): Promise<void> {
   localFiles.value = []
   // 只清这一轮真的带上的:在纯聊天里发消息不该把工作台里标好的东西抹掉
   if (marks.value.length) annotation.clear()
+  for (const id of rangeIds) codeSelections.remove(id)
   emit('send', body, files)
 }
 
@@ -463,6 +494,32 @@ function toggleId(list: string[] | null, id: string): string[] {
           </span>
         </button>
         <button type="button" class="composer-file-remove" @click="annotation.remove(mark.id)">
+          <CloseOutlined />
+        </button>
+      </div>
+    </div>
+
+    <div v-if="ranges.length" class="composer-files composer-code-selections">
+      <div
+        v-for="range in ranges"
+        :key="range.id"
+        class="composer-file"
+        :title="codeSelectionLabel(range)"
+        :style="{ borderColor: token.colorBorderSecondary, color: token.colorTextSecondary }"
+      >
+        <button
+          type="button"
+          class="composer-code-open composer-file-name"
+          @click="openCodeSelection(range)"
+        >
+          {{ codeSelectionLabel(range) }}
+        </button>
+        <button
+          type="button"
+          class="composer-file-remove"
+          :aria-label="t('common.remove')"
+          @click="codeSelections.remove(range.id)"
+        >
           <CloseOutlined />
         </button>
       </div>
@@ -939,15 +996,29 @@ function toggleId(list: string[] | null, id: string): string[] {
   max-width: 100%;
   border: 1px solid transparent;
   border-radius: 8px;
-  padding: 3px 6px 3px 8px;
-  font-size: 12px;
+  padding: 2px 4px;
+  font-size: 11px;
 }
 
 .composer-file-name {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.composer-code-open {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer-code-open:hover {
+  text-decoration: underline;
 }
 
 .composer-file-remove {
@@ -958,6 +1029,7 @@ function toggleId(list: string[] | null, id: string): string[] {
   font-size: 10px;
   color: inherit;
   opacity: 0.55;
+  flex-shrink: 0;
 }
 
 .composer-file-remove:hover {

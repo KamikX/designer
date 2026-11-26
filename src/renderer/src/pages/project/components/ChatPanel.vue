@@ -8,9 +8,11 @@ import { useChatStore } from '@renderer/stores/chat'
 import { useProviderStore } from '@renderer/stores/provider'
 import MessageHistory from './MessageHistory.vue'
 import Composer from './Composer.vue'
+import type { CodeSelection } from '@renderer/stores/code-selection'
 import type { Project } from '@shared/types'
 
 const props = defineProps<{ project: Project }>()
+const emit = defineEmits<{ openCodeSelection: [selection: CodeSelection] }>()
 
 /** 对话面板:消息流(自动贴底)+ 一体化输入框。 */
 
@@ -108,6 +110,7 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
           artifactStore.projectId !== project.id
         "
         @send="(text, attachments) => chatStore.send(text, attachments)"
+        @open-code-selection="emit('openCodeSelection', $event)"
       />
     </div>
   </div>

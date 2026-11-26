@@ -4,6 +4,7 @@ import { t } from '@renderer/i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectStore } from '@renderer/stores/project'
 import { ArrowLeftOutlined } from '@antdv-next/icons'
+import type { CodeSelection } from '@renderer/stores/code-selection'
 import ChatPanel from './components/ChatPanel.vue'
 import WorkspacePane from './components/WorkspacePane.vue'
 import ExportButton from './components/ExportButton.vue'
@@ -24,6 +25,8 @@ const store = useProjectStore()
 
 const projectId = computed(() => String(route.params.id))
 const missing = ref(false)
+const codeSelectionNavigation = ref<CodeSelection | null>(null)
+watch(projectId, () => (codeSelectionNavigation.value = null))
 
 watch(
   projectId,
@@ -76,12 +79,20 @@ watch(
       <!-- 面板里再套一层自己的 div:样式只能挂在这层上,原因见下方注释 -->
       <a-splitter-panel :default-size="360" :min="300" :max="720">
         <div class="chat-pane">
-          <ChatPanel v-if="store.current" :project="store.current" />
+          <ChatPanel
+            v-if="store.current"
+            :project="store.current"
+            @open-code-selection="codeSelectionNavigation = $event"
+          />
         </div>
       </a-splitter-panel>
       <a-splitter-panel :min="480">
         <div class="workspace-pane">
-          <WorkspacePane v-if="store.current" :project="store.current" />
+          <WorkspacePane
+            v-if="store.current"
+            :project="store.current"
+            :code-selection-navigation="codeSelectionNavigation"
+          />
         </div>
       </a-splitter-panel>
     </a-splitter>

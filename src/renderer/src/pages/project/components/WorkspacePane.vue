@@ -10,10 +10,15 @@ import FileTree from './FileTree.vue'
 import VersionPicker from './VersionPicker.vue'
 import CodeViewer from './CodeViewer.vue'
 import PreviewPane from './PreviewPane.vue'
+import { useCodeSelectionStore } from '@renderer/stores/code-selection'
+import type { CodeSelection } from '@renderer/stores/code-selection'
 import type { SourceLocation, SourceNavigation } from './source-location'
 import type { ExternalLibraryRef, PreviewLib, Project } from '@shared/types'
 
-const props = defineProps<{ project: Project }>()
+const props = defineProps<{
+  project: Project
+  codeSelectionNavigation?: CodeSelection | null
+}>()
 
 /** 右侧工作区:预览 / 代码 两个 tab。导出和目录授权都挪走了——
  * 前者属于整个项目(在标题行),后者属于对话上下文(在输入框工具条)。 */
@@ -22,9 +27,30 @@ const { token } = theme.useToken()
 const store = useArtifactStore()
 const activeTab = ref('preview')
 const { save, discard } = useCodeEdits()
+const codeActionsTarget = ref<HTMLElement | null>(null)
 const previewActionsTarget = ref<HTMLElement | null>(null)
 
 const sourceNavigation = ref<SourceNavigation | null>(null)
+const codeSelections = useCodeSelectionStore()
+watch(
+  () => props.codeSelectionNavigation,
+  (selection) => {
+    if (
+      !selection ||
+      selection.projectId !== store.projectId ||
+      selection.artifactId !== store.currentId
+    )
+      return
+    codeSelections.validate()
+    if (!codeSelections.selections.some((item) => item.id === selection.id)) return
+    openSource({ path: selection.path, line: selection.startLine, column: selection.startColumn })
+    sourceNavigation.value = {
+      ...sourceNavigation.value!,
+      endLine: selection.endLine,
+      endColumn: selection.endColumn
+    }
+  }
+)
 
 function openSource(location: SourceLocation): void {
   if (!store.files.some((file) => file.path === location.path)) return
@@ -165,6 +191,7 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
       />
 
       <div v-if="activeTab === 'code'" class="code-actions">
+        <div ref="codeActionsTarget" class="code-selection-actions" />
         <span v-if="store.dirty">{{ t('code.unsaved') }}</span>
         <a-button size="small" :disabled="!store.dirty || store.editingBlocked" @click="discard">
           {{ t('code.discard') }}
@@ -273,7 +300,11 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
           </a-splitter-panel>
           <a-splitter-panel :min="320">
             <div class="code-view">
-              <CodeViewer :navigation="sourceNavigation" @navigated="sourceNavigation = null" />
+              <CodeViewer
+                :navigation="sourceNavigation"
+                :actions-target="codeActionsTarget"
+                @navigated="sourceNavigation = null"
+              />
             </div>
           </a-splitter-panel>
         </a-splitter>

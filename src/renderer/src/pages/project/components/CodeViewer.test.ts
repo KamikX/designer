@@ -1,19 +1,34 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, shallowMount, flushPromises, DOMWrapper } from '@vue/test-utils'
 import { ref } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { useChatStore } from '@renderer/stores/chat'
 import CodeViewer from './CodeViewer.vue'
+import WorkspacePane from './WorkspacePane.vue'
+import type { Project, Artifact } from '@shared/types'
+import { App } from 'antdv-next'
+import { useCodeSelectionStore } from '@renderer/stores/code-selection'
 
 const mock = vi.hoisted(() => ({
   model: null as { uri: { path: string }; content: string; getLineCount: () => number } | null,
   change: () => {},
+  selectionChange: () => {},
+  selection: null as null | {
+    startLineNumber: number
+    startColumn: number
+    endLineNumber: number
+    endColumn: number
+    isEmpty: () => boolean
+  },
+  confirmEdits: vi.fn().mockResolvedValue(true),
+  info: vi.fn(),
   command: () => {},
   save: vi.fn().mockResolvedValue(undefined),
   updateOptions: vi.fn(),
   setPosition: vi.fn(),
+  setSelection: vi.fn(),
   revealPositionInCenter: vi.fn(),
   focus: vi.fn(),
   highlighterReady: () => Promise.resolve(),
@@ -22,7 +37,9 @@ const mock = vi.hoisted(() => ({
 vi.mock('@renderer/components/config/config', () => ({
   useAppConfig: () => ({ dark: ref(false) })
 }))
-vi.mock('@renderer/composables/useCodeEdits', () => ({ useCodeEdits: () => ({ save: mock.save }) }))
+vi.mock('@renderer/composables/useCodeEdits', () => ({
+  useCodeEdits: () => ({ save: mock.save, confirmEdits: mock.confirmEdits })
+}))
 vi.mock('@renderer/monaco/highlighter', () => ({
   applyTheme: vi.fn(),
   ensureHighlighter: () => mock.highlighterReady()
@@ -38,6 +55,10 @@ vi.mock('@renderer/monaco/setup', () => ({
           mock.model = model
         },
         getModel: () => mock.model,
+        getSelection: () => mock.selection,
+        onDidChangeCursorSelection: (callback: () => void) => {
+          mock.selectionChange = callback
+        },
         getValue: () => mock.model!.content,
         onDidChangeModelContent: (callback: () => void) => {
           mock.change = callback
@@ -48,6 +69,7 @@ vi.mock('@renderer/monaco/setup', () => ({
         createDecorationsCollection: () => ({ set: vi.fn(), clear: vi.fn() }),
         updateOptions: mock.updateOptions,
         setPosition: mock.setPosition,
+        setSelection: mock.setSelection,
         revealPositionInCenter: mock.revealPositionInCenter,
         focus: mock.focus,
         revealLine: vi.fn(),
@@ -89,6 +111,13 @@ vi.mock('@renderer/monaco/vfs', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  vi.spyOn(App, 'useApp').mockReturnValue({ message: { info: mock.info } } as unknown as ReturnType<
+    typeof App.useApp
+  >)
+  mock.selection = null
+  mock.selectionChange = () => {}
+  mock.info.mockClear()
+  mock.confirmEdits.mockReset().mockResolvedValue(true)
   mock.models.clear()
   mock.model = null
   mock.change = () => {}
@@ -96,6 +125,7 @@ beforeEach(() => {
   mock.save.mockClear()
   mock.updateOptions.mockClear()
   mock.setPosition.mockClear()
+  mock.setSelection.mockClear()
   mock.revealPositionInCenter.mockClear()
   mock.focus.mockClear()
   mock.highlighterReady = () => Promise.resolve()
@@ -113,7 +143,8 @@ async function setup(path = 'App.vue'): Promise<{
     { path: 'theme.css', content: 'styles' }
   ]
   store.selectedPath = path
-  const wrapper = mount(CodeViewer)
+  const actionsTarget = document.createElement('div')
+  const wrapper = mount(CodeViewer, { props: { actionsTarget } })
   await flushPromises()
   return { store, wrapper }
 }
@@ -237,4 +268,155 @@ describe('preview source navigation', () => {
     expect(mock.setPosition).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+})
+
+function selectionButton(wrapper: ReturnType<typeof mount>): DOMWrapper<HTMLButtonElement> {
+  return new DOMWrapper(
+    (wrapper.props() as { actionsTarget: HTMLElement }).actionsTarget.querySelector('button')!
+  )
+}
+
+function selectCode(empty = false): void {
+  mock.selection = {
+    startLineNumber: 1,
+    startColumn: 2,
+    endLineNumber: 1,
+    endColumn: 5,
+    isEmpty: () => empty
+  }
+  mock.selectionChange()
+}
+
+describe('code range context', () => {
+  it('keeps the action outside Monaco and only enables it for a nonempty selection', async () => {
+    const { store, wrapper } = await setup()
+    const button = selectionButton(wrapper).element
+    expect(wrapper.find('.code-selection-toolbar').exists()).toBe(false)
+    expect(wrapper.get('.code-viewer').element.contains(button)).toBe(false)
+    const editorNodes = [...wrapper.get('.code-viewer').element.childNodes]
+    selectCode(true)
+    await flushPromises()
+    expect(selectionButton(wrapper).element.disabled).toBe(true)
+    selectCode()
+    await flushPromises()
+    expect(selectionButton(wrapper).element).toBe(button)
+    expect([...wrapper.get('.code-viewer').element.childNodes]).toEqual(editorNodes)
+    await selectionButton(wrapper).trigger('click')
+    expect(useCodeSelectionStore().selections).toEqual([
+      expect.objectContaining({ path: 'App.vue', startLine: 1, startColumn: 2, endColumn: 5 })
+    ])
+    expect(store.dirty).toBe(false)
+    wrapper.unmount()
+    expect(useCodeSelectionStore().selections).toHaveLength(1)
+  })
+
+  it('requires a fresh selection after saving unsaved code and preserves it on cancel', async () => {
+    const { store, wrapper } = await setup()
+    store.editFile('App.vue', 'draft code')
+    selectCode()
+    await flushPromises()
+    mock.confirmEdits.mockResolvedValueOnce(false)
+    await selectionButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(selectionButton(wrapper).element.disabled).toBe(false)
+    await selectionButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(mock.confirmEdits).toHaveBeenCalledTimes(2)
+    expect(mock.info).toHaveBeenCalledOnce()
+    expect(useCodeSelectionStore().selections).toEqual([])
+    expect(selectionButton(wrapper).element.disabled).toBe(true)
+    wrapper.unmount()
+  })
+})
+
+it.each([
+  { startLineNumber: 1, startColumn: 1, endLineNumber: 2, endColumn: 1 },
+  { startLineNumber: 1, startColumn: 1, endLineNumber: 3, endColumn: 1 }
+])('preserves whole-line and multiline selections through the header action: %j', async (range) => {
+  const { store, wrapper } = await setup()
+  store.files[0].content = 'first line\nsecond line\nthird line'
+  await flushPromises()
+  mock.selection = { ...range, isEmpty: () => false }
+  mock.selectionChange()
+  await flushPromises()
+  const button = selectionButton(wrapper)
+  expect(button.element.disabled).toBe(false)
+  await button.trigger('mousedown')
+  expect(useCodeSelectionStore().selections).toHaveLength(0)
+  await button.trigger('click')
+  expect(useCodeSelectionStore().selections).toEqual([
+    expect.objectContaining({
+      startLine: range.startLineNumber,
+      startColumn: 1,
+      endLine: range.endLineNumber,
+      endColumn: 1
+    })
+  ])
+  expect(store.dirty).toBe(false)
+  wrapper.unmount()
+})
+
+it('selects the entire requested code range and reveals its start without changing code', async () => {
+  const { store, wrapper } = await setup()
+  await wrapper.setProps({
+    navigation: {
+      projectId: 'p',
+      artifactId: 'v1',
+      path: 'App.vue',
+      line: 2,
+      column: 3,
+      endLine: 5,
+      endColumn: 1
+    }
+  })
+  expect(mock.setSelection).toHaveBeenCalledWith({
+    startLineNumber: 2,
+    startColumn: 3,
+    endLineNumber: 5,
+    endColumn: 1
+  })
+  expect(mock.revealPositionInCenter).toHaveBeenCalledWith({ lineNumber: 2, column: 3 })
+  expect(mock.focus).toHaveBeenCalledOnce()
+  expect(store.dirty).toBe(false)
+  wrapper.unmount()
+})
+
+it('opens code mode from a composer range and rejects stale navigation', async () => {
+  const store = useArtifactStore()
+  store.projectId = 'p'
+  store.currentId = 'v1'
+  store.artifacts = [{ id: 'v1' } as Artifact]
+  store.files = [{ path: 'App.vue', content: 'original' }]
+  vi.spyOn(store, 'loadForProject').mockResolvedValue(undefined)
+  const selections = useCodeSelectionStore()
+  selections.add('App.vue', { startLine: 1, startColumn: 2, endLine: 1, endColumn: 5 })
+  const selection = { ...selections.selections[0] }
+  const wrapper = shallowMount(WorkspacePane, {
+    props: { project: { id: 'p', stack: 'vue3', libs: [] } as unknown as Project },
+    global: {
+      stubs: {
+        ASplitter: { template: '<div><slot /></div>' },
+        ASplitterPanel: { template: '<div><slot /></div>' }
+      }
+    }
+  })
+  expect(wrapper.findComponent(CodeViewer).exists()).toBe(false)
+  await wrapper.setProps({ codeSelectionNavigation: selection })
+  expect(store.selectedPath).toBe('App.vue')
+  expect(wrapper.getComponent(CodeViewer).props('navigation')).toEqual({
+    projectId: 'p',
+    artifactId: 'v1',
+    path: 'App.vue',
+    line: 1,
+    column: 2,
+    endLine: 1,
+    endColumn: 5
+  })
+  await wrapper.getComponent(CodeViewer).vm.$emit('navigated')
+  await flushPromises()
+  await wrapper.setProps({ codeSelectionNavigation: { ...selection, artifactId: 'old' } })
+  expect(wrapper.getComponent(CodeViewer).props('navigation')).toBeNull()
+  await wrapper.setProps({ codeSelectionNavigation: { ...selection } })
+  expect(wrapper.getComponent(CodeViewer).props('navigation')).not.toBeNull()
+  wrapper.unmount()
 })

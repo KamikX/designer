@@ -7,6 +7,8 @@ export interface SourceLocation {
 export interface SourceNavigation extends SourceLocation {
   projectId: string
   artifactId: string
+  endLine?: number
+  endColumn?: number
 }
 
 export function parseSourceLocation(source: unknown): SourceLocation | null {

@@ -1000,5 +1000,9 @@
   "common.send": "Send",
   "common.editAnnotation": "Edit annotation",
   "messages.annotationDescriptionsRequired": "Some annotations have no description",
-  "messages.describeAnnotationsOrWriteMessage": "Describe every annotation or write instructions in chat before sending. Click an annotation to edit it, or remove it."
+  "messages.describeAnnotationsOrWriteMessage": "Describe every annotation or write instructions in chat before sending. Click an annotation to edit it, or remove it.",
+  "code.addToChat": "Add to chat",
+  "code.selectAgain": "Select the code again from the saved version.",
+  "code.selectionExpired": "The selected code changed. Select it again before sending.",
+  "code.selectionContext": "Target the requested change at these code ranges (1-based lines and columns; end position exclusive):"
 }

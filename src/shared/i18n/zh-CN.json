@@ -1000,5 +1000,9 @@
   "common.send": "发送",
   "common.editAnnotation": "编辑标记",
   "messages.annotationDescriptionsRequired": "部分标记缺少说明",
-  "messages.describeAnnotationsOrWriteMessage": "发送前请为每个标记填写说明，或在聊天中输入要求。点击标记可编辑，也可以将其移除。"
+  "messages.describeAnnotationsOrWriteMessage": "发送前请为每个标记填写说明，或在聊天中输入要求。点击标记可编辑，也可以将其移除。",
+  "code.addToChat": "添加到聊天",
+  "code.selectAgain": "请在已保存的版本中重新选择代码。",
+  "code.selectionExpired": "所选代码已更改，请重新选择后再发送。",
+  "code.selectionContext": "请将所请求的修改定位到以下代码范围（行列从 1 开始，结束位置不包含在范围内）："
 }

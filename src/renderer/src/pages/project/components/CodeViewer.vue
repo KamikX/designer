@@ -4,13 +4,19 @@ import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
 import { setPatchListener, useArtifactStore } from '@renderer/stores/artifact'
 import { useAppConfig } from '@renderer/components/config/config'
+import { useCodeSelectionStore, MAX_CODE_SELECTIONS } from '@renderer/stores/code-selection'
+import type { CodeRange } from '@renderer/stores/code-selection'
+import { App } from 'antdv-next'
 import { monaco } from '@renderer/monaco/setup'
 import { applyTheme, ensureHighlighter } from '@renderer/monaco/highlighter'
 import { applyPatch, getModel, setContent, setScope } from '@renderer/monaco/vfs'
 import type { ChatStreamEvent } from '@shared/types'
 import type { SourceNavigation } from './source-location'
 
-const props = defineProps<{ navigation?: SourceNavigation | null }>()
+const props = defineProps<{
+  navigation?: SourceNavigation | null
+  actionsTarget?: HTMLElement | null
+}>()
 const emit = defineEmits<{ navigated: [] }>()
 
 /**
@@ -21,7 +27,10 @@ const emit = defineEmits<{ navigated: [] }>()
 const { token } = theme.useToken()
 const { dark } = useAppConfig()
 const store = useArtifactStore()
-const { save } = useCodeEdits()
+const { save, confirmEdits } = useCodeEdits()
+const codeSelections = useCodeSelectionStore()
+const { message } = App.useApp()
+const selection = ref<CodeRange | null>(null)
 let syncing = false
 
 const host = ref<HTMLElement | null>(null)
@@ -83,6 +92,18 @@ onMounted(async () => {
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
     if (!store.editingBlocked) void save().catch(() => {})
   })
+  editor.onDidChangeCursorSelection(() => {
+    const range = editor?.getSelection()
+    selection.value =
+      range && !range.isEmpty()
+        ? {
+            startLine: range.startLineNumber,
+            startColumn: range.startColumn,
+            endLine: range.endLineNumber,
+            endColumn: range.endColumn
+          }
+        : null
+  })
   decorations = editor.createDecorationsCollection()
   applyTheme(dark.value)
   syncModel()
@@ -107,6 +128,13 @@ watch(
 /** Reuse the editor instance when switching files to preserve its view configuration. */
 watch(() => store.selectedPath, syncModel)
 watch(() => props.navigation, navigateToSource)
+watch(
+  () => [store.currentId, store.selectedContent],
+  () => {
+    selection.value = null
+  },
+  { flush: 'sync' }
+)
 
 // Reset the model pool on project changes because route ID changes do not unmount this component.
 watch(
@@ -163,6 +191,7 @@ function isShowing(path: string): boolean {
 
 function syncModel(): void {
   if (!editor) return
+  selection.value = null
   syncing = true
   try {
     editor.setModel(store.selectedPath ? getModel(store.selectedPath, store.selectedContent) : null)
@@ -181,10 +210,34 @@ function navigateToSource(): void {
     lineNumber: target.line,
     column: target.column
   })
-  editor.setPosition(position)
+  if (target.endLine !== undefined && target.endColumn !== undefined) {
+    const end = editor
+      .getModel()!
+      .validatePosition({ lineNumber: target.endLine, column: target.endColumn })
+    editor.setSelection({
+      startLineNumber: position.lineNumber,
+      startColumn: position.column,
+      endLineNumber: end.lineNumber,
+      endColumn: end.column
+    })
+  } else {
+    editor.setPosition(position)
+  }
   editor.revealPositionInCenter(position)
   editor.focus()
   emit('navigated')
+}
+
+async function addSelection(): Promise<void> {
+  if (!selection.value || store.editingBlocked) return
+  if (store.dirty) {
+    if (await confirmEdits()) {
+      selection.value = null
+      message.info(t('code.selectAgain'))
+    }
+    return
+  }
+  if (codeSelections.add(store.selectedPath, selection.value)) selection.value = null
 }
 
 /** Briefly highlight changed lines to help users locate edits, then clear them after two seconds. */
@@ -212,6 +265,21 @@ function flash(startLine: number, endLine: number): void {
       :description="t('messages.selectAFileOnTheLeftToViewItsContents')"
       style="margin-top: 60px"
     />
+    <!-- Keep the action mounted in the workspace header so selecting cannot move Monaco during a drag. -->
+    <Teleport v-if="actionsTarget && hasContent" :to="actionsTarget">
+      <div class="code-selection-toolbar" @mousedown.prevent>
+        <a-button
+          size="small"
+          :disabled="
+            !selection ||
+            store.editingBlocked ||
+            codeSelections.selections.length >= MAX_CODE_SELECTIONS
+          "
+          @click="addSelection"
+          >{{ t('code.addToChat') }}</a-button
+        >
+      </div>
+    </Teleport>
     <div v-show="!loading && hasContent" ref="host" class="code-host" />
   </div>
 </template>
@@ -219,6 +287,8 @@ function flash(startLine: number, endLine: number): void {
 <style scoped>
 /* Avoid horizontal padding so the editor fills its frame and stays visually aligned. */
 .code-viewer {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   overflow: hidden;
   border: 1px solid transparent;
@@ -226,7 +296,8 @@ function flash(startLine: number, endLine: number): void {
 }
 
 .code-host {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 </style>
 

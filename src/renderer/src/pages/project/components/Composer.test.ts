@@ -8,6 +8,8 @@ import { useChatStore } from '@renderer/stores/chat'
 import { useAnnotationStore } from '@renderer/stores/annotation'
 import type { MarkTarget } from '@renderer/stores/annotation'
 import Composer from './Composer.vue'
+import { useArtifactStore } from '@renderer/stores/artifact'
+import { useCodeSelectionStore } from '@renderer/stores/code-selection'
 
 const confirmEdits = vi.hoisted(() => vi.fn())
 vi.mock('@renderer/composables/useCodeEdits', () => ({ useCodeEdits: () => ({ confirmEdits }) }))
@@ -215,5 +217,104 @@ it('preserves incomplete annotations on dialog cancel and removes them explicitl
   await wrapper.get('.annotation-warning-row button:last-child').trigger('click')
   expect(annotation.marks).toEqual([])
   expect(wrapper.emitted('send')).toBeUndefined()
+  wrapper.unmount()
+})
+
+function addCodeContext(): ReturnType<typeof useCodeSelectionStore> {
+  const artifact = useArtifactStore()
+  artifact.projectId = 'p'
+  artifact.currentId = 'v1'
+  artifact.files = [{ path: 'App.vue', content: 'private source code' }]
+  const selections = useCodeSelectionStore()
+  expect(
+    selections.add('App.vue', { startLine: 1, startColumn: 2, endLine: 1, endColumn: 6 })
+  ).toBe(true)
+  return selections
+}
+
+describe('code context messages', () => {
+  it('sends positions alongside annotations and clears only sent context', async () => {
+    const { wrapper } = annotationComposer('Change element')
+    const selections = addCodeContext()
+    await flushPromises()
+    expect(wrapper.find('.composer-code-selections').exists()).toBe(true)
+    confirmEdits.mockResolvedValue(true)
+    await wrapper.get('.composer-send').trigger('click')
+    await flushPromises()
+    const body = wrapper.emitted('send')![0][0] as string
+    expect(body).toContain('Change element')
+    expect(body).toContain('App.vue:1:2–1:6')
+    expect(body).not.toContain('private source code')
+    expect(selections.selections).toEqual([])
+    wrapper.unmount()
+  })
+  it('requires instructions and supports removing a chip', async () => {
+    const { wrapper, annotation } = annotationComposer('')
+    annotation.clear()
+    const selections = addCodeContext()
+    await flushPromises()
+    expect(wrapper.get('.composer-send').attributes('disabled')).toBeDefined()
+    await wrapper.get('textarea').trigger('keydown', { key: 'Enter' })
+    expect(confirmEdits).not.toHaveBeenCalled()
+    await wrapper.get('.composer-code-selections .composer-file-remove').trigger('click')
+    expect(selections.selections).toEqual([])
+    wrapper.unmount()
+  })
+  it('preserves ranges and draft when confirmation is cancelled', async () => {
+    const { wrapper } = annotationComposer('Change element')
+    const selections = addCodeContext()
+    await wrapper.get('textarea').setValue('Keep draft')
+    await wrapper.get('.composer-send').trigger('click')
+    await flushPromises()
+    expect(selections.selections).toHaveLength(1)
+    expect(wrapper.emitted('send')).toBeUndefined()
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('Keep draft')
+    wrapper.unmount()
+  })
+  it('blocks sending and preserves text if saving changes the version during confirmation', async () => {
+    const { wrapper } = annotationComposer('Change element')
+    addCodeContext()
+    await wrapper.get('textarea').setValue('Keep draft')
+    confirmEdits.mockImplementation(async () => {
+      useArtifactStore().currentId = 'v2'
+      return true
+    })
+    await wrapper.get('.composer-send').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('send')).toBeUndefined()
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('Keep draft')
+    expect(App.useApp().message.warning).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+  it('excludes project ranges from plain chat without clearing them', async () => {
+    const { wrapper } = annotationComposer('Change element')
+    const selections = addCodeContext()
+    useChatStore().projectId = ''
+    await wrapper.get('textarea').setValue('Plain chat')
+    await flushPromises()
+    expect(wrapper.find('.composer-code-selections').exists()).toBe(false)
+    confirmEdits.mockResolvedValue(true)
+    await wrapper.get('.composer-send').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('send')![0][0]).toBe('Plain chat')
+    expect(selections.selections).toHaveLength(1)
+    wrapper.unmount()
+  })
+})
+
+it('opens the full code context label without removing it or sending a message', async () => {
+  const { wrapper } = annotationComposer('Change element')
+  const selections = addCodeContext()
+  await flushPromises()
+  const label = wrapper.get('.composer-code-open')
+  expect(label.text()).toBe('App.vue:1:2–1:6')
+  await label.trigger('click')
+  await label.trigger('click')
+  expect(wrapper.emitted('openCodeSelection')).toEqual([
+    [{ ...selections.selections[0] }],
+    [{ ...selections.selections[0] }]
+  ])
+  expect(wrapper.emitted('send')).toBeUndefined()
+  expect(selections.selections).toHaveLength(1)
   wrapper.unmount()
 })
