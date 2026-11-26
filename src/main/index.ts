@@ -15,12 +15,12 @@ import {
 import { startSyncEngine } from './sync/engine'
 import { resolveAppNavigation } from './navigation'
 
-// 特权 scheme 必须在 app ready 前注册,放模块顶层最不容易被挪错位置
+// Privileged schemes must be registered before app readiness; keep this at module scope.
 bindMainLanguage(() => readConfig().lang)
 registerAppSchemes()
 
-// 冒烟测试/自动化联调用:DESIGNER_DEBUG_PORT=9223 pnpm dev 后可用 CDP 驱动。
-// 不设该变量时完全无效果
+// Allow CDP automation for smoke tests with DESIGNER_DEBUG_PORT=9223 pnpm dev.
+// Remote debugging stays disabled unless the variable is set.
 if (process.env.DESIGNER_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.DESIGNER_DEBUG_PORT)
 }
@@ -30,8 +30,8 @@ const isMac = process.platform === 'darwin'
 const isWindows = process.platform === 'win32'
 
 function createWindow(): void {
-  // 配置在主进程同步读得到，所以窗口尺寸和明暗在创建前就能定好，
-  // 不会出现先按默认值画一帧再被渲染进程纠正的闪烁
+  // Read settings synchronously before window creation to avoid a flash of default
+  // dimensions or theme before the renderer applies the saved preferences.
   const config = readConfig()
   nativeTheme.themeSource = config.dark ? 'dark' : 'light'
 
@@ -41,24 +41,24 @@ function createWindow(): void {
     height: config.window.height,
     show: false,
     autoHideMenuBar: true,
-    // 毛玻璃。macOS 用 vibrancy，Windows 11 用 acrylic。
-    // macOS 上窗口底色必须是全透明，否则不透明背景会把 vibrancy 整个盖住。
+    // Use native translucency: vibrancy on macOS and acrylic on Windows 11.
+    // macOS requires a fully transparent background so it does not cover the vibrancy.
     ...(isMac
       ? {
           backgroundColor: '#00000000',
           vibrancy: 'under-window' as const,
-          // 默认只在窗口激活时才有效果，失焦会变灰
+          // Keep vibrancy active because the default turns gray when focus is lost.
           visualEffectState: 'active' as const
         }
       : {}),
     ...(isWindows ? { backgroundMaterial: 'acrylic' as const } : {}),
-    // 去掉原生标题栏。macOS 保留左上角红绿灯，让它直接落在侧栏导轨上；
-    // Windows / Linux 用系统自带的窗口控件覆盖层，两边都不用自己画按钮。
+    // Hide the native title bar while keeping macOS traffic lights on the sidebar rail.
+    // Windows / Linux use native control overlays to avoid drawing custom buttons.
     titleBarStyle: 'hidden',
     ...(process.platform !== 'darwin'
       ? { titleBarOverlay: { color: '#00000000', symbolColor: '#8c8c8c', height: 28 } }
-      : // 三个按钮整体跨度约 58px（尺寸和间距由系统决定，改不了），
-        // x=6 时右边缘到 64px，落在 68px 宽的导轨里还剩 4px 余量
+      : // The three buttons span about 58px, with system-controlled sizing and spacing.
+        // At x=6, their right edge is at 64px, leaving 4px within the 68px sidebar rail.
         { trafficLightPosition: { x: 6, y: 12 } }),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
@@ -71,7 +71,7 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  // 记住窗口尺寸。resize 触发很密，等窗口关闭时写一次就够
+  // Persist dimensions on close to avoid writing on every frequent resize event.
   mainWindow.on('close', () => {
     const [width, height] = mainWindow.getSize()
     patchConfig({ window: { width, height } })
@@ -110,26 +110,46 @@ app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
-  // 打包后 Dock 图标来自 .app 包，但 dev 下跑的是 Electron 自己的壳，
-  // 不显式设一下就一直是默认的 Electron 图标
+  // Packaged apps get their Dock icon from the .app bundle; development uses
+  // Electron's shell and needs an explicit icon to replace the default.
   if (isMac && is.dev) app.dock?.setIcon(icon)
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+  // The toolkit forces undocked DevTools, so development shortcuts need a docked handler.
   app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    if (!is.dev) {
+      optimizer.watchWindowShortcuts(window)
+      return
+    }
+
+    const { webContents } = window
+    webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') return
+      if (
+        input.code === 'F12' ||
+        (input.code === 'KeyI' && ((input.alt && input.meta) || (input.control && input.shift)))
+      ) {
+        event.preventDefault()
+        if (webContents.isDevToolsOpened()) webContents.closeDevTools()
+        else webContents.openDevTools({ mode: 'bottom' })
+      }
+      if (
+        (input.control || input.meta) &&
+        (input.code === 'Minus' || (input.code === 'Equal' && input.shift))
+      ) {
+        event.preventDefault()
+      }
+    })
   })
 
-  // 首次调用会顺带初始化数据库并跑迁移；顺带清掉早期版本种下的预设行
+  // The first database access also runs migrations; remove presets seeded by older versions.
   cleanupSeededProviders()
-  // 上次异常退出遗留的 streaming 消息收尾成 error
+  // Mark interrupted streams as errors so a previous crash does not leave them running.
   markStaleStreamingAsError()
 
   registerIpc()
   registerPreviewHandler()
   registerAssetHandler()
-  // mode='local'(默认)时是 no-op;自建库同步引擎二期在这里点火
+  // Local mode (the default) is a no-op; self-hosted database mode needs the sync engine.
   startSyncEngine()
 
   createWindow()
@@ -150,7 +170,7 @@ app.on('window-all-closed', () => {
   }
 })
 
-// WAL 模式下干净地关闭连接，才会把 -wal 文件合并回主库
+// Close the connection cleanly so WAL data is checkpointed into the main database.
 app.on('will-quit', () => {
   closeDb()
 })
