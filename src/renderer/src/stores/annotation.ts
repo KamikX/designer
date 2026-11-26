@@ -54,7 +54,10 @@ export const useAnnotationStore = defineStore('annotation', {
     enabled: false,
     /** 这些标记是在哪个版本上标的 */
     artifactId: '',
-    marks: [] as PreviewMark[]
+    marks: [] as PreviewMark[],
+    editorTarget: null as MarkTarget | null,
+    editingId: null as string | null,
+    editorNote: ''
   }),
 
   actions: {
@@ -62,8 +65,33 @@ export const useAnnotationStore = defineStore('annotation', {
     syncArtifact(artifactId: string): void {
       if (this.artifactId === artifactId) return
       this.artifactId = artifactId
-      this.marks = []
+      this.clear()
       this.enabled = false
+    },
+
+    openEditor(target: MarkTarget): void {
+      const existing = this.marks.find((mark) => mark.target.selector === target.selector)
+      if (!existing && this.marks.length >= MAX_MARKS) return
+      this.editorTarget = existing?.target ?? target
+      this.editingId = existing?.id ?? null
+      this.editorNote = existing?.note ?? ''
+    },
+
+    closeEditor(): void {
+      this.editorTarget = null
+      this.editingId = null
+      this.editorNote = ''
+    },
+
+    saveEditor(): void {
+      if (!this.editorTarget) return
+      if (this.editingId) {
+        const mark = this.marks.find((item) => item.id === this.editingId)
+        if (mark) mark.note = this.editorNote.trim()
+      } else {
+        this.add(this.editorTarget, this.editorNote)
+      }
+      this.closeEditor()
     },
 
     add(target: MarkTarget, note: string): PreviewMark | null {
@@ -79,12 +107,14 @@ export const useAnnotationStore = defineStore('annotation', {
     },
 
     remove(id: string): void {
+      if (this.editingId === id) this.closeEditor()
       this.marks = this.marks.filter((m) => m.id !== id)
       // 序号连续才对得上正文里的 [1] [2],删中间一条要重排
       this.marks.forEach((m, i) => (m.index = i + 1))
     },
 
     clear(): void {
+      this.closeEditor()
       this.marks = []
     }
   }

@@ -57,6 +57,28 @@ const draft = ref('')
  */
 const marks = computed(() => (chatStore.projectId ? annotation.marks : []))
 
+const hasContent = computed(
+  () =>
+    !!draft.value.trim() ||
+    attachments.value.length > 0 ||
+    localFiles.value.length > 0 ||
+    marks.value.length > 0
+)
+const incompleteMarks = computed(() => marks.value.filter((mark) => !mark.note.trim()))
+const annotationWarning = ref(false)
+watch(
+  () => annotation.artifactId,
+  () => (annotationWarning.value = false)
+)
+
+function validateAnnotations(): boolean {
+  if (!draft.value.trim() && incompleteMarks.value.length > 0) {
+    annotationWarning.value = true
+    return false
+  }
+  return true
+}
+
 function markLabel(target: MarkTarget): string {
   const text = target.text ? `「${target.text.slice(0, 10)}」` : ''
   const cls = !text && target.classes.length ? `.${target.classes[0]}` : ''
@@ -224,11 +246,8 @@ const { confirmEdits } = useCodeEdits()
 let confirmingSend = false
 
 async function send(): Promise<void> {
-  const text = draft.value.trim()
-  // 只标了几处、一个字没打也该能发:标注本身就是需求("这几处改掉")
-  const hasContent =
-    text || attachments.value.length > 0 || localFiles.value.length > 0 || marks.value.length > 0
-  if (!hasContent || chatStore.streaming || props.disabled || confirmingSend) return
+  if (!hasContent.value || chatStore.streaming || props.disabled || confirmingSend) return
+  if (!validateAnnotations()) return
 
   confirmingSend = true
   let proceed: boolean
@@ -237,7 +256,10 @@ async function send(): Promise<void> {
   } finally {
     confirmingSend = false
   }
-  if (!proceed || chatStore.streaming || props.disabled) return
+  if (!proceed || chatStore.streaming || props.disabled || !hasContent.value) return
+  if (!validateAnnotations()) return
+  annotationWarning.value = false
+  const text = draft.value.trim()
 
   const files = attachments.value
   const body = composeMarks(
@@ -421,19 +443,25 @@ function toggleId(list: string[] | null, id: string): string[] {
         :title="mark.note || mark.target.path"
         :style="{ borderColor: token.colorBorderSecondary, color: token.colorTextSecondary }"
       >
-        <span class="composer-mark-no" :style="{ background: token.colorPrimary }">
-          {{ mark.index }}
-        </span>
-        <span class="composer-mark-el">{{ markLabel(mark.target) }}</span>
-        <span v-if="mark.note" class="composer-mark-note">{{ mark.note }}</span>
-        <span
-          v-if="mark.target.source"
-          class="composer-mark-src"
-          :style="{ color: token.colorSuccess }"
-          :title="t('common.sourceLineLocated')"
+        <button
+          type="button"
+          class="composer-mark-edit"
+          @click="annotation.openEditor(mark.target)"
         >
-          ●
-        </span>
+          <span class="composer-mark-no" :style="{ background: token.colorPrimary }">
+            {{ mark.index }}
+          </span>
+          <span class="composer-mark-el">{{ markLabel(mark.target) }}</span>
+          <span v-if="mark.note" class="composer-mark-note">{{ mark.note }}</span>
+          <span
+            v-if="mark.target.source"
+            class="composer-mark-src"
+            :style="{ color: token.colorSuccess }"
+            :title="t('common.sourceLineLocated')"
+          >
+            ●
+          </span>
+        </button>
         <button type="button" class="composer-file-remove" @click="annotation.remove(mark.id)">
           <CloseOutlined />
         </button>
@@ -721,17 +749,88 @@ function toggleId(list: string[] | null, id: string): string[] {
           class="composer-send"
           type="primary"
           shape="circle"
-          :disabled="(!draft.trim() && attachments.length === 0) || disabled"
+          :disabled="!hasContent || disabled"
           @click="send"
         >
           <template #icon><ArrowUpOutlined /></template>
         </a-button>
       </a-tooltip>
     </div>
+    <a-modal
+      :open="!!chatStore.projectId && annotationWarning && !annotation.editorTarget"
+      :title="t('messages.annotationDescriptionsRequired')"
+      :ok-text="t('common.send')"
+      :ok-button-props="{ disabled: !hasContent || !!disabled || chatStore.streaming }"
+      :cancel-text="t('common.cancel')"
+      @ok="send"
+      @cancel="annotationWarning = false"
+    >
+      <div class="annotation-dialog-body">
+        <p>{{ t('messages.describeAnnotationsOrWriteMessage') }}</p>
+        <div v-for="mark in incompleteMarks" :key="mark.id" class="annotation-warning-row">
+          <button
+            type="button"
+            class="composer-mark-edit"
+            @click="annotation.openEditor(mark.target)"
+          >
+            {{ mark.index }}. {{ markLabel(mark.target) }}
+          </button>
+          <a-button @click="annotation.remove(mark.id)">{{ t('common.remove') }}</a-button>
+        </div>
+      </div>
+    </a-modal>
+    <a-modal
+      :open="!!chatStore.projectId && !!annotation.editorTarget"
+      :title="annotation.editingId ? t('common.editAnnotation') : t('common.markThisElement')"
+      :ok-text="annotation.editingId ? t('common.save') : t('common.addAnnotation')"
+      :cancel-text="t('common.cancel')"
+      :width="440"
+      @ok="annotation.saveEditor()"
+      @cancel="annotation.closeEditor()"
+    >
+      <div v-if="annotation.editorTarget" class="annotation-dialog-body">
+        <p>
+          <code>{{ markLabel(annotation.editorTarget) }}</code>
+        </p>
+        <p v-if="annotation.editorTarget.source">{{ annotation.editorTarget.source }}</p>
+        <a-textarea
+          v-model:value="annotation.editorNote"
+          :auto-size="{ minRows: 3, maxRows: 6 }"
+          :placeholder="t('messages.whatShouldChangeEGMakeThisButtonLargerAndUseThePrimaryColor')"
+          @press-enter.meta="annotation.saveEditor()"
+        />
+      </div>
+    </a-modal>
   </div>
 </template>
 
 <style scoped>
+.annotation-dialog-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.annotation-warning-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.composer-mark-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .composer {
   border: 1px solid transparent;
   border-radius: 14px;

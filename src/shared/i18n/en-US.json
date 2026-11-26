@@ -996,5 +996,9 @@
   "chatMessages.deleteOne": "Delete this message",
   "chatMessages.confirm": "Permanently delete selected messages ({0})?",
   "chatMessages.explanation": "These messages will no longer be sent to the model. This cannot be undone. Project files, versions and visual guidance will be preserved.",
-  "chatMessages.selectOne": "Select message"
+  "chatMessages.selectOne": "Select message",
+  "common.send": "Send",
+  "common.editAnnotation": "Edit annotation",
+  "messages.annotationDescriptionsRequired": "Some annotations have no description",
+  "messages.describeAnnotationsOrWriteMessage": "Describe every annotation or write instructions in chat before sending. Click an annotation to edit it, or remove it."
 }

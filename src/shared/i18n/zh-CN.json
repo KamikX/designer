@@ -996,5 +996,9 @@
   "chatMessages.deleteOne": "删除此消息",
   "chatMessages.confirm": "永久删除 {0} 条消息？",
   "chatMessages.explanation": "这些消息将不再发送给模型，且无法恢复。项目文件、版本和视觉指导将保留。",
-  "chatMessages.selectOne": "选择此消息"
+  "chatMessages.selectOne": "选择此消息",
+  "common.send": "发送",
+  "common.editAnnotation": "编辑标记",
+  "messages.annotationDescriptionsRequired": "部分标记缺少说明",
+  "messages.describeAnnotationsOrWriteMessage": "发送前请为每个标记填写说明，或在聊天中输入要求。点击标记可编辑，也可以将其移除。"
 }

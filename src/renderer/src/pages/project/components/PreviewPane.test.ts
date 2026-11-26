@@ -134,3 +134,32 @@ describe('preview source selection', () => {
     wrapper.unmount()
   })
 })
+
+it('reopens a marked element for editing even at the annotation limit', async () => {
+  const { wrapper, annotation } = setup()
+  const target = {
+    selector: 'button',
+    tag: 'button',
+    text: 'Action',
+    classes: [],
+    attrs: {},
+    source: '',
+    path: 'button',
+    html: '<button>Action</button>',
+    id: '',
+    rect: { x: 0, y: 0, w: 20, h: 20 }
+  }
+  for (let i = 0; i < 20; i++)
+    annotation.add({ ...target, selector: `button:nth-child(${i + 1})` }, 'Original')
+  const first = annotation.marks[0]
+  await wrapper.findAllComponents({ name: 'AButton' })[0].trigger('click')
+  window.dispatchEvent(
+    new MessageEvent('message', {
+      data: { __preview: true, type: 'annotate:pick', target: first.target },
+      source: wrapper.find('iframe').element.contentWindow
+    })
+  )
+  expect(annotation.editingId).toBe(first.id)
+  expect(annotation.editorNote).toBe('Original')
+  expect(annotation.marks).toHaveLength(20)
+})

@@ -3,7 +3,7 @@ import { t } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
 import { CodeOutlined, EyeOutlined, HighlightOutlined, ReloadOutlined } from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
-import { MAX_MARKS, useAnnotationStore } from '@renderer/stores/annotation'
+import { useAnnotationStore } from '@renderer/stores/annotation'
 import type { MarkTarget } from '@renderer/stores/annotation'
 import type { Project } from '@shared/types'
 import { parseSourceLocation } from './source-location'
@@ -40,10 +40,6 @@ const src = computed(() => (store.currentId ? `preview://artifact/${store.curren
 
 /* ---------------- 标注 ---------------- */
 
-/** 拾取到、还没写备注的元素。有值时备注弹窗打开 */
-const picked = ref<MarkTarget | null>(null)
-const note = ref('')
-
 function post(message: Record<string, unknown>): void {
   frame.value?.contentWindow?.postMessage(message, '*')
 }
@@ -78,27 +74,6 @@ function syncMarks(): void {
 
 watch(() => annotation.marks.length, syncMarks)
 
-function confirmNote(): void {
-  if (!picked.value) return
-  const added = annotation.add(picked.value, note.value)
-  picked.value = null
-  note.value = ''
-  if (!added) return
-  syncMarks()
-}
-
-function cancelNote(): void {
-  picked.value = null
-  note.value = ''
-}
-
-/** 元素签名的一句话摘要,备注弹窗和输入框 chips 共用同一套口径 */
-function markLabel(target: MarkTarget): string {
-  const text = target.text ? `「${target.text.slice(0, 14)}」` : ''
-  const cls = !text && target.classes.length ? `.${target.classes[0]}` : ''
-  return `${target.tag}${text}${cls}`
-}
-
 /**
  * 兜底时限。
  *
@@ -127,7 +102,6 @@ watch(
   src,
   (next) => {
     sourcePicking.value = false
-    picked.value = null
     annotation.syncArtifact(store.currentId)
     next ? beginLoad() : endLoad()
   },
@@ -182,9 +156,7 @@ function onMessage(e: MessageEvent): void {
   }
   if (e.data.type === 'annotate:pick') {
     if (!fromFrame || !annotation.enabled || sourcePicking.value) return
-    if (annotation.marks.length >= MAX_MARKS) return
-    picked.value = e.data.target as MarkTarget
-    note.value = ''
+    annotation.openEditor(e.data.target as MarkTarget)
     return
   }
   if (e.data.type === 'annotate:cancel') {
@@ -331,31 +303,6 @@ onBeforeUnmount(() => {
         {{ t('messages.clickAnElementAndDescribeThe') }}
       </div>
     </div>
-
-    <a-modal
-      :open="!!picked"
-      :title="t('common.markThisElement')"
-      :ok-text="t('common.addAnnotation')"
-      :cancel-text="t('common.cancel')"
-      :width="440"
-      @ok="confirmNote"
-      @cancel="cancelNote"
-    >
-      <div v-if="picked" class="mark-form">
-        <div class="mark-el" :style="{ color: token.colorTextSecondary }">
-          <!-- 元素签名是一段代码,读起来该是等宽的;原来的蓝色 tag 只是在
-               "这里有个东西"上又加了一层颜色,并不表示任何状态 -->
-          <code class="mark-sig">{{ markLabel(picked) }}</code>
-          <span v-if="picked.source" class="mark-src">{{ picked.source }}</span>
-        </div>
-        <a-textarea
-          v-model:value="note"
-          :auto-size="{ minRows: 3, maxRows: 6 }"
-          :placeholder="t('messages.whatShouldChangeEGMakeThisButtonLargerAndUseThePrimaryColor')"
-          @press-enter.meta="confirmNote"
-        />
-      </div>
-    </a-modal>
   </div>
 </template>
 
@@ -470,31 +417,6 @@ onBeforeUnmount(() => {
   pointer-events: none;
   /* 阴影用暖近黑那套,不用 rgb(0 0 0 /20%):后者压在暖纸上会显灰显脏 */
   box-shadow: var(--shadow-md);
-}
-
-.mark-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mark-el {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.mark-sig {
-  background: var(--fill-subtle);
-  border-radius: var(--radius-xs);
-  padding: 2px 6px;
-  font-family: var(--font-mono);
-  color: var(--text);
-}
-
-.mark-src {
-  font-family: var(--font-mono);
 }
 
 /* ---------------- 骨架屏 ---------------- */
