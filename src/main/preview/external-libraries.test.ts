@@ -5,7 +5,9 @@ import { join } from 'node:path'
 const state = vi.hoisted(() => ({
   root: `/tmp/designer-library-protocol-${process.pid}-${Math.random().toString(16).slice(2)}`,
   handler: null as null | ((request: { url: string }) => Response),
-  selected: true
+  selected: true,
+  stack: 'react',
+  files: [{ path: 'App.tsx', content: 'export default function App() { return null }' }]
 }))
 vi.mock('../paths', () => ({ DATA_DIR: state.root }))
 vi.mock('electron', () => ({
@@ -20,13 +22,11 @@ vi.mock('electron', () => ({
 vi.mock('../storage/service', () => ({ resolveAsset: vi.fn() }))
 vi.mock('../db/repo/artifact', () => ({
   getArtifact: () => ({ id: 'artifact', projectId: 'project' }),
-  getArtifactFiles: () => [
-    { path: 'App.tsx', content: 'export default function App() { return null }' }
-  ]
+  getArtifactFiles: () => state.files
 }))
 vi.mock('../db/repo/project', () => ({
   getProject: () => ({
-    stack: 'react',
+    stack: state.stack,
     libs: [],
     externalLibraries: state.selected ? [{ name: 'protocol-fixture', version: '1.0.0' }] : []
   })
@@ -90,6 +90,48 @@ describe('project library protocol', () => {
     })
     expect(await response.text()).toContain('value = 42')
     unregisterSessionPreview('capture')
+  })
+  it('discovers optional project setup in persisted artifacts and live sessions', async () => {
+    const originalFiles = state.files
+    state.stack = 'vue3'
+    registerSessionPreview('setup', {
+      stack: 'vue3',
+      libs: [],
+      files: () => state.files
+    })
+    try {
+      for (const paths of [
+        [],
+        ['app.setup.js'],
+        ['app.setup.ts'],
+        ['app.setup.js', 'app.setup.ts']
+      ]) {
+        state.files = paths.map((path) => ({
+          path,
+          content: 'export default function setup(app: unknown) {}'
+        }))
+        for (const base of ['preview://artifact/artifact/', 'preview://session/setup/']) {
+          const html = await state.handler!({ url: base }).text()
+          if (paths.length) {
+            const expected = paths.includes('app.setup.ts') ? 'app.setup.ts' : 'app.setup.js'
+            expect(html).toContain(`import("./${expected}")`)
+            if (expected.endsWith('.ts')) {
+              const response = state.handler!({ url: base + expected })
+              expect(response.headers.get('content-type')).toContain('javascript')
+              expect(await response.text()).not.toContain(': unknown')
+            }
+          } else {
+            expect(html).not.toContain('app.setup.')
+          }
+        }
+      }
+      state.stack = 'react'
+      expect(await request('').text()).not.toContain('app.setup.')
+    } finally {
+      state.stack = 'react'
+      state.files = originalFiles
+      unregisterSessionPreview('setup')
+    }
   })
   it('reports a missing installed file through the preview error channel', async () => {
     rmSync(join(root, 'dist', 'entry-0.js'))

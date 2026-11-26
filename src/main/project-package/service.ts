@@ -364,7 +364,11 @@ export function importProjectPackage(data: Buffer): ProjectPackageImportResult {
               f.path,
               readPayload(`${libraryDirectory(lib.metadata)}/files/${f.path}`)
             ])
-          )
+          ),
+          (existing) =>
+            warnings.add(
+              appText('messages.projectImportReusedLibrary', `${existing.name}@${existing.version}`)
+            )
         )
       )
     resolveLibraries(m.project.externalLibraries ?? [], m.project.stack, m.project.libs ?? [])

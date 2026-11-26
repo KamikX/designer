@@ -54,6 +54,7 @@ import { canonicalJson, hash, PACKAGE_LIMITS, readPackage } from './format'
 import type { PackageManifest, VersionDocument } from './format'
 import { getProject, saveProjectSettings, setProjectCodeInstructions } from '../db/repo/project'
 import { libraryId } from '../libraries/service'
+import { text as appText } from '../i18n'
 
 beforeEach(() => {
   rmSync(state.root, { recursive: true, force: true })
@@ -385,45 +386,68 @@ describe('project packages', () => {
     rmSync(root, { recursive: true })
     importProjectPackage(data)
     expect(readFileSync(join(root, 'dist', 'index.js'))).toEqual(bytes)
-    importProjectPackage(data)
+    expect(importProjectPackage(data).warnings).not.toContain(
+      appText('messages.projectImportReusedLibrary', 'fixture@1.0.0')
+    )
     writeFileSync(join(root, 'dist', 'index.js'), 'different content')
-    expect(() => importProjectPackage(data)).toThrow('conflict')
+    const imported = importProjectPackage(data)
+    expect(imported.warnings).toContain(
+      appText('messages.projectImportReusedLibrary', 'fixture@1.0.0')
+    )
     expect(readFileSync(join(root, 'dist', 'index.js'), 'utf8')).toBe('different content')
-    expect(testDb.select().from(schema.projects).all()).toHaveLength(3)
+    expect(testDb.select().from(schema.projects).all()).toHaveLength(4)
   })
 
-  it('rolls back the database and removes only newly copied assets and libraries on failure', async () => {
+  it('rejects an installed library missing imports required by the archive', async () => {
     seed()
-    const bytes = Buffer.from('image')
-    writeFileSync(join(state.root, 'assets', 'IMAGE'), bytes)
-    testDb
-      .insert(schema.assets)
-      .values({
-        id: 'IMAGE',
-        mime: 'image/png',
-        size: bytes.length,
-        sha256: hash(bytes),
-        backend: 'local',
-        location: 'IMAGE'
-      })
-      .run()
-    testDb
-      .update(schema.artifactFiles)
-      .set({ content: 'asset://IMAGE' })
-      .where(eq(schema.artifactFiles.id, 'f1'))
-      .run()
     const { root } = seedLibrary()
     const data = await buildProjectPackage({ projectId: 'p', selectedArtifactId: 'a1' })
-    rmSync(root, { recursive: true })
-    sqlite.exec(
-      "CREATE TRIGGER reject_import BEFORE INSERT ON messages WHEN NEW.id != 'm1' BEGIN SELECT RAISE(ABORT, 'injected failure'); END"
-    )
-    expect(() => importProjectPackage(data)).toThrow('injected failure')
+    const path = join(root, 'library.json')
+    const metadata = JSON.parse(readFileSync(path, 'utf8'))
+    metadata.entries = { 'fixture/other': 'index.js' }
+    writeFileSync(path, JSON.stringify(metadata))
+    expect(() => importProjectPackage(data)).toThrow('Library content conflict: fixture@1.0.0')
+    expect(readFileSync(path, 'utf8')).toBe(JSON.stringify(metadata))
     expect(testDb.select().from(schema.projects).all()).toHaveLength(1)
-    expect(testDb.select().from(schema.conversations).all()).toHaveLength(1)
-    expect(readdirSync(join(state.root, 'assets'))).toEqual(['IMAGE'])
-    expect(existsSync(root)).toBe(false)
   })
+
+  it.each([false, true])(
+    'rolls back failed imports while preserving existing libraries (reuse=%s)',
+    async (reuse) => {
+      seed()
+      const bytes = Buffer.from('image')
+      writeFileSync(join(state.root, 'assets', 'IMAGE'), bytes)
+      testDb
+        .insert(schema.assets)
+        .values({
+          id: 'IMAGE',
+          mime: 'image/png',
+          size: bytes.length,
+          sha256: hash(bytes),
+          backend: 'local',
+          location: 'IMAGE'
+        })
+        .run()
+      testDb
+        .update(schema.artifactFiles)
+        .set({ content: 'asset://IMAGE' })
+        .where(eq(schema.artifactFiles.id, 'f1'))
+        .run()
+      const { root } = seedLibrary()
+      const data = await buildProjectPackage({ projectId: 'p', selectedArtifactId: 'a1' })
+      if (reuse) writeFileSync(join(root, 'dist', 'index.js'), 'local rebuild')
+      else rmSync(root, { recursive: true })
+      sqlite.exec(
+        "CREATE TRIGGER reject_import BEFORE INSERT ON messages WHEN NEW.id != 'm1' BEGIN SELECT RAISE(ABORT, 'injected failure'); END"
+      )
+      expect(() => importProjectPackage(data)).toThrow('injected failure')
+      expect(testDb.select().from(schema.projects).all()).toHaveLength(1)
+      expect(testDb.select().from(schema.conversations).all()).toHaveLength(1)
+      expect(readdirSync(join(state.root, 'assets'))).toEqual(['IMAGE'])
+      expect(existsSync(root)).toBe(reuse)
+      if (reuse) expect(readFileSync(join(root, 'dist', 'index.js'), 'utf8')).toBe('local rebuild')
+    }
+  )
 
   it('stores readable increments, follows branches, and restores exact source bytes and metadata', async () => {
     seed()
