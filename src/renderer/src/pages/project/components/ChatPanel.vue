@@ -12,7 +12,10 @@ import type { CodeSelection } from '@renderer/stores/code-selection'
 import type { Project } from '@shared/types'
 
 const props = defineProps<{ project: Project }>()
-const emit = defineEmits<{ openCodeSelection: [selection: CodeSelection] }>()
+const emit = defineEmits<{
+  openCodeSelection: [selection: CodeSelection]
+  openDiff: [artifactId: string]
+}>()
 
 /** 对话面板:消息流(自动贴底)+ 一体化输入框。 */
 
@@ -89,7 +92,7 @@ const noModel = computed(() => providerStore.loaded && providerStore.chatModels.
         </div>
       </div>
 
-      <MessageHistory />
+      <MessageHistory @open-diff="emit('openDiff', $event)" />
 
       <a-alert
         v-if="chatStore.error"

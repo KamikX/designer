@@ -5,10 +5,19 @@ import {
   FolderOutlined,
   FolderOpenOutlined
 } from '@antdv-next/icons'
+import { theme } from 'antdv-next'
 import { t } from '@renderer/i18n'
 import { useArtifactStore } from '@renderer/stores/artifact'
+import type { DiffFileStatus } from '@renderer/stores/artifact'
 import { useProjectStore } from '@renderer/stores/project'
 import { exportDirName, sanitizeName } from '@shared/export-name'
+
+const props = withDefaults(
+  defineProps<{
+    mode?: 'code' | 'diff'
+  }>(),
+  { mode: 'code' }
+)
 
 /**
  * 文件树。流式期间未完成的文件节点带转圈图标。
@@ -18,8 +27,10 @@ import { exportDirName, sanitizeName } from '@shared/export-name'
  * 不用在脑子里做一次映射;顺带也让只有一两个文件的树不至于空得发慌。
  */
 
+const { token } = theme.useToken()
 const store = useArtifactStore()
 const projectStore = useProjectStore()
+const changedOnly = ref(true)
 
 /** 根节点的 key。不是真实路径,选中它不该切文件 */
 const ROOT_KEY = '/__export_root__'
@@ -29,6 +40,8 @@ interface TreeNode {
   title: string
   isLeaf: boolean
   loading?: boolean
+  diffStatus?: DiffFileStatus
+  hasChanges?: boolean
   children?: TreeNode[]
 }
 
@@ -39,12 +52,25 @@ const rootTitle = computed(() => {
   return version ? exportDirName(name, version) : sanitizeName(name ?? '')
 })
 
+const visibleFiles = computed(() => {
+  if (props.mode === 'diff') {
+    const entries = store.diffFiles
+    return changedOnly.value ? entries.filter((f) => Boolean(f.status)) : entries
+  }
+  const statuses = store.diffStatusByPath
+  return store.displayFiles.map((f) => ({
+    path: f.path,
+    done: f.done,
+    status: statuses[f.path]
+  }))
+})
+
 /** 所有文件路径,用来判断一个 key 是不是可选中的叶子 */
-const filePaths = computed(() => new Set(store.displayFiles.map((f) => f.path)))
+const filePaths = computed(() => new Set(visibleFiles.value.map((f) => f.path)))
 
 const treeData = computed<TreeNode[]>(() => {
   const root: TreeNode[] = []
-  for (const file of store.displayFiles) {
+  for (const file of visibleFiles.value) {
     const segments = file.path.split('/')
     let level = root
     let prefix = ''
@@ -56,8 +82,13 @@ const treeData = computed<TreeNode[]>(() => {
         node = { key: prefix, title: segments[i], isLeaf, children: isLeaf ? undefined : [] }
         level.push(node)
       }
-      if (isLeaf) node.loading = !file.done
-      else level = node.children!
+      if (isLeaf) {
+        node.loading = !file.done
+        node.diffStatus = file.status
+      } else {
+        if (file.status) node.hasChanges = true
+        level = node.children!
+      }
     }
   }
   if (root.length === 0) return []
@@ -67,11 +98,29 @@ const treeData = computed<TreeNode[]>(() => {
 /** 目录节点(含根)的 key,用来控制展开 */
 const dirKeys = computed(() => [
   ROOT_KEY,
-  ...store.displayFiles.flatMap((f) => {
+  ...visibleFiles.value.flatMap((f) => {
     const segments = f.path.split('/')
     return segments.slice(0, -1).map((_, i) => segments.slice(0, i + 1).join('/'))
   })
 ])
+
+function statusLetter(status: DiffFileStatus): string {
+  if (status === 'added') return 'A'
+  if (status === 'deleted') return 'D'
+  return 'M'
+}
+
+function statusLabel(status: DiffFileStatus): string {
+  if (status === 'added') return t('diff.statusAdded')
+  if (status === 'deleted') return t('diff.statusDeleted')
+  return t('diff.statusModified')
+}
+
+function statusColor(status: DiffFileStatus): string {
+  if (status === 'added') return token.value.colorSuccess
+  if (status === 'deleted') return token.value.colorError
+  return token.value.colorWarning
+}
 
 /**
  * 展开态。
@@ -98,7 +147,26 @@ function onSelect(keys: (string | number)[]): void {
 </script>
 
 <template>
+  <div v-if="mode === 'diff'" class="tree-filter">
+    <a-segmented
+      :value="changedOnly ? 'changed' : 'all'"
+      size="small"
+      block
+      :options="[
+        { label: t('diff.changedOnly', store.changedPaths.length), value: 'changed' },
+        { label: t('diff.allFiles'), value: 'all' }
+      ]"
+      @update:value="(val: string | number) => (changedOnly = val === 'changed')"
+    />
+  </div>
+  <div
+    v-if="mode === 'diff' && changedOnly && store.changedPaths.length === 0 && !store.diffLoading"
+    class="tree-empty"
+  >
+    {{ t('diff.noChangesInVersion') }}
+  </div>
   <a-tree
+    v-else
     class="file-tree-view"
     :tree-data="treeData"
     :selected-keys="[store.selectedPath]"
@@ -114,12 +182,33 @@ function onSelect(keys: (string | number)[]): void {
         <FolderOpenOutlined v-else-if="expandedKeys.includes((node as unknown as TreeNode).key)" />
         <FolderOutlined v-else />
         <span
-          v-if="Object.hasOwn(store.drafts, (node as unknown as TreeNode).key)"
+          v-if="mode === 'code' && Object.hasOwn(store.drafts, (node as unknown as TreeNode).key)"
           :title="t('code.modified')"
           :aria-label="t('code.modified')"
           >*</span
         >
-        <span class="file-node-title">{{ (node as unknown as TreeNode).title }}</span>
+        <span
+          class="file-node-title"
+          :class="{
+            'file-node-title--deleted': (node as unknown as TreeNode).diffStatus === 'deleted'
+          }"
+          >{{ (node as unknown as TreeNode).title }}</span
+        >
+        <span
+          v-if="(node as unknown as TreeNode).diffStatus"
+          class="file-diff-badge"
+          :style="{ color: statusColor((node as unknown as TreeNode).diffStatus!) }"
+          :title="statusLabel((node as unknown as TreeNode).diffStatus!)"
+          :aria-label="statusLabel((node as unknown as TreeNode).diffStatus!)"
+          >{{ statusLetter((node as unknown as TreeNode).diffStatus!) }}</span
+        >
+        <span
+          v-else-if="
+            !(node as unknown as TreeNode).isLeaf && (node as unknown as TreeNode).hasChanges
+          "
+          class="folder-diff-dot"
+          :style="{ background: token.colorWarning }"
+        />
       </span>
     </template>
   </a-tree>
@@ -172,18 +261,54 @@ function onSelect(keys: (string | number)[]): void {
 }
 
 .file-node {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
+  width: 100%;
   max-width: 100%;
 }
 
 /* 名字长了就省略,不要把树撑出横向滚动条 */
 .file-node-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-node-title--deleted {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.file-diff-badge {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding-left: 4px;
+}
+
+.folder-diff-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin-left: 4px;
+}
+
+.tree-filter {
+  margin-bottom: 8px;
+}
+
+.tree-empty {
+  padding: 12px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 /*

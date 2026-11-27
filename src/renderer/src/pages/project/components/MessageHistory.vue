@@ -5,6 +5,8 @@ import { t, uiMessage } from '@renderer/i18n'
 import { useChatStore } from '@renderer/stores/chat'
 import MessageItem from './MessageItem.vue'
 
+const emit = defineEmits<{ openDiff: [artifactId: string] }>()
+
 const chat = useChatStore()
 const { modal, message } = App.useApp()
 const selecting = ref(false)
@@ -129,7 +131,12 @@ function remove(ids: string[]): void {
         :aria-label="t('chatMessages.selectOne')"
         @change="toggle(item.id)"
       />
-      <MessageItem :message="item" :delete-disabled="busy" @delete="remove([item.id])" />
+      <MessageItem
+        :message="item"
+        :delete-disabled="busy"
+        @delete="remove([item.id])"
+        @open-diff="emit('openDiff', $event)"
+      />
     </div>
   </div>
 </template>

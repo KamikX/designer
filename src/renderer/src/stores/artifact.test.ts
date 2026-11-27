@@ -480,3 +480,100 @@ describe('version deletion', () => {
     expect(removeVersion).not.toHaveBeenCalled()
   })
 })
+
+describe('version diff', () => {
+  it('loads parent base files on select and computes added, modified and deleted statuses', async () => {
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    const v1 = artifact('v1', 1)
+    const v2 = { ...artifact('v2', 2), baseArtifactId: 'v1' }
+    store.artifacts = [v2, v1]
+    files.mockImplementation(async (id) => {
+      if (id === 'v2') {
+        return [
+          file('App.vue', 'updated'),
+          file('New.vue', 'brand new'),
+          file('Same.vue', 'unchanged')
+        ]
+      }
+      return [
+        file('App.vue', 'original'),
+        file('Old.vue', 'removed'),
+        file('Same.vue', 'unchanged')
+      ]
+    })
+
+    await store.select('v2')
+    await Promise.resolve()
+
+    expect(store.diffBaseId).toBe('v1')
+    expect(store.diffStatusByPath).toEqual({
+      'App.vue': 'modified',
+      'New.vue': 'added',
+      'Old.vue': 'deleted'
+    })
+    expect(store.changedPaths).toEqual(['App.vue', 'New.vue', 'Old.vue'])
+  })
+
+  it('falls back to the nearest older surviving version when the parent was deleted', async () => {
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    const v1 = artifact('v1', 1)
+    const v3 = { ...artifact('v3', 3), baseArtifactId: null }
+    store.artifacts = [v3, v1]
+    files.mockImplementation(async (id) =>
+      id === 'v3' ? [file('App.vue', 'v3')] : [file('App.vue', 'v1')]
+    )
+
+    await store.select('v3')
+    await Promise.resolve()
+
+    expect(store.diffBaseId).toBe('v1')
+    expect(store.diffStatusByPath).toEqual({ 'App.vue': 'modified' })
+  })
+
+  it('ignores stale diff base responses after switching versions or projects', async () => {
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    const v1 = artifact('v1', 1)
+    const v2 = { ...artifact('v2', 2), baseArtifactId: 'v1' }
+    store.artifacts = [v2, v1]
+    store.currentId = 'v2'
+    store.files = [file('App.vue', 'v2')]
+
+    const slowBase = deferred<ArtifactFile[]>()
+    files.mockReturnValueOnce(slowBase.promise)
+    const loadingBase = store.loadDiffBase('v1')
+
+    list.mockResolvedValue([])
+    await store.loadForProject('other')
+    slowBase.resolve([file('App.vue', 'stale')])
+    await loadingBase
+
+    expect(store.projectId).toBe('other')
+    expect(store.diffBaseId).toBeNull()
+    expect(store.diffBaseFiles).toEqual([])
+  })
+
+  it('recomputes diff base when the currently compared base version is deleted', async () => {
+    const store = useArtifactStore()
+    store.projectId = 'p'
+    const v1 = artifact('v1', 1)
+    const v2 = { ...artifact('v2', 2), baseArtifactId: 'v1' }
+    const v3 = { ...artifact('v3', 3), baseArtifactId: 'v2' }
+    store.artifacts = [v3, v2, v1]
+    store.currentId = 'v3'
+    store.files = [file('App.vue', 'v3')]
+    store.diffBaseId = 'v2'
+    store.diffBaseFiles = [file('App.vue', 'v2')]
+
+    removeVersion.mockResolvedValue([{ ...v3, baseArtifactId: null }, v1])
+    files.mockResolvedValue([file('App.vue', 'v1')])
+
+    await store.deleteVersion('v2')
+    await Promise.resolve()
+
+    expect(store.diffBaseId).toBe('v1')
+    expect(store.diffBaseFiles).toEqual([file('App.vue', 'v1')])
+  })
+})

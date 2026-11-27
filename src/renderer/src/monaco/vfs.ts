@@ -29,7 +29,7 @@ const EXT_LANG: Record<string, string> = {
   md: 'markdown'
 }
 
-function langOf(path: string): string {
+export function langOf(path: string): string {
   return EXT_LANG[path.split('.').pop()?.toLowerCase() ?? ''] ?? 'plaintext'
 }
 

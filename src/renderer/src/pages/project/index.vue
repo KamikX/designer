@@ -26,7 +26,16 @@ const store = useProjectStore()
 const projectId = computed(() => String(route.params.id))
 const missing = ref(false)
 const codeSelectionNavigation = ref<CodeSelection | null>(null)
-watch(projectId, () => (codeSelectionNavigation.value = null))
+const diffNavigation = ref<{ artifactId: string; seq: number } | null>(null)
+let diffNavSeq = 0
+watch(projectId, () => {
+  codeSelectionNavigation.value = null
+  diffNavigation.value = null
+})
+
+function openDiff(artifactId: string): void {
+  diffNavigation.value = { artifactId, seq: ++diffNavSeq }
+}
 
 watch(
   projectId,
@@ -83,6 +92,7 @@ watch(
             v-if="store.current"
             :project="store.current"
             @open-code-selection="codeSelectionNavigation = $event"
+            @open-diff="openDiff"
           />
         </div>
       </a-splitter-panel>
@@ -92,6 +102,7 @@ watch(
             v-if="store.current"
             :project="store.current"
             :code-selection-navigation="codeSelectionNavigation"
+            :diff-navigation="diffNavigation"
           />
         </div>
       </a-splitter-panel>

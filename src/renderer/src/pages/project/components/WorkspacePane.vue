@@ -3,12 +3,18 @@ import { useCodeEdits } from '@renderer/composables/useCodeEdits'
 import LibraryPicker from '@renderer/components/libraries/LibraryPicker.vue'
 import { t, uiMessage } from '@renderer/i18n'
 import { App, theme } from 'antdv-next'
-import { AppstoreAddOutlined, FileTextOutlined } from '@antdv-next/icons'
+import {
+  AppstoreAddOutlined,
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  FileTextOutlined
+} from '@antdv-next/icons'
 import { useArtifactStore } from '@renderer/stores/artifact'
 import { useProjectStore } from '@renderer/stores/project'
 import FileTree from './FileTree.vue'
 import VersionPicker from './VersionPicker.vue'
 import CodeViewer from './CodeViewer.vue'
+import DiffViewer from './DiffViewer.vue'
 import PreviewPane from './PreviewPane.vue'
 import { useCodeSelectionStore } from '@renderer/stores/code-selection'
 import type { CodeSelection } from '@renderer/stores/code-selection'
@@ -18,17 +24,20 @@ import type { ExternalLibraryRef, PreviewLib, Project } from '@shared/types'
 const props = defineProps<{
   project: Project
   codeSelectionNavigation?: CodeSelection | null
+  diffNavigation?: { artifactId: string; seq: number } | null
 }>()
 
-/** 右侧工作区:预览 / 代码 两个 tab。导出和目录授权都挪走了——
+/** 右侧工作区:预览 / 代码 / 对比 三个 tab。导出和目录授权都挪走了——
  * 前者属于整个项目(在标题行),后者属于对话上下文(在输入框工具条)。 */
 
 const { token } = theme.useToken()
 const store = useArtifactStore()
-const activeTab = ref('preview')
-const { save, discard } = useCodeEdits()
+const activeTab = ref<'preview' | 'code' | 'diff'>('preview')
+const { save, discard, confirmEdits } = useCodeEdits()
 const codeActionsTarget = ref<HTMLElement | null>(null)
 const previewActionsTarget = ref<HTMLElement | null>(null)
+const diffViewerRef = ref<InstanceType<typeof DiffViewer> | null>(null)
+const diffSideBySide = useStorage('designer:diff-side-by-side', true)
 
 const sourceNavigation = ref<SourceNavigation | null>(null)
 const codeSelections = useCodeSelectionStore()
@@ -90,6 +99,58 @@ watch(
     else if (was) activeTab.value = 'preview'
   }
 )
+
+function ensureDiffSelection(): void {
+  const changed = store.changedPaths
+  if (changed.length > 0 && !store.diffStatusByPath[store.selectedPath]) {
+    store.selectedPath = changed[0]
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'diff') {
+    ensureDiffSelection()
+  } else if (tab === 'code' && !store.files.some((f) => f.path === store.selectedPath)) {
+    // Switching back from Diff while inspecting a deleted file should land on an existing file.
+    store.selectedPath = store.files[0]?.path ?? ''
+  }
+})
+
+watch(
+  () => [store.diffLoading, store.currentId, store.diffBaseId] as const,
+  ([loading]) => {
+    if (!loading && activeTab.value === 'diff') ensureDiffSelection()
+  }
+)
+
+watch(
+  () => props.diffNavigation,
+  async (nav) => {
+    if (!nav || store.projectId !== props.project.id || store.streamingFiles) return
+    if (!store.artifacts.some((a) => a.id === nav.artifactId)) return
+    if (store.currentId !== nav.artifactId) {
+      if (!(await confirmEdits())) return
+      if (store.projectId !== props.project.id) return
+      await store.select(nav.artifactId)
+      if (store.projectId !== props.project.id || store.currentId !== nav.artifactId) return
+    }
+    activeTab.value = 'diff'
+    ensureDiffSelection()
+  }
+)
+
+const EMPTY_BASE = '__empty__'
+const diffBaseOptions = computed(() => [
+  { value: EMPTY_BASE, label: t('diff.initialEmpty') },
+  ...store.artifacts
+    .filter((a) => a.id !== store.currentId)
+    .map((a) => ({ value: a.id, label: `v${a.version}` }))
+])
+
+function onDiffBaseChange(value: unknown): void {
+  const next = typeof value === 'string' ? value : EMPTY_BASE
+  void store.loadDiffBase(next === EMPTY_BASE ? null : next)
+}
 
 const empty = computed(() => store.artifacts.length === 0 && !store.streamingFiles)
 
@@ -170,7 +231,10 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
   <div class="workspace" :style="{ background: token.colorBgContainer }">
     <!-- hairline-b 是 base.css 的半像素发丝线:给这条工具栏一个下边界,
          否则 segmented 像浮在代码/预览区上面,两块内容之间没有交代 -->
-    <div class="workspace-header hairline-b" :class="{ 'code-mode': activeTab === 'code' }">
+    <div
+      class="workspace-header hairline-b"
+      :class="{ 'code-mode': activeTab === 'code' || activeTab === 'diff' }"
+    >
       <a-segmented
         v-model:value="activeTab"
         size="small"
@@ -186,6 +250,14 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
               return t('common.code')
             },
             value: 'code'
+          },
+          {
+            get label() {
+              const count = store.changedPaths.length
+              return count > 0 ? `${t('diff.tab')} (${count})` : t('diff.tab')
+            },
+            value: 'diff',
+            disabled: empty || store.streamingFiles
           }
         ]"
       />
@@ -206,8 +278,53 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
           {{ t('common.save') }}
         </a-button>
       </div>
+      <div v-else-if="activeTab === 'diff'" class="diff-actions">
+        <a-select
+          size="small"
+          class="diff-base-select"
+          :aria-label="t('diff.compareFrom')"
+          :value="store.diffBaseId ?? EMPTY_BASE"
+          :options="diffBaseOptions"
+          :disabled="store.loading || store.diffLoading"
+          @change="onDiffBaseChange"
+        />
+        <span v-if="store.current" class="diff-arrow" :style="{ color: token.colorTextTertiary }">
+          → v{{ store.current.version }}
+        </span>
+        <a-segmented
+          :value="diffSideBySide ? 'split' : 'inline'"
+          size="small"
+          :options="[
+            { label: t('diff.sideBySide'), value: 'split' },
+            { label: t('diff.inline'), value: 'inline' }
+          ]"
+          @update:value="(val: string | number) => (diffSideBySide = val === 'split')"
+        />
+        <a-tooltip :title="t('diff.prevChange')">
+          <a-button
+            size="small"
+            type="text"
+            :aria-label="t('diff.prevChange')"
+            :disabled="store.diffLoading || !store.diffStatusByPath[store.selectedPath]"
+            @click="diffViewerRef?.goToDiff('previous')"
+          >
+            <template #icon><ArrowUpOutlined /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip :title="t('diff.nextChange')">
+          <a-button
+            size="small"
+            type="text"
+            :aria-label="t('diff.nextChange')"
+            :disabled="store.diffLoading || !store.diffStatusByPath[store.selectedPath]"
+            @click="diffViewerRef?.goToDiff('next')"
+          >
+            <template #icon><ArrowDownOutlined /></template>
+          </a-button>
+        </a-tooltip>
+      </div>
       <div
-        v-show="activeTab !== 'code'"
+        v-show="activeTab === 'preview'"
         ref="previewActionsTarget"
         class="workspace-preview-actions"
       />
@@ -267,6 +384,13 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
       style="margin-top: 12px"
     />
     <a-alert
+      v-if="activeTab === 'diff' && store.diffError"
+      type="error"
+      show-icon
+      :message="t('diff.loadFailed')"
+      style="margin-top: 12px"
+    />
+    <a-alert
       v-if="activeTab === 'preview' && store.dirty"
       type="info"
       :message="t('code.savedPreview')"
@@ -287,7 +411,7 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
         </div>
       </div>
 
-      <template v-else-if="activeTab === 'code'">
+      <template v-else-if="activeTab === 'code' || activeTab === 'diff'">
         <a-splitter
           class="code-layout"
           style="height: 100%; min-height: 0"
@@ -296,15 +420,17 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
           <!-- 同样要多包一层:样式挂在 <a-splitter-panel> 上不会生效,
                原因见 pages/project/index.vue 里的说明 -->
           <a-splitter-panel :default-size="treeWidth" :min="120" :max="360">
-            <div class="file-tree"><FileTree /></div>
+            <div class="file-tree"><FileTree :mode="activeTab" /></div>
           </a-splitter-panel>
           <a-splitter-panel :min="320">
             <div class="code-view">
               <CodeViewer
+                v-if="activeTab === 'code'"
                 :navigation="sourceNavigation"
                 :actions-target="codeActionsTarget"
                 @navigated="sourceNavigation = null"
               />
+              <DiffViewer v-else ref="diffViewerRef" :render-side-by-side="diffSideBySide" />
             </div>
           </a-splitter-panel>
         </a-splitter>
@@ -366,11 +492,22 @@ async function saveExternalLibraries(refs: ExternalLibraryRef[]): Promise<void> 
   margin-left: auto;
 }
 
-.code-actions {
+.code-actions,
+.diff-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
+}
+
+.diff-base-select {
+  min-width: 112px;
+}
+
+.diff-arrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .workspace-header-end {

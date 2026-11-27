@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { t } from '@renderer/i18n'
 import { theme } from 'antdv-next'
-import { CheckOutlined, DeleteOutlined, FileOutlined, LineChartOutlined } from '@antdv-next/icons'
+import {
+  CheckOutlined,
+  DeleteOutlined,
+  DiffOutlined,
+  FileOutlined,
+  LineChartOutlined
+} from '@antdv-next/icons'
+import { useArtifactStore } from '@renderer/stores/artifact'
 import { useChatStore } from '@renderer/stores/chat'
 import MarkdownStream from '@renderer/markdown/MarkdownStream.vue'
 import QuestionCard from './QuestionCard.vue'
@@ -13,10 +20,11 @@ import { isActiveToolState } from '@renderer/stores/chat'
 import type { AskUserAnswer, Message } from '@shared/types'
 
 const props = defineProps<{ message: Message; deleteDisabled?: boolean }>()
-const emit = defineEmits<{ delete: [] }>()
+const emit = defineEmits<{ delete: []; openDiff: [artifactId: string] }>()
 
 const { token } = theme.useToken()
 const chatStore = useChatStore()
+const artifactStore = useArtifactStore()
 
 const isUser = computed(() => props.message.role === 'user')
 const streaming = computed(() => props.message.status === 'streaming')
@@ -72,6 +80,11 @@ function answer(questionId: string, value: AskUserAnswer): void {
 /** 运行诊断抽屉。只给已完成的 assistant 消息;明细在打开时懒加载 */
 const diagnosticsOpen = ref(false)
 const canDiagnose = computed(() => !isUser.value && !streaming.value)
+
+const artifactVersion = computed(() => {
+  if (isUser.value || streaming.value || !props.message.artifactId) return null
+  return artifactStore.artifacts.find((a) => a.id === props.message.artifactId) ?? null
+})
 </script>
 
 <template>
@@ -199,34 +212,47 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
       </a-typography-text>
 
       <!-- AI 的解说复制:摆在气泡内底部,和诊断入口同一排 -->
-      <span v-if="!isUser && textContent" class="message-copy message-copy--inline">
-        <CopyButton :text="textContent" :label="t('common.copyThisResponse')" />
-      </span>
+      <div v-if="!isUser" class="message-footer">
+        <button
+          v-if="artifactVersion"
+          type="button"
+          class="message-diff-btn"
+          :disabled="artifactStore.loading || artifactStore.streamingFiles"
+          :title="t('diff.viewDiff')"
+          @click="emit('openDiff', artifactVersion.id)"
+        >
+          <DiffOutlined />
+          <span>{{ t('diff.versionBadge', artifactVersion.version) }}</span>
+        </button>
 
-      <a-button
-        v-if="!isUser"
-        class="message-delete"
-        type="text"
-        size="small"
-        :disabled="deleteDisabled"
-        :title="t('chatMessages.deleteOne')"
-        :aria-label="t('chatMessages.deleteOne')"
-        @click="emit('delete')"
-      >
-        <template #icon><DeleteOutlined /></template>
-      </a-button>
+        <span v-if="textContent" class="message-copy message-copy--inline">
+          <CopyButton :text="textContent" :label="t('common.copyThisResponse')" />
+        </span>
 
-      <!-- 运行诊断入口:阶段耗时、工具时间线、详细 token 都在抽屉里 -->
-      <button
-        v-if="canDiagnose"
-        type="button"
-        class="message-diag-btn"
-        :style="{ color: token.colorTextQuaternary }"
-        :title="t('common.runDiagnostics')"
-        @click="diagnosticsOpen = true"
-      >
-        <LineChartOutlined />
-      </button>
+        <a-button
+          class="message-delete"
+          type="text"
+          size="small"
+          :disabled="deleteDisabled"
+          :title="t('chatMessages.deleteOne')"
+          :aria-label="t('chatMessages.deleteOne')"
+          @click="emit('delete')"
+        >
+          <template #icon><DeleteOutlined /></template>
+        </a-button>
+
+        <!-- 运行诊断入口:阶段耗时、工具时间线、详细 token 都在抽屉里 -->
+        <button
+          v-if="canDiagnose"
+          type="button"
+          class="message-diag-btn"
+          :style="{ color: token.colorTextQuaternary }"
+          :title="t('common.runDiagnostics')"
+          @click="diagnosticsOpen = true"
+        >
+          <LineChartOutlined />
+        </button>
+      </div>
       <RunDiagnostics
         v-if="canDiagnose && diagnosticsOpen"
         :message-id="message.id"
@@ -375,6 +401,43 @@ const canDiagnose = computed(() => !isUser.value && !streaming.value)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.message-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.message-diff-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    background var(--dur-quick),
+    color var(--dur-quick),
+    border-color var(--dur-quick);
+}
+
+.message-diff-btn:hover:not(:disabled) {
+  background: var(--fill-subtle);
+  color: var(--text-strong);
+  border-color: var(--border);
+}
+
+.message-diff-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .message-diag-btn {

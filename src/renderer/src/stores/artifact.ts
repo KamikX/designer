@@ -21,6 +21,26 @@ interface PendingFile {
 
 type FilePatch = Extract<ChatStreamEvent, { type: 'file-patch' }>
 
+export type DiffFileStatus = 'added' | 'modified' | 'deleted'
+
+/**
+ * Resolve the default comparison base for an artifact version.
+ *
+ * Prefer the recorded parent (`baseArtifactId`) when it still exists. If the
+ * parent was deleted, fall back to the nearest older surviving version so the
+ * user still sees a meaningful diff instead of every file looking brand new.
+ * For the oldest version (v1), return null so every file appears as added.
+ */
+function resolveDefaultDiffBaseId(artifacts: Artifact[], currentId: string): string | null {
+  const current = artifacts.find((a) => a.id === currentId)
+  if (!current) return null
+  if (current.baseArtifactId && artifacts.some((a) => a.id === current.baseArtifactId)) {
+    return current.baseArtifactId
+  }
+  const older = artifacts.find((a) => a.version < current.version)
+  return older?.id ?? null
+}
+
 /**
  * patch 监听器(CodeViewer 挂载时注册)。
  *
@@ -71,7 +91,13 @@ export const useArtifactStore = defineStore('artifact', {
     saving: false,
     deleting: false,
     deleteRequestId: 0,
-    exporting: false
+    exporting: false,
+    /** Base snapshot used to compute file-level and line-level diffs against `files`. */
+    diffBaseId: null as string | null,
+    diffBaseFiles: [] as ArtifactFile[],
+    diffLoading: false,
+    diffError: '',
+    diffRequestId: 0
   }),
 
   getters: {
@@ -118,6 +144,35 @@ export const useArtifactStore = defineStore('artifact', {
       const pendingHit = state.pending.find((f) => f.path === state.selectedPath)
       if (pendingHit) return pendingHit.content
       return state.files.find((f) => f.path === state.selectedPath)?.content ?? ''
+    },
+    diffStatusByPath(state): Record<string, DiffFileStatus> {
+      if (!state.currentId || state.pending.length > 0 || state.diffLoading) return {}
+      const baseMap = new Map(state.diffBaseFiles.map((f) => [f.path, f.content]))
+      const currentMap = new Map(state.files.map((f) => [f.path, f.content]))
+      const result: Record<string, DiffFileStatus> = {}
+      for (const [path, content] of currentMap) {
+        if (!baseMap.has(path)) result[path] = 'added'
+        else if (baseMap.get(path) !== content) result[path] = 'modified'
+      }
+      for (const path of baseMap.keys()) {
+        if (!currentMap.has(path)) result[path] = 'deleted'
+      }
+      return result
+    },
+    changedPaths(): string[] {
+      return Object.keys(this.diffStatusByPath).sort((a, b) => a.localeCompare(b))
+    },
+    diffBaseVersion(state): Artifact | null {
+      if (!state.diffBaseId) return null
+      return state.artifacts.find((a) => a.id === state.diffBaseId) ?? null
+    },
+    diffFiles(state): { path: string; status?: DiffFileStatus; done: boolean }[] {
+      const statuses = this.diffStatusByPath
+      const paths = new Set<string>(state.files.map((f) => f.path))
+      for (const path of Object.keys(statuses)) paths.add(path)
+      return [...paths]
+        .sort((a, b) => a.localeCompare(b))
+        .map((path) => ({ path, status: statuses[path], done: true }))
     }
   },
 
@@ -165,6 +220,7 @@ export const useArtifactStore = defineStore('artifact', {
         ].sort((a, b) => b.version - a.version)
         this.currentId = saved.id
         this.discardEdits()
+        void this.loadDiffBase(resolveDefaultDiffBaseId(this.artifacts, saved.id))
         window.api.project
           .saveSettings(projectId, { selectedArtifactId: saved.id })
           .catch((error) => console.error('[artifact] Cannot save version selection:', error))
@@ -196,6 +252,7 @@ export const useArtifactStore = defineStore('artifact', {
       this.currentId = ''
       this.files = []
       this.selectedPath = ''
+      this.clearDiff()
 
       try {
         const [artifacts, project] = await Promise.all([
@@ -222,6 +279,7 @@ export const useArtifactStore = defineStore('artifact', {
         this.currentId = ''
         this.files = []
         this.selectedPath = ''
+        this.clearDiff()
         this.loading = false
         return
       }
@@ -232,6 +290,7 @@ export const useArtifactStore = defineStore('artifact', {
         // Commit the identity and files together so preview, code and export agree.
         this.files = files
         this.currentId = artifactId
+        void this.loadDiffBase(resolveDefaultDiffBaseId(this.artifacts, artifactId))
         window.api.project
           .saveSettings(projectId, { selectedArtifactId: artifactId })
           .catch((error) => console.error('[artifact] Cannot save version selection:', error))
@@ -378,12 +437,65 @@ export const useArtifactStore = defineStore('artifact', {
           this.currentId = ''
           this.files = []
           this.selectedPath = ''
+          this.clearDiff()
           this.discardEdits()
           await this.select(remaining[0].id)
+        } else if (this.diffBaseId === artifactId) {
+          void this.loadDiffBase(resolveDefaultDiffBaseId(remaining, this.currentId))
         }
       } finally {
         if (this.projectId === projectId && this.deleteRequestId === deleteRequestId)
           this.deleting = false
+      }
+    },
+
+    clearDiff(): void {
+      this.diffRequestId++
+      this.diffBaseId = null
+      this.diffBaseFiles = []
+      this.diffLoading = false
+      this.diffError = ''
+    },
+
+    async loadDiffBase(baseArtifactId: string | null): Promise<void> {
+      const requestId = ++this.diffRequestId
+      const projectId = this.projectId
+      const currentId = this.currentId
+      this.diffError = ''
+      if (!baseArtifactId) {
+        this.diffBaseId = null
+        this.diffBaseFiles = []
+        this.diffLoading = false
+        return
+      }
+      if (!this.artifacts.some((a) => a.id === baseArtifactId)) return
+      this.diffBaseId = baseArtifactId
+      this.diffLoading = true
+      try {
+        const baseFiles = await window.api.artifact.files(baseArtifactId)
+        if (
+          this.diffRequestId !== requestId ||
+          this.projectId !== projectId ||
+          this.currentId !== currentId
+        )
+          return
+        this.diffBaseFiles = baseFiles
+      } catch (error) {
+        if (
+          this.diffRequestId !== requestId ||
+          this.projectId !== projectId ||
+          this.currentId !== currentId
+        )
+          return
+        this.diffBaseFiles = []
+        this.diffError = error instanceof Error ? error.message : String(error)
+      } finally {
+        if (
+          this.diffRequestId === requestId &&
+          this.projectId === projectId &&
+          this.currentId === currentId
+        )
+          this.diffLoading = false
       }
     },
 
